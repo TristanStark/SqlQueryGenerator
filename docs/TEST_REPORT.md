@@ -136,3 +136,13 @@ dotnet test -c Release
 ```
 
 L'environnement de génération du zip ne contient pas le SDK .NET/WPF, donc les tests doivent être exécutés sur Windows / .NET 8 côté utilisateur.
+
+## v20 - Tests ajoutés
+
+Ajout de tests unitaires côté génération SQL :
+
+- `Generate_FilterOnAggregate_EmitsHavingWithoutSubquery`
+- `Generate_OrderByAggregateAlias_UsesAlias`
+- `Generate_FilterAndOrderOnCustomColumn_UsesExpressionForWhereAndAliasForOrder`
+
+Objectif : garantir que les agrégats et colonnes calculées peuvent être réutilisés dans les filtres et tris sans générer de sous-requête inutile.

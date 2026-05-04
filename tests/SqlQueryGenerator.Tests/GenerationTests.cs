@@ -312,4 +312,136 @@ CREATE TABLE pnj_item (pnj_id INTEGER, item_id INTEGER);
         Assert.Contains("Aucune jointure fiable", string.Join("\n", result.Warnings));
     }
 
+    [Fact]
+    public void Generate_FilterOnAggregate_EmitsHavingWithoutSubquery()
+    {
+        const string sql = @"CREATE TABLE pnj (id INTEGER, race_id INTEGER);";
+        var schema = new SqlSchemaParser().Parse(sql);
+        var query = new QueryDefinition { BaseTable = "pnj" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "pnj", Column = "race_id" });
+        query.GroupBy.Add(new ColumnReference { Table = "pnj", Column = "race_id" });
+        query.Aggregates.Add(new AggregateSelection
+        {
+            Function = AggregateFunction.Count,
+            Column = new ColumnReference { Table = "pnj", Column = "id" },
+            Alias = "count_id"
+        });
+        query.Filters.Add(new FilterCondition
+        {
+            FieldKind = QueryFieldKind.Aggregate,
+            FieldAlias = "count_id",
+            Operator = ">",
+            Value = "10"
+        });
+
+        var result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
+
+        Assert.Contains("COUNT(pnj.id) AS count_id", result.Sql);
+        Assert.Contains("GROUP BY pnj.race_id", result.Sql);
+        Assert.Contains("HAVING COUNT(pnj.id) > 10", result.Sql);
+        Assert.DoesNotContain("WHERE COUNT", result.Sql);
+        Assert.DoesNotContain("SELECT * FROM (", result.Sql);
+    }
+
+    [Fact]
+    public void Generate_OrderByAggregateAlias_UsesAlias()
+    {
+        const string sql = @"CREATE TABLE pnj (id INTEGER, race_id INTEGER);";
+        var schema = new SqlSchemaParser().Parse(sql);
+        var query = new QueryDefinition { BaseTable = "pnj" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "pnj", Column = "race_id" });
+        query.Aggregates.Add(new AggregateSelection
+        {
+            Function = AggregateFunction.Count,
+            Column = new ColumnReference { Table = "pnj", Column = "id" },
+            Alias = "count_id"
+        });
+        query.OrderBy.Add(new OrderByItem
+        {
+            FieldKind = QueryFieldKind.Aggregate,
+            FieldAlias = "count_id",
+            Direction = SortDirection.Descending
+        });
+
+        var result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
+
+        Assert.Contains("ORDER BY count_id DESC", result.Sql);
+    }
+
+    [Fact]
+    public void Generate_FilterAndOrderOnCustomColumn_UsesExpressionForWhereAndAliasForOrder()
+    {
+        const string sql = @"CREATE TABLE pnj (id INTEGER, race_id INTEGER);";
+        var schema = new SqlSchemaParser().Parse(sql);
+        var query = new QueryDefinition { BaseTable = "pnj" };
+        query.CustomColumns.Add(new CustomColumnSelection
+        {
+            Alias = "race_label",
+            CaseColumn = new ColumnReference { Table = "pnj", Column = "race_id" },
+            CaseOperator = "=",
+            CaseCompareValue = "1",
+            CaseThenValue = "Humain",
+            CaseElseValue = "Autre"
+        });
+        query.Filters.Add(new FilterCondition
+        {
+            FieldKind = QueryFieldKind.CustomColumn,
+            FieldAlias = "race_label",
+            Operator = "=",
+            Value = "Humain"
+        });
+        query.OrderBy.Add(new OrderByItem
+        {
+            FieldKind = QueryFieldKind.CustomColumn,
+            FieldAlias = "race_label",
+            Direction = SortDirection.Ascending
+        });
+
+        var result = new SqlQueryGeneratorEngine().Generate(query, schema);
+
+        Assert.Contains("CASE WHEN pnj.race_id = 1 THEN 'Humain' ELSE 'Autre' END AS race_label", result.Sql);
+        Assert.Contains("WHERE CASE WHEN pnj.race_id = 1 THEN 'Humain' ELSE 'Autre' END = 'Humain'", result.Sql);
+        Assert.Contains("ORDER BY race_label ASC", result.Sql);
+    }
+
+}
+
+// v21 regression tests are intentionally kept simple and focused on core behavior.
+public sealed class GenerationV21Tests
+{
+    [Fact]
+    public void Generate_FilterWithSubquery_EmbedsSavedQueryAsRightSide()
+    {
+        const string sql = @"
+CREATE TABLE ACTIONS (ACTI_IDEN INTEGER PRIMARY KEY, LABEL TEXT);
+CREATE TABLE PAYMENTS (ID INTEGER PRIMARY KEY, ACTI_IDEN INTEGER, AMOUNT NUMBER);
+";
+        var schema = new SqlSchemaParser().Parse(sql);
+        var sub = new QueryDefinition { Name = "actions_by_label", BaseTable = "ACTIONS" };
+        sub.SelectedColumns.Add(new ColumnReference { Table = "ACTIONS", Column = "ACTI_IDEN" });
+        sub.Filters.Add(new FilterCondition
+        {
+            Column = new ColumnReference { Table = "ACTIONS", Column = "LABEL" },
+            Operator = "=",
+            ValueKind = FilterValueKind.Parameter,
+            Value = "label"
+        });
+
+        var main = new QueryDefinition { BaseTable = "PAYMENTS" };
+        main.SelectedColumns.Add(new ColumnReference { Table = "PAYMENTS", Column = "ID" });
+        main.Filters.Add(new FilterCondition
+        {
+            Column = new ColumnReference { Table = "PAYMENTS", Column = "ACTI_IDEN" },
+            Operator = "IN",
+            ValueKind = FilterValueKind.Subquery,
+            SubqueryName = "actions_by_label",
+            Subquery = sub
+        });
+
+        var result = new SqlQueryGeneratorEngine().Generate(main, schema);
+
+        Assert.Contains("PAYMENTS.ACTI_IDEN IN (", result.Sql);
+        Assert.Contains("SELECT ACTIONS.ACTI_IDEN", result.Sql);
+        Assert.Contains("WHERE ACTIONS.LABEL = :label", result.Sql);
+    }
 }

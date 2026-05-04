@@ -4,17 +4,49 @@ namespace SqlQueryGenerator.Core.Query;
 
 public sealed class QueryDefinition
 {
+    public string? Name { get; set; }
+    public string? Description { get; set; }
     public string? BaseTable { get; set; }
     public bool Distinct { get; set; }
-    public Collection<ColumnReference> SelectedColumns { get; } = new();
-    public Collection<JoinDefinition> Joins { get; } = new();
-    public Collection<FilterCondition> Filters { get; } = new();
-    public Collection<ColumnReference> GroupBy { get; } = new();
-    public Collection<OrderByItem> OrderBy { get; } = new();
-    public Collection<AggregateSelection> Aggregates { get; } = new();
-    public Collection<CustomColumnSelection> CustomColumns { get; } = new();
-    public Collection<string> DisabledAutoJoinKeys { get; } = new();
+    public Collection<ColumnReference> SelectedColumns { get; set; } = [];
+    public Collection<JoinDefinition> Joins { get; set; } = [];
+    public Collection<FilterCondition> Filters { get; set; } = [];
+    public Collection<ColumnReference> GroupBy { get; set; } = [];
+    public Collection<OrderByItem> OrderBy { get; set; } = [];
+    public Collection<AggregateSelection> Aggregates { get; set; } = [];
+    public Collection<CustomColumnSelection> CustomColumns { get; set; } = [];
+    public Collection<QueryParameterDefinition> Parameters { get; set; } = [];
+    public Collection<string> DisabledAutoJoinKeys { get; set; } = [];
     public int? LimitRows { get; set; }
+}
+
+public sealed record QueryParameterDefinition
+{
+    public string Name { get; init; } = string.Empty;
+    public string? Description { get; init; }
+    public string? DefaultValue { get; init; }
+    public bool Required { get; init; } = true;
+
+    public string Placeholder => string.IsNullOrWhiteSpace(Name)
+        ? "?"
+        : Name.StartsWith(':') || Name.StartsWith('@') || Name.StartsWith('?')
+            ? Name
+            : ":" + Name;
+}
+
+public enum QueryFieldKind
+{
+    Column,
+    Aggregate,
+    CustomColumn
+}
+
+public enum FilterValueKind
+{
+    Literal,
+    Parameter,
+    RawSql,
+    Subquery
 }
 
 public sealed record JoinDefinition
@@ -29,16 +61,23 @@ public sealed record JoinDefinition
 
 public sealed record FilterCondition
 {
-    public required ColumnReference Column { get; init; }
+    public ColumnReference? Column { get; init; }
+    public QueryFieldKind FieldKind { get; init; } = QueryFieldKind.Column;
+    public string? FieldAlias { get; init; }
     public string Operator { get; init; } = "=";
     public string? Value { get; init; }
     public string? SecondValue { get; init; }
+    public FilterValueKind ValueKind { get; init; } = FilterValueKind.Literal;
+    public QueryDefinition? Subquery { get; init; }
+    public string? SubqueryName { get; init; }
     public LogicalConnector Connector { get; init; } = LogicalConnector.And;
 }
 
 public sealed record OrderByItem
 {
-    public required ColumnReference Column { get; init; }
+    public ColumnReference? Column { get; init; }
+    public QueryFieldKind FieldKind { get; init; } = QueryFieldKind.Column;
+    public string? FieldAlias { get; init; }
     public SortDirection Direction { get; init; } = SortDirection.Ascending;
 }
 

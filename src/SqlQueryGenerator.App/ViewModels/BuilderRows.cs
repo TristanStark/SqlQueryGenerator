@@ -38,10 +38,30 @@ public sealed class SelectColumnRowViewModel : BuilderRowBase
 
 public sealed class FilterRowViewModel : BuilderRowBase
 {
+    private QueryFieldKind _fieldKind = QueryFieldKind.Column;
+    private string _fieldAlias = string.Empty;
     private string _operator = "=";
     private string _value = string.Empty;
     private string _secondValue = string.Empty;
+    private FilterValueKind _valueKind = FilterValueKind.Literal;
+    private string _subqueryName = string.Empty;
     private LogicalConnector _connector = LogicalConnector.And;
+
+    public SqlQueryGenerator.Core.Persistence.SavedQueryDefinition? SavedSubquery { get; set; }
+
+    public QueryFieldKind FieldKind
+    {
+        get => _fieldKind;
+        set => SetProperty(ref _fieldKind, value);
+    }
+
+    public string FieldAlias
+    {
+        get => _fieldAlias;
+        set => SetProperty(ref _fieldAlias, value);
+    }
+
+    public string FieldDisplay => FieldKind == QueryFieldKind.Column ? Display : FieldAlias;
 
     public string Operator
     {
@@ -61,6 +81,18 @@ public sealed class FilterRowViewModel : BuilderRowBase
         set => SetProperty(ref _secondValue, value);
     }
 
+    public FilterValueKind ValueKind
+    {
+        get => _valueKind;
+        set => SetProperty(ref _valueKind, value);
+    }
+
+    public string SubqueryName
+    {
+        get => _subqueryName;
+        set => SetProperty(ref _subqueryName, value);
+    }
+
     public LogicalConnector Connector
     {
         get => _connector;
@@ -74,7 +106,23 @@ public sealed class GroupByRowViewModel : BuilderRowBase
 
 public sealed class OrderByRowViewModel : BuilderRowBase
 {
+    private QueryFieldKind _fieldKind = QueryFieldKind.Column;
+    private string _fieldAlias = string.Empty;
     private SortDirection _direction = SortDirection.Ascending;
+
+    public QueryFieldKind FieldKind
+    {
+        get => _fieldKind;
+        set => SetProperty(ref _fieldKind, value);
+    }
+
+    public string FieldAlias
+    {
+        get => _fieldAlias;
+        set => SetProperty(ref _fieldAlias, value);
+    }
+
+    public string FieldDisplay => FieldKind == QueryFieldKind.Column ? Display : FieldAlias;
 
     public SortDirection Direction
     {
@@ -211,4 +259,41 @@ public sealed class CustomColumnRowViewModel : ObservableObject
     public string CaseCompareValue { get => _caseCompareValue; set => SetProperty(ref _caseCompareValue, value); }
     public string CaseThenValue { get => _caseThenValue; set => SetProperty(ref _caseThenValue, value); }
     public string CaseElseValue { get => _caseElseValue; set => SetProperty(ref _caseElseValue, value); }
+}
+
+public sealed class QueryParameterRowViewModel : ObservableObject
+{
+    private string _name = string.Empty;
+    private string _description = string.Empty;
+    private string _defaultValue = string.Empty;
+    private bool _required = true;
+
+    public string Name { get => _name; set => SetProperty(ref _name, value); }
+    public string Description { get => _description; set => SetProperty(ref _description, value); }
+    public string DefaultValue { get => _defaultValue; set => SetProperty(ref _defaultValue, value); }
+    public bool Required { get => _required; set => SetProperty(ref _required, value); }
+}
+
+public sealed class SavedQueryItemViewModel : ObservableObject
+{
+    private bool _isSubqueryCandidate;
+
+    public SavedQueryItemViewModel(SqlQueryGenerator.Core.Persistence.SavedQueryDefinition saved)
+    {
+        Saved = saved;
+        _isSubqueryCandidate = true;
+    }
+
+    public SqlQueryGenerator.Core.Persistence.SavedQueryDefinition Saved { get; }
+    public string Name => Saved.Name;
+    public string Description => Saved.Description ?? string.Empty;
+    public string Parameters => string.Join(", ", Saved.Query.Parameters.Select(p => p.Placeholder));
+    public string BaseTable => Saved.Query.BaseTable ?? string.Empty;
+    public int SelectCount => Saved.Query.SelectedColumns.Count + Saved.Query.Aggregates.Count + Saved.Query.CustomColumns.Count;
+
+    public bool IsSubqueryCandidate
+    {
+        get => _isSubqueryCandidate;
+        set => SetProperty(ref _isSubqueryCandidate, value);
+    }
 }

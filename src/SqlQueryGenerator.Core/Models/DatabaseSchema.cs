@@ -4,15 +4,17 @@ namespace SqlQueryGenerator.Core.Models;
 
 public sealed class DatabaseSchema
 {
-    public Collection<TableDefinition> Tables { get; } = new();
-    public Collection<DeclaredForeignKey> DeclaredForeignKeys { get; } = new();
-    public Collection<IndexDefinition> Indexes { get; } = new();
-    public Collection<InferredRelationship> Relationships { get; } = new();
-    public Collection<string> Warnings { get; } = new();
+    public Collection<TableDefinition> Tables { get; } = [];
+    public IEnumerable<TableDefinition> Views => Tables.Where(t => t.IsView);
+    public IEnumerable<TableDefinition> PhysicalTables => Tables.Where(t => !t.IsView);
+    public Collection<DeclaredForeignKey> DeclaredForeignKeys { get; } = [];
+    public Collection<IndexDefinition> Indexes { get; } = [];
+    public Collection<InferredRelationship> Relationships { get; } = [];
+    public Collection<string> Warnings { get; } = [];
 
     public TableDefinition? FindTable(string tableName)
     {
-        var normalized = SqlNameNormalizer.Normalize(tableName);
+        string normalized = SqlNameNormalizer.Normalize(tableName);
         return Tables.FirstOrDefault(t => SqlNameNormalizer.Normalize(t.Name) == normalized || SqlNameNormalizer.Normalize(t.FullName) == normalized);
     }
 
@@ -33,10 +35,9 @@ public sealed class DatabaseSchema
 
     public IReadOnlyList<IndexDefinition> FindIndexesForColumn(string tableName, string columnName)
     {
-        return Indexes
+        return [.. Indexes
             .Where(index => SqlNameNormalizer.EqualsName(index.Table, tableName) && index.ContainsColumn(columnName))
             .OrderByDescending(index => index.IsUnique)
-            .ThenBy(index => index.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .ThenBy(index => index.Name, StringComparer.OrdinalIgnoreCase)];
     }
 }

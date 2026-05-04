@@ -9,7 +9,7 @@ public sealed class IndexDefinition
         Name = name.Trim();
         Table = table.Trim();
         IsUnique = isUnique;
-        Columns = new Collection<string>(columns.Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c.Trim()).ToList());
+        Columns = new Collection<string>([.. columns.Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c.Trim())]);
     }
 
     public string Name { get; }
@@ -19,7 +19,7 @@ public sealed class IndexDefinition
 
     public bool ContainsColumn(string columnName)
     {
-        var normalized = SqlNameNormalizer.Normalize(columnName);
+        string normalized = SqlNameNormalizer.Normalize(columnName);
         return Columns.Any(c => SqlNameNormalizer.Normalize(c) == normalized);
     }
 

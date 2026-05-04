@@ -249,7 +249,7 @@
                                             <DataGridTextColumn Header="Table" Binding="{Binding Table, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="220" />
                                             <DataGridTextColumn Header="Colonne" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="220" />
                                             <DataGridTextColumn Header="Alias optionnel" Binding="{Binding Alias, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="240" />
-                                            <DataGridTemplateColumn Header="Action" Width="190" MinWidth="170">
+                                            <DataGridTemplateColumn Header="Action" Width="290" MinWidth="270">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveSelectedColumnCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
@@ -263,7 +263,7 @@
 
                             <TabItem Header="Filtres">
                                 <DockPanel AllowDrop="True" Drop="Filter_Drop" DragOver="Drop_DragOver" LastChildFill="True">
-                                    <TextBlock DockPanel.Dock="Top" Text="WHERE : dépose une colonne, choisis l'opérateur, puis saisis la valeur. Pour BETWEEN, utilise Valeur et Valeur 2." Style="{StaticResource SectionHint}" />
+                                    <TextBlock DockPanel.Dock="Top" Text="WHERE / HAVING : dépose une colonne normale, ou ajoute un agrégat / une colonne calculée depuis leurs onglets. Les filtres sur agrégats deviennent automatiquement HAVING." Style="{StaticResource SectionHint}" />
                                     <DataGrid ItemsSource="{Binding Filters}">
                                         <DataGrid.Columns>
                                             <DataGridTemplateColumn Header="Lien" Width="100" MinWidth="95">
@@ -273,8 +273,9 @@
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
-                                            <DataGridTextColumn Header="Table" Binding="{Binding Table, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.5*" MinWidth="190" />
-                                            <DataGridTextColumn Header="Colonne" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.5*" MinWidth="190" />
+                                            <DataGridTextColumn Header="Type" Binding="{Binding FieldKind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="0.9*" MinWidth="130" />
+                                            <DataGridTextColumn Header="Table / source" Binding="{Binding Table, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.3*" MinWidth="170" />
+                                            <DataGridTextColumn Header="Colonne / alias" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.6*" MinWidth="210" />
                                             <DataGridTemplateColumn Header="Opérateur" Width="155" MinWidth="145">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
@@ -282,8 +283,16 @@
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
-                                            <DataGridTextColumn Header="Valeur" Binding="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="230" />
+                                            <DataGridTemplateColumn Header="Type valeur" Width="150" MinWidth="140">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <ComboBox ItemsSource="{Binding DataContext.FilterValueKinds, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding ValueKind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                            <DataGridTextColumn Header="Valeur / paramètre" Binding="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="230" />
                                             <DataGridTextColumn Header="Valeur 2" Binding="{Binding SecondValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.4*" MinWidth="190" />
+                                            <DataGridTextColumn Header="Sous-requête" Binding="{Binding SubqueryName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.5*" MinWidth="190" />
                                             <DataGridTemplateColumn Header="Action" Width="190" MinWidth="170">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
@@ -447,6 +456,8 @@
                                                                     <TextBlock Text="Alias" VerticalAlignment="Center" FontWeight="SemiBold" Margin="12,4,4,4" />
                                                                     <TextBox Width="210" Text="{Binding Alias, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Nom de la colonne générée, ex: nb_paiements_cb, total_paye." />
 
+                                                                    <Button Content="+ Filtre" MinWidth="95" Padding="10,4" Command="{Binding DataContext.AddAggregateFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute cet agrégat comme filtre HAVING." />
+                                                                    <Button Content="+ Tri" MinWidth="85" Padding="10,4" Command="{Binding DataContext.AddAggregateOrderByCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute cet agrégat au ORDER BY." />
                                                                     <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveAggregateCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                                 </WrapPanel>
 
@@ -483,11 +494,12 @@
 
                             <TabItem Header="Tri">
                                 <DockPanel AllowDrop="True" Drop="Order_Drop" DragOver="Drop_DragOver" LastChildFill="True">
-                                    <TextBlock DockPanel.Dock="Top" Text="ORDER BY : dépose les colonnes de tri et choisis ascendant/descendant." Style="{StaticResource SectionHint}" />
+                                    <TextBlock DockPanel.Dock="Top" Text="ORDER BY : dépose une colonne normale, ou ajoute un agrégat / une colonne calculée depuis leurs onglets. Les tris sur alias restent lisibles." Style="{StaticResource SectionHint}" />
                                     <DataGrid ItemsSource="{Binding OrderBy}">
                                         <DataGrid.Columns>
-                                            <DataGridTextColumn Header="Table" Binding="{Binding Table, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="260" />
-                                            <DataGridTextColumn Header="Colonne" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="260" />
+                                            <DataGridTextColumn Header="Type" Binding="{Binding FieldKind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="0.9*" MinWidth="130" />
+                                            <DataGridTextColumn Header="Table / source" Binding="{Binding Table, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.5*" MinWidth="210" />
+                                            <DataGridTextColumn Header="Colonne / alias" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.8*" MinWidth="250" />
                                             <DataGridTemplateColumn Header="Sens" Width="160" MinWidth="150">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
@@ -529,16 +541,79 @@
                                             <DataGridTextColumn Header="Si valeur" Binding="{Binding CaseCompareValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1*" MinWidth="140" />
                                             <DataGridTextColumn Header="Alors" Binding="{Binding CaseThenValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1*" MinWidth="140" />
                                             <DataGridTextColumn Header="Sinon" Binding="{Binding CaseElseValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1*" MinWidth="140" />
-                                            <DataGridTemplateColumn Header="Action" Width="190" MinWidth="170">
+                                            <DataGridTemplateColumn Header="Action" Width="330" MinWidth="310">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
-                                                        <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveCustomColumnCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch">
+                                                            <Button Content="+ Filtre" MinWidth="80" Padding="8,4" Command="{Binding DataContext.AddCustomFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute cette colonne calculée comme filtre." />
+                                                            <Button Content="+ Tri" MinWidth="70" Padding="8,4" Command="{Binding DataContext.AddCustomOrderByCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute cette colonne calculée au ORDER BY." />
+                                                            <Button Content="Retirer" MinWidth="100" Padding="8,4" Command="{Binding DataContext.RemoveCustomColumnCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                        </StackPanel>
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
                                         </DataGrid.Columns>
                                     </DataGrid>
                                 </DockPanel>
+                            </TabItem>
+
+                            <TabItem Header="Sous-requêtes / sauvegarde">
+                                <Grid Margin="4">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+
+                                    <Border Grid.Row="0" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="8" Background="#FFFFFF" Padding="8" Margin="4">
+                                        <DockPanel LastChildFill="True">
+                                            <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                                <TextBlock Text="Nom" FontWeight="SemiBold" VerticalAlignment="Center" Margin="4" />
+                                                <TextBox Width="230" Text="{Binding QueryName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                <TextBlock Text="Description" FontWeight="SemiBold" VerticalAlignment="Center" Margin="14,4,4,4" />
+                                                <TextBox Width="420" Text="{Binding QueryDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                <Button Content="Sauvegarder requête" Command="{Binding SaveCurrentQueryCommand}" />
+                                                <Button Content="Recharger bibliothèque" Command="{Binding ReloadSavedQueriesCommand}" />
+                                                <Button Content="Charger sélection" Command="{Binding LoadSelectedQueryCommand}" />
+                                                <Button Content="Utiliser comme sous-requête filtrante" Command="{Binding AddSelectedSavedQueryAsSubqueryFilterCommand}" ToolTip="Ajoute la requête sauvegardée sélectionnée comme filtre IN/=/EXISTS. Si une colonne est sélectionnée dans l'arbre de gauche, elle devient la colonne filtrée." />
+                                            </WrapPanel>
+                                            <TextBlock Text="Sauvegarde locale JSON dans le dossier saved_queries. Les paramètres sont conservés comme :nom_param ou ?. Une sous-requête sauvegardée peut être réutilisée dans les filtres de la requête principale." TextWrapping="Wrap" Foreground="#475569" />
+                                        </DockPanel>
+                                    </Border>
+
+                                    <GroupBox Grid.Row="1" Header="Paramètres de la requête / sous-requête" Margin="4">
+                                        <DockPanel LastChildFill="True">
+                                            <Button DockPanel.Dock="Top" HorizontalAlignment="Left" Content="+ Paramètre" Command="{Binding AddParameterCommand}" />
+                                            <DataGrid ItemsSource="{Binding Parameters}" MinHeight="110">
+                                                <DataGrid.Columns>
+                                                    <DataGridTextColumn Header="Nom" Binding="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1*" MinWidth="150" />
+                                                    <DataGridTextColumn Header="Description" Binding="{Binding Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="260" />
+                                                    <DataGridTextColumn Header="Valeur par défaut" Binding="{Binding DefaultValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.2*" MinWidth="180" />
+                                                    <DataGridCheckBoxColumn Header="Obligatoire" Binding="{Binding Required, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="120" />
+                                                    <DataGridTemplateColumn Header="Action" Width="160" MinWidth="150">
+                                                        <DataGridTemplateColumn.CellTemplate>
+                                                            <DataTemplate>
+                                                                <Button Content="Retirer" MinWidth="120" Command="{Binding DataContext.RemoveParameterCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                            </DataTemplate>
+                                                        </DataGridTemplateColumn.CellTemplate>
+                                                    </DataGridTemplateColumn>
+                                                </DataGrid.Columns>
+                                            </DataGrid>
+                                        </DockPanel>
+                                    </GroupBox>
+
+                                    <GroupBox Grid.Row="2" Header="Bibliothèque de requêtes sauvegardées" Margin="4">
+                                        <DataGrid ItemsSource="{Binding SavedQueries}" SelectedItem="{Binding SelectedSavedQuery, Mode=TwoWay}">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Nom" Binding="{Binding Name}" Width="1.4*" MinWidth="180" />
+                                                <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="2.5*" MinWidth="300" />
+                                                <DataGridTextColumn Header="Base" Binding="{Binding BaseTable}" Width="1*" MinWidth="140" />
+                                                <DataGridTextColumn Header="Params" Binding="{Binding Parameters}" Width="1.6*" MinWidth="220" />
+                                                <DataGridTextColumn Header="Nb champs" Binding="{Binding SelectCount}" Width="100" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </GroupBox>
+                                </Grid>
                             </TabItem>
                         </TabControl>
                     </Grid>
@@ -576,6 +651,8 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="8" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="8" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <Border Grid.Row="0" Background="#EFF6FF" BorderBrush="#93C5FD" BorderThickness="1" CornerRadius="6" Padding="8" Margin="4">
@@ -584,7 +661,13 @@
                                 <TextBlock Text="{Binding QueryPurpose, Mode=OneWay}" TextWrapping="Wrap" Foreground="#1F2937" />
                             </DockPanel>
                         </Border>
-                        <TextBox Grid.Row="2" Text="{Binding Warnings, Mode=OneWay}"
+                        <Border Grid.Row="2" Background="#F0FDF4" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="6" Padding="8" Margin="4">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock DockPanel.Dock="Top" Text="Analyse performance heuristique" FontWeight="Bold" Foreground="#166534" Margin="0,0,0,4" />
+                                <TextBlock Text="{Binding PerformanceReport, Mode=OneWay}" TextWrapping="Wrap" Foreground="#1F2937" />
+                            </DockPanel>
+                        </Border>
+                        <TextBox Grid.Row="4" Text="{Binding Warnings, Mode=OneWay}"
                                  FontFamily="Consolas"
                                  FontSize="12"
                                  AcceptsReturn="True"

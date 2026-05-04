@@ -50,7 +50,7 @@ public sealed class TableItemViewModel : ObservableObject
             return string.Empty;
         }
 
-        var key = $"{column.TableName}.{column.Name}";
+        string key = $"{column.TableName}.{column.Name}";
         return summaries.TryGetValue(key, out var summary) ? summary : string.Empty;
     }
 

@@ -11,7 +11,7 @@ public static partial class SqlNameNormalizer
             return string.Empty;
         }
 
-        var value = name.Trim().Trim('`', '"', '[', ']');
+        string value = name.Trim().Trim('`', '"', '[', ']');
         value = MultiWhitespaceRegex().Replace(value, "_");
         return value.ToUpperInvariant();
     }

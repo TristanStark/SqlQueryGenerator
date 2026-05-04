@@ -276,3 +276,26 @@ Fix regression in inline column comment parsing: comments written after a column
 ## Performance v18
 
 `ForeignKeyInferer.Infer()` a été optimisé pour les schémas volumineux. L'ancienne version comparait quasiment toutes les colonnes entre elles (`O(C²)`), ce qui devient très coûteux avec 7000+ colonnes. La v18 construit des dictionnaires de tables/colonnes/index et génère uniquement des candidats plausibles. Voir `docs/PERFORMANCE.md`.
+
+## v20 - Filtres et tris sur agrégats / colonnes calculées
+
+Les agrégats et colonnes calculées peuvent désormais être ajoutés aux filtres et aux tris depuis leurs onglets respectifs.
+
+- `+ Filtre` sur un agrégat génère automatiquement un `HAVING`.
+- `+ Tri` sur un agrégat génère un `ORDER BY alias`.
+- `+ Filtre` sur une colonne calculée réutilise l'expression complète dans `WHERE`.
+- `+ Tri` sur une colonne calculée utilise l'alias dans `ORDER BY`.
+
+Voir `docs/DERIVED_FIELDS.md`.
+
+## V21 — Sous-requêtes, vues et requêtes sauvegardées
+
+La v21 ajoute :
+
+- création de paramètres (`?`, `:nom`, `@nom`) ;
+- sauvegarde/chargement de requêtes structurées en JSON ;
+- réutilisation de requêtes sauvegardées comme sous-requêtes filtrantes ;
+- parsing de `CREATE VIEW` ;
+- analyse heuristique de performance basée sur les index, les vues, les filtres, les tris et les jointures.
+
+Voir `docs/V21_SUBQUERIES_SAVED_QUERIES_PERFORMANCE.md`.

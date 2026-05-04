@@ -12,7 +12,7 @@ public static partial class SqlLiteralFormatter
             return "NULL";
         }
 
-        var value = raw.Trim();
+        string value = raw.Trim();
         if (value.StartsWith(':') || value.StartsWith('@') || value.StartsWith('?'))
         {
             return value;
@@ -30,23 +30,18 @@ public static partial class SqlLiteralFormatter
             return value;
         }
 
-        if (value.StartsWith('(') && value.EndsWith(')'))
-        {
-            return value;
-        }
-
-        return $"'{value.Replace("'", "''", StringComparison.Ordinal)}'";
+        return value.StartsWith('(') && value.EndsWith(')') ? value : $"'{value.Replace("'", "''", StringComparison.Ordinal)}'";
     }
 
     public static string FormatRawList(string raw)
     {
-        var trimmed = raw.Trim();
+        string trimmed = raw.Trim();
         if (trimmed.StartsWith('(') && trimmed.EndsWith(')'))
         {
             return trimmed;
         }
 
-        var parts = trimmed.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        string[] parts = trimmed.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return $"({string.Join(", ", parts.Select(FormatValue))})";
     }
 

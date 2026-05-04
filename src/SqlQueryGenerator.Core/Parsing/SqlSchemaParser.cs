@@ -1,7 +1,7 @@
-using System.Text;
-using System.Text.RegularExpressions;
 using SqlQueryGenerator.Core.Heuristics;
 using SqlQueryGenerator.Core.Models;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace SqlQueryGenerator.Core.Parsing;
 
@@ -27,15 +27,15 @@ public sealed partial class SqlSchemaParser
             throw new InvalidOperationException($"Le fichier de schéma dépasse la taille autorisée ({options.MaxInputCharacters:N0} caractères). Ajuste SchemaParseOptions.MaxInputCharacters si nécessaire.");
         }
 
-        var schema = new DatabaseSchema();
-        var text = NormalizeLineEndings(sqlText);
+        DatabaseSchema schema = new();
+        string text = NormalizeLineEndings(sqlText);
         var commentsByColumn = ExtractCommentOnColumnStatements(text);
         var commentsByTable = ExtractCommentOnTableStatements(text);
         var statements = SplitStatements(text);
 
-        foreach (var statement in statements)
+        foreach (string statement in statements)
         {
-            var trimmed = statement.Trim();
+            string trimmed = statement.Trim();
             if (trimmed.Length == 0)
             {
                 continue;
@@ -47,6 +47,12 @@ public sealed partial class SqlSchemaParser
                 continue;
             }
 
+            if (CreateViewRegex().Match(trimmed) is { Success: true } viewMatch)
+            {
+                TryParseCreateView(trimmed, viewMatch, commentsByTable, schema);
+                continue;
+            }
+
             if (CreateIndexRegex().Match(trimmed) is { Success: true } indexMatch)
             {
                 TryParseCreateIndex(trimmed, indexMatch, schema);
@@ -55,19 +61,19 @@ public sealed partial class SqlSchemaParser
 
         foreach (var table in schema.Tables)
         {
-            var full = table.FullName;
-            var tableName = table.Name;
-            if (commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(full), out var fullComment) || commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(tableName), out fullComment))
+            string full = table.FullName;
+            string tableName = table.Name;
+            if (commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(full), out string? fullComment) || commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(tableName), out fullComment))
             {
                 table.Comment = fullComment;
             }
 
-            for (var i = 0; i < table.Columns.Count; i++)
+            for (int i = 0; i < table.Columns.Count; i++)
             {
                 var column = table.Columns[i];
-                var key1 = SqlNameNormalizer.Normalize($"{full}.{column.Name}");
-                var key2 = SqlNameNormalizer.Normalize($"{tableName}.{column.Name}");
-                if (commentsByColumn.TryGetValue(key1, out var comment) || commentsByColumn.TryGetValue(key2, out comment))
+                string key1 = SqlNameNormalizer.Normalize($"{full}.{column.Name}");
+                string key2 = SqlNameNormalizer.Normalize($"{tableName}.{column.Name}");
+                if (commentsByColumn.TryGetValue(key1, out string? comment) || commentsByColumn.TryGetValue(key2, out comment))
                 {
                     table.Columns[i] = column with { Comment = comment };
                 }
@@ -85,26 +91,199 @@ public sealed partial class SqlSchemaParser
         return schema;
     }
 
+    private static void TryParseCreateView(
+        string statement,
+        Match viewMatch,
+        IReadOnlyDictionary<string, string> commentsByTable,
+        DatabaseSchema schema)
+    {
+        string rawViewName = viewMatch.Groups["name"].Value.Trim();
+        var (schemaName, viewName) = SplitQualifiedName(rawViewName);
+        int asIndex = Regex.Match(statement, @"\bAS\b", RegexOptions.IgnoreCase).Index;
+        if (asIndex <= 0)
+        {
+            schema.Warnings.Add($"Vue {rawViewName} détectée mais clause AS introuvable.");
+            return;
+        }
+
+        string viewSql = statement[asIndex..].Trim();
+        TableDefinition view = new(viewName, schemaName, isView: true, viewSql: viewSql);
+        if (commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(view.FullName), out string? comment) || commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(view.Name), out comment))
+        {
+            view.Comment = comment;
+        }
+
+        var explicitColumns = ExtractExplicitViewColumns(statement, viewMatch);
+        if (explicitColumns.Count > 0)
+        {
+            foreach (string column in explicitColumns)
+            {
+                view.Columns.Add(new ColumnDefinition
+                {
+                    TableName = view.FullName,
+                    Name = column,
+                    DataType = "VIEW_EXPR",
+                    Comment = "Colonne déclarée dans CREATE VIEW",
+                    IsNullable = true
+                });
+            }
+        }
+        else
+        {
+            foreach (string column in InferViewColumnsFromSelect(statement))
+            {
+                view.Columns.Add(new ColumnDefinition
+                {
+                    TableName = view.FullName,
+                    Name = column,
+                    DataType = "VIEW_EXPR",
+                    Comment = "Colonne inférée depuis le SELECT de la vue",
+                    IsNullable = true
+                });
+            }
+        }
+
+        if (view.Columns.Count == 0)
+        {
+            view.Columns.Add(new ColumnDefinition
+            {
+                TableName = view.FullName,
+                Name = "view_expression",
+                DataType = "VIEW_EXPR",
+                Comment = "Colonnes non inférées automatiquement ; consulte le SQL de la vue.",
+                IsNullable = true
+            });
+            schema.Warnings.Add($"Vue {rawViewName} détectée mais les colonnes n'ont pas pu être inférées précisément.");
+        }
+
+        schema.Tables.Add(view);
+    }
+
+    private static IReadOnlyList<string> ExtractExplicitViewColumns(string statement, Match viewMatch)
+    {
+        int afterName = viewMatch.Index + viewMatch.Length;
+        while (afterName < statement.Length && char.IsWhiteSpace(statement[afterName]))
+        {
+            afterName++;
+        }
+
+        if (afterName >= statement.Length || statement[afterName] != '(')
+        {
+            return Array.Empty<string>();
+        }
+
+        int close = FindMatchingParenthesis(statement, afterName);
+        return close <= afterName
+            ? Array.Empty<string>()
+            : [.. SplitTopLevelComma(statement[(afterName + 1)..close])
+            .Select(CleanIdentifier)
+            .Where(c => Regex.IsMatch(c, @"^[A-Za-z_][A-Za-z0-9_$#]*$", RegexOptions.IgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
+    }
+
+    private static IReadOnlyList<string> InferViewColumnsFromSelect(string statement)
+    {
+        var selectMatch = Regex.Match(statement, @"\bSELECT\b", RegexOptions.IgnoreCase);
+        if (!selectMatch.Success)
+        {
+            return Array.Empty<string>();
+        }
+
+        int fromIndex = FindTopLevelKeyword(statement, "FROM", selectMatch.Index + selectMatch.Length);
+        if (fromIndex <= selectMatch.Index)
+        {
+            return Array.Empty<string>();
+        }
+
+        string selectList = statement[(selectMatch.Index + selectMatch.Length)..fromIndex];
+        return [.. SplitTopLevelComma(selectList)
+            .Select(TryInferSelectAlias)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(512)];
+    }
+
+    private static int FindTopLevelKeyword(string text, string keyword, int startIndex)
+    {
+        int depth = 0;
+        bool inSingle = false;
+        bool inDouble = false;
+        for (int i = startIndex; i < text.Length - keyword.Length; i++)
+        {
+            char c = text[i];
+            if (c == '\'' && !inDouble) inSingle = !inSingle;
+            else if (c == '"' && !inSingle) inDouble = !inDouble;
+            else if (!inSingle && !inDouble)
+            {
+                if (c == '(') depth++;
+                else if (c == ')' && depth > 0) depth--;
+                else if (depth == 0 && string.Compare(text, i, keyword, 0, keyword.Length, StringComparison.OrdinalIgnoreCase) == 0)
+                {
+                    bool beforeOk = i == 0 || !char.IsLetterOrDigit(text[i - 1]);
+                    int after = i + keyword.Length;
+                    bool afterOk = after >= text.Length || !char.IsLetterOrDigit(text[after]);
+                    if (beforeOk && afterOk)
+                    {
+                        return i;
+                    }
+                }
+            }
+        }
+
+        return -1;
+    }
+
+    private static string? TryInferSelectAlias(string expression)
+    {
+        string cleaned = expression.Trim();
+        if (cleaned.Length == 0 || cleaned == "*")
+        {
+            return null;
+        }
+
+        var asMatch = Regex.Match(cleaned, @"\bAS\s+(?<alias>[`""\[]?\w+[`""\]]?)\s*$", RegexOptions.IgnoreCase);
+        if (asMatch.Success)
+        {
+            return CleanIdentifier(asMatch.Groups["alias"].Value);
+        }
+
+        var tokens = TokenizeDefinition(cleaned);
+        if (tokens.Count >= 2)
+        {
+            string last = CleanIdentifier(tokens[^1]);
+            if (!string.Equals(last, "DESC", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(last, "ASC", StringComparison.OrdinalIgnoreCase)
+                && Regex.IsMatch(last, @"^[A-Za-z_][A-Za-z0-9_$#]*$", RegexOptions.IgnoreCase))
+            {
+                return last;
+            }
+        }
+
+        string[] dotParts = cleaned.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        string candidate = CleanIdentifier(dotParts[^1]);
+        return Regex.IsMatch(candidate, @"^[A-Za-z_][A-Za-z0-9_$#]*$", RegexOptions.IgnoreCase) ? candidate : null;
+    }
+
     private static void TryParseCreateIndex(string statement, Match indexMatch, DatabaseSchema schema)
     {
-        var indexName = CleanQualifiedIdentifier(indexMatch.Groups["name"].Value);
-        var tableName = CleanQualifiedIdentifier(indexMatch.Groups["table"].Value);
-        var unique = indexMatch.Groups["unique"].Success;
+        string indexName = CleanQualifiedIdentifier(indexMatch.Groups["name"].Value);
+        string tableName = CleanQualifiedIdentifier(indexMatch.Groups["table"].Value);
+        bool unique = indexMatch.Groups["unique"].Success;
 
-        var open = statement.IndexOf('(', StringComparison.Ordinal);
-        var close = FindMatchingParenthesis(statement, open);
+        int open = statement.IndexOf('(', StringComparison.Ordinal);
+        int close = FindMatchingParenthesis(statement, open);
         if (open < 0 || close <= open)
         {
             schema.Warnings.Add($"Impossible de lire le CREATE INDEX {indexName}: parenthèses introuvables.");
             return;
         }
 
-        var columns = SplitTopLevelComma(statement[(open + 1)..close])
+        string[] columns = [.. SplitTopLevelComma(statement[(open + 1)..close])
             .Select(TryExtractIndexedColumnName)
             .Where(c => !string.IsNullOrWhiteSpace(c))
             .Cast<string>()
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
 
         if (columns.Length == 0)
         {
@@ -117,7 +296,7 @@ public sealed partial class SqlSchemaParser
 
     private static string? TryExtractIndexedColumnName(string expression)
     {
-        var trimmed = expression.Trim();
+        string trimmed = expression.Trim();
         if (trimmed.Length == 0)
         {
             return null;
@@ -130,13 +309,13 @@ public sealed partial class SqlSchemaParser
             return null;
         }
 
-        var firstToken = trimmed.Split([' ', '\t', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        string? firstToken = trimmed.Split([' ', '\t', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
         if (string.IsNullOrWhiteSpace(firstToken))
         {
             return null;
         }
 
-        var cleaned = CleanIdentifier(firstToken);
+        string cleaned = CleanIdentifier(firstToken);
         return Regex.IsMatch(cleaned, @"^[A-Za-z_][A-Za-z0-9_$#]*$", RegexOptions.IgnoreCase) ? cleaned : null;
     }
 
@@ -147,27 +326,27 @@ public sealed partial class SqlSchemaParser
         IReadOnlyDictionary<string, string> commentsByTable,
         DatabaseSchema schema)
     {
-        var rawTableName = createMatch.Groups["name"].Value.Trim();
+        string rawTableName = createMatch.Groups["name"].Value.Trim();
         var (schemaName, tableName) = SplitQualifiedName(rawTableName);
-        var table = new TableDefinition(tableName, schemaName);
-        var bodyStart = statement.IndexOf('(', StringComparison.Ordinal);
-        var bodyEnd = FindMatchingParenthesis(statement, bodyStart);
+        TableDefinition table = new(tableName, schemaName);
+        int bodyStart = statement.IndexOf('(', StringComparison.Ordinal);
+        int bodyEnd = FindMatchingParenthesis(statement, bodyStart);
         if (bodyStart < 0 || bodyEnd <= bodyStart)
         {
             schema.Warnings.Add($"Impossible de lire le CREATE TABLE {rawTableName}: parenthèses introuvables.");
             return;
         }
 
-        var body = statement[(bodyStart + 1)..bodyEnd];
+        string body = statement[(bodyStart + 1)..bodyEnd];
         var parts = SplitTopLevelComma(body);
-        var tableLevelPk = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var inlineColumns = new List<ColumnDefinition>();
+        HashSet<string> tableLevelPk = new(StringComparer.OrdinalIgnoreCase);
+        List<ColumnDefinition> inlineColumns = [];
 
-        foreach (var part in parts)
+        foreach (string part in parts)
         {
-            var withoutBlockComments = RemoveBlockComments(part);
+            string withoutBlockComments = RemoveBlockComments(part);
             var (definition, trailingComment) = ExtractTrailingLineComment(withoutBlockComments);
-            var trimmed = definition.Trim().TrimEnd(',');
+            string trimmed = definition.Trim().TrimEnd(',');
             if (trimmed.Length == 0)
             {
                 continue;
@@ -188,11 +367,11 @@ public sealed partial class SqlSchemaParser
 
         foreach (var column in inlineColumns)
         {
-            var isPk = column.IsPrimaryKey || tableLevelPk.Contains(SqlNameNormalizer.Normalize(column.Name));
+            bool isPk = column.IsPrimaryKey || tableLevelPk.Contains(SqlNameNormalizer.Normalize(column.Name));
             table.Columns.Add(column with { IsPrimaryKey = isPk });
         }
 
-        if (commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(table.FullName), out var comment) || commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(table.Name), out comment))
+        if (commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(table.FullName), out string? comment) || commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(table.Name), out comment))
         {
             table.Comment = comment;
         }
@@ -217,19 +396,19 @@ public sealed partial class SqlSchemaParser
             return null;
         }
 
-        var columnName = CleanIdentifier(tokens[0]);
+        string columnName = CleanIdentifier(tokens[0]);
         if (string.IsNullOrWhiteSpace(columnName))
         {
             return null;
         }
 
-        var dataType = ExtractDataType(tokens);
-        var upper = definition.ToUpperInvariant();
-        var isNullable = !upper.Contains(" NOT NULL", StringComparison.OrdinalIgnoreCase);
-        var isPrimaryKey = upper.Contains(" PRIMARY KEY", StringComparison.OrdinalIgnoreCase);
-        var inlineComment = ExtractInlineCommentClause(definition) ?? trailingComment;
-        var commentKey = SqlNameNormalizer.Normalize($"{tableFullName}.{columnName}");
-        if (commentsByColumn.TryGetValue(commentKey, out var comment))
+        string dataType = ExtractDataType(tokens);
+        string upper = definition.ToUpperInvariant();
+        bool isNullable = !upper.Contains(" NOT NULL", StringComparison.OrdinalIgnoreCase);
+        bool isPrimaryKey = upper.Contains(" PRIMARY KEY", StringComparison.OrdinalIgnoreCase);
+        string? inlineComment = ExtractInlineCommentClause(definition) ?? trailingComment;
+        string commentKey = SqlNameNormalizer.Normalize($"{tableFullName}.{columnName}");
+        if (commentsByColumn.TryGetValue(commentKey, out string? comment))
         {
             inlineComment = comment;
         }
@@ -248,11 +427,11 @@ public sealed partial class SqlSchemaParser
 
     private static void ParseTableConstraint(string definition, string currentTable, DatabaseSchema schema, HashSet<string> tableLevelPk)
     {
-        var normalized = definition.Trim();
+        string normalized = definition.Trim();
         var pkMatch = TablePrimaryKeyRegex().Match(normalized);
         if (pkMatch.Success)
         {
-            foreach (var col in SplitTopLevelComma(pkMatch.Groups["cols"].Value).Select(CleanIdentifier))
+            foreach (string? col in SplitTopLevelComma(pkMatch.Groups["cols"].Value).Select(CleanIdentifier))
             {
                 if (!string.IsNullOrWhiteSpace(col))
                 {
@@ -264,11 +443,11 @@ public sealed partial class SqlSchemaParser
         var fkMatch = ForeignKeyRegex().Match(normalized);
         if (fkMatch.Success)
         {
-            var sourceCols = SplitTopLevelComma(fkMatch.Groups["fromCols"].Value).Select(CleanIdentifier).ToArray();
-            var targetTable = CleanQualifiedIdentifier(fkMatch.Groups["toTable"].Value);
-            var targetCols = SplitTopLevelComma(fkMatch.Groups["toCols"].Value).Select(CleanIdentifier).ToArray();
-            var pairCount = Math.Min(sourceCols.Length, targetCols.Length);
-            for (var i = 0; i < pairCount; i++)
+            string[] sourceCols = [.. SplitTopLevelComma(fkMatch.Groups["fromCols"].Value).Select(CleanIdentifier)];
+            string targetTable = CleanQualifiedIdentifier(fkMatch.Groups["toTable"].Value);
+            string[] targetCols = [.. SplitTopLevelComma(fkMatch.Groups["toCols"].Value).Select(CleanIdentifier)];
+            int pairCount = Math.Min(sourceCols.Length, targetCols.Length);
+            for (int i = 0; i < pairCount; i++)
             {
                 schema.DeclaredForeignKeys.Add(new DeclaredForeignKey
                 {
@@ -284,13 +463,13 @@ public sealed partial class SqlSchemaParser
 
     private static string ExtractDataType(IReadOnlyList<string> tokens)
     {
-        var stopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        HashSet<string> stopWords = new(StringComparer.OrdinalIgnoreCase)
         {
             "PRIMARY", "NOT", "NULL", "DEFAULT", "CONSTRAINT", "REFERENCES", "CHECK", "UNIQUE", "COMMENT", "COLLATE", "GENERATED", "IDENTITY"
         };
 
-        var sb = new StringBuilder();
-        for (var i = 1; i < tokens.Count; i++)
+        StringBuilder sb = new();
+        for (int i = 1; i < tokens.Count; i++)
         {
             if (stopWords.Contains(tokens[i]))
             {
@@ -310,12 +489,12 @@ public sealed partial class SqlSchemaParser
 
     private static IReadOnlyDictionary<string, string> ExtractCommentOnColumnStatements(string text)
     {
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> result = new(StringComparer.OrdinalIgnoreCase);
         foreach (Match match in CommentOnColumnRegex().Matches(text))
         {
-            var table = CleanQualifiedIdentifier(match.Groups["table"].Value);
-            var col = CleanIdentifier(match.Groups["column"].Value);
-            var comment = UnescapeSqlString(match.Groups["comment"].Value);
+            string table = CleanQualifiedIdentifier(match.Groups["table"].Value);
+            string col = CleanIdentifier(match.Groups["column"].Value);
+            string comment = UnescapeSqlString(match.Groups["comment"].Value);
             result[SqlNameNormalizer.Normalize($"{table}.{col}")] = comment;
         }
 
@@ -324,11 +503,11 @@ public sealed partial class SqlSchemaParser
 
     private static IReadOnlyDictionary<string, string> ExtractCommentOnTableStatements(string text)
     {
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> result = new(StringComparer.OrdinalIgnoreCase);
         foreach (Match match in CommentOnTableRegex().Matches(text))
         {
-            var table = CleanQualifiedIdentifier(match.Groups["table"].Value);
-            var comment = UnescapeSqlString(match.Groups["comment"].Value);
+            string table = CleanQualifiedIdentifier(match.Groups["table"].Value);
+            string comment = UnescapeSqlString(match.Groups["comment"].Value);
             result[SqlNameNormalizer.Normalize(table)] = comment;
         }
 
@@ -337,18 +516,18 @@ public sealed partial class SqlSchemaParser
 
     public static IReadOnlyList<string> SplitStatements(string text)
     {
-        var statements = new List<string>();
-        var sb = new StringBuilder();
-        var inSingle = false;
-        var inDouble = false;
-        var inLineComment = false;
-        var inBlockComment = false;
-        var depth = 0;
+        List<string> statements = [];
+        StringBuilder sb = new();
+        bool inSingle = false;
+        bool inDouble = false;
+        bool inLineComment = false;
+        bool inBlockComment = false;
+        int depth = 0;
 
-        for (var i = 0; i < text.Length; i++)
+        for (int i = 0; i < text.Length; i++)
         {
-            var c = text[i];
-            var next = i + 1 < text.Length ? text[i + 1] : '\0';
+            char c = text[i];
+            char next = i + 1 < text.Length ? text[i + 1] : '\0';
 
             if (inLineComment)
             {
@@ -427,18 +606,18 @@ public sealed partial class SqlSchemaParser
 
     public static IReadOnlyList<string> SplitTopLevelComma(string text)
     {
-        var result = new List<string>();
-        var sb = new StringBuilder();
-        var depth = 0;
-        var inSingle = false;
-        var inDouble = false;
-        var inLineComment = false;
-        var inBlockComment = false;
+        List<string> result = [];
+        StringBuilder sb = new();
+        int depth = 0;
+        bool inSingle = false;
+        bool inDouble = false;
+        bool inLineComment = false;
+        bool inBlockComment = false;
 
-        for (var i = 0; i < text.Length; i++)
+        for (int i = 0; i < text.Length; i++)
         {
-            var c = text[i];
-            var next = i + 1 < text.Length ? text[i + 1] : '\0';
+            char c = text[i];
+            char next = i + 1 < text.Length ? text[i + 1] : '\0';
 
             if (inLineComment)
             {
@@ -520,7 +699,7 @@ public sealed partial class SqlSchemaParser
 
     private static void AppendLineCommentImmediatelyAfterComma(string text, ref int commaIndex, StringBuilder currentPart)
     {
-        var i = commaIndex + 1;
+        int i = commaIndex + 1;
 
         while (i < text.Length && (text[i] == ' ' || text[i] == '\t'))
         {
@@ -532,7 +711,7 @@ public sealed partial class SqlSchemaParser
             return;
         }
 
-        var end = text.IndexOf('\n', i);
+        int end = text.IndexOf('\n', i);
         if (end < 0)
         {
             end = text.Length;
@@ -563,12 +742,12 @@ public sealed partial class SqlSchemaParser
             return -1;
         }
 
-        var depth = 0;
-        var inSingle = false;
-        var inDouble = false;
-        for (var i = openIndex; i < text.Length; i++)
+        int depth = 0;
+        bool inSingle = false;
+        bool inDouble = false;
+        for (int i = openIndex; i < text.Length; i++)
         {
-            var c = text[i];
+            char c = text[i];
             if (c == '\'' && !inDouble) inSingle = !inSingle;
             else if (c == '"' && !inSingle) inDouble = !inDouble;
             else if (!inSingle && !inDouble)
@@ -587,12 +766,12 @@ public sealed partial class SqlSchemaParser
 
     private static IReadOnlyList<string> TokenizeDefinition(string definition)
     {
-        var tokens = new List<string>();
-        var sb = new StringBuilder();
-        var depth = 0;
-        var inSingle = false;
-        var inDouble = false;
-        foreach (var c in definition)
+        List<string> tokens = [];
+        StringBuilder sb = new();
+        int depth = 0;
+        bool inSingle = false;
+        bool inDouble = false;
+        foreach (char c in definition)
         {
             if (c == '\'' && !inDouble) inSingle = !inSingle;
             if (c == '"' && !inSingle) inDouble = !inDouble;
@@ -623,7 +802,7 @@ public sealed partial class SqlSchemaParser
 
     private static bool IsTableConstraint(string definition)
     {
-        var upper = definition.TrimStart().ToUpperInvariant();
+        string upper = definition.TrimStart().ToUpperInvariant();
         return upper.StartsWith("CONSTRAINT ", StringComparison.Ordinal)
             || upper.StartsWith("PRIMARY KEY", StringComparison.Ordinal)
             || upper.StartsWith("FOREIGN KEY", StringComparison.Ordinal)
@@ -633,7 +812,7 @@ public sealed partial class SqlSchemaParser
 
     private static string CleanIdentifier(string identifier)
     {
-        var value = identifier.Trim().Trim(',', ';').Trim();
+        string value = identifier.Trim().Trim(',', ';').Trim();
         if (value.StartsWith('[') && value.EndsWith(']'))
         {
             value = value[1..^1];
@@ -651,8 +830,8 @@ public sealed partial class SqlSchemaParser
 
     private static (string? Schema, string Table) SplitQualifiedName(string rawName)
     {
-        var cleaned = CleanQualifiedIdentifier(rawName);
-        var parts = cleaned.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        string cleaned = CleanQualifiedIdentifier(rawName);
+        string[] parts = cleaned.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (parts.Length >= 2)
         {
             return (parts[^2], parts[^1]);
@@ -663,11 +842,11 @@ public sealed partial class SqlSchemaParser
 
     private static (string Definition, string? Comment) ExtractTrailingLineComment(string text)
     {
-        var inSingle = false;
-        var inDouble = false;
-        for (var i = 0; i < text.Length - 1; i++)
+        bool inSingle = false;
+        bool inDouble = false;
+        for (int i = 0; i < text.Length - 1; i++)
         {
-            var c = text[i];
+            char c = text[i];
             if (c == '\'' && !inDouble) inSingle = !inSingle;
             if (c == '"' && !inSingle) inDouble = !inDouble;
             if (!inSingle && !inDouble && c == '-' && text[i + 1] == '-')
@@ -699,6 +878,10 @@ public sealed partial class SqlSchemaParser
     private static string NormalizeLineEndings(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
 
     private static string UnescapeSqlString(string value) => value.Replace("''", "'", StringComparison.Ordinal);
+
+
+    [GeneratedRegex(@"CREATE\s+(?:OR\s+REPLACE\s+)?(?:FORCE\s+|NOFORCE\s+)?(?:(?:EDITIONABLE|NONEDITIONABLE)\s+)?VIEW\s+(?<name>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    private static partial Regex CreateViewRegex();
 
     [GeneratedRegex(@"CREATE\s+(?:GLOBAL\s+TEMPORARY\s+|TEMPORARY\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?<name>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)\s*\(", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex CreateTableRegex();

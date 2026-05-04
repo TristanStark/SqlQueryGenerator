@@ -1,6 +1,6 @@
-using System.Text;
 using SqlQueryGenerator.Core.Models;
 using SqlQueryGenerator.Core.Query;
+using System.Text;
 
 namespace SqlQueryGenerator.Core.Generation;
 
@@ -12,8 +12,8 @@ public sealed class SqlQueryGeneratorEngine
         ArgumentNullException.ThrowIfNull(schema);
         options ??= new SqlGeneratorOptions();
 
-        var warnings = new List<string>();
-        var baseTable = ResolveBaseTable(query, warnings);
+        List<string> warnings = [];
+        string? baseTable = ResolveBaseTable(query, warnings);
         if (baseTable is null)
         {
             return new SqlGenerationResult { Sql = "-- Sélectionne au moins une colonne ou une table de départ.", Warnings = warnings };
@@ -30,7 +30,7 @@ public sealed class SqlQueryGeneratorEngine
             warnings.Add("Aucune colonne sélectionnée: SELECT * généré par défaut.");
         }
 
-        var sb = new StringBuilder();
+        StringBuilder sb = new();
         if (options.EmitOptimizationComments)
         {
             sb.AppendLine("/* Requête générée sans sous-requête, avec jointures explicites lorsque possible. */");
@@ -59,23 +59,16 @@ public sealed class SqlQueryGeneratorEngine
             sb.AppendLine();
         }
 
-        var where = BuildWhere(query, options, warnings);
-        if (where.Count > 0)
-        {
-            sb.Append("WHERE ").AppendLine(where[0]);
-            for (var i = 1; i < where.Count; i++)
-            {
-                var connector = query.Filters.Count > i ? query.Filters[i].Connector : LogicalConnector.And;
-                sb.Append(connector == LogicalConnector.Or ? "   OR " : "  AND ").AppendLine(where[i]);
-            }
-        }
+        List<FilterCondition> whereFilters = [.. query.Filters.Where(f => f.FieldKind != QueryFieldKind.Aggregate)];
+        var where = BuildFilterPredicates(query, whereFilters, schema, options, warnings);
+        AppendPredicateBlock(sb, "WHERE", where);
 
         var groupBy = BuildGroupBy(query, options);
         if (query.Aggregates.Count > 0 && options.AutoGroupSelectedColumnsWhenAggregating)
         {
             foreach (var selected in query.SelectedColumns)
             {
-                var expr = ColumnSql(selected, options, includeAlias: false);
+                string expr = ColumnSql(selected, options, includeAlias: false);
                 if (!groupBy.Contains(expr, StringComparer.OrdinalIgnoreCase))
                 {
                     groupBy.Add(expr);
@@ -88,10 +81,25 @@ public sealed class SqlQueryGeneratorEngine
             sb.Append("GROUP BY ").AppendLine(string.Join(", ", groupBy));
         }
 
+        List<FilterCondition> havingFilters = [.. query.Filters.Where(f => f.FieldKind == QueryFieldKind.Aggregate)];
+        var having = BuildFilterPredicates(query, havingFilters, schema, options, warnings);
+        AppendPredicateBlock(sb, "HAVING", having);
+
         if (query.OrderBy.Count > 0)
         {
-            var orderItems = query.OrderBy.Select(o => $"{ColumnSql(o.Column, options, includeAlias: false)} {(o.Direction == SortDirection.Descending ? "DESC" : "ASC")}");
-            sb.Append("ORDER BY ").AppendLine(string.Join(", ", orderItems));
+            string[] orderItems = [.. query.OrderBy
+                .Select(o =>
+                {
+                    string expression = BuildOrderExpression(query, o, options, warnings);
+                    return string.IsNullOrWhiteSpace(expression)
+                        ? string.Empty
+                        : $"{expression} {(o.Direction == SortDirection.Descending ? "DESC" : "ASC")}";
+                })
+                .Where(o => !string.IsNullOrWhiteSpace(o))];
+            if (orderItems.Length > 0)
+            {
+                sb.Append("ORDER BY ").AppendLine(string.Join(", ", orderItems));
+            }
         }
 
         if (query.LimitRows is > 0)
@@ -120,10 +128,10 @@ public sealed class SqlQueryGeneratorEngine
             return query.BaseTable.Trim();
         }
 
-        var first = query.SelectedColumns.FirstOrDefault()?.Table
-            ?? query.Filters.FirstOrDefault()?.Column.Table
+        string? first = query.SelectedColumns.FirstOrDefault()?.Table
+            ?? query.Filters.FirstOrDefault(f => f.Column is not null)?.Column?.Table
             ?? query.GroupBy.FirstOrDefault()?.Table
-            ?? query.OrderBy.FirstOrDefault()?.Column.Table
+            ?? query.OrderBy.FirstOrDefault(o => o.Column is not null)?.Column?.Table
             ?? query.Aggregates.FirstOrDefault(a => a.Column is not null)?.Column?.Table
             ?? query.Aggregates.FirstOrDefault(a => a.ConditionColumn is not null)?.ConditionColumn?.Table
             ?? query.CustomColumns.FirstOrDefault(c => c.CaseColumn is not null)?.CaseColumn?.Table;
@@ -138,11 +146,11 @@ public sealed class SqlQueryGeneratorEngine
 
     private static HashSet<string> CollectUsedTables(QueryDefinition query)
     {
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> result = new(StringComparer.OrdinalIgnoreCase);
         foreach (var c in query.SelectedColumns) result.Add(c.Table);
-        foreach (var f in query.Filters) result.Add(f.Column.Table);
+        foreach (var f in query.Filters.Where(f => f.Column is not null)) result.Add(f.Column!.Table);
         foreach (var g in query.GroupBy) result.Add(g.Table);
-        foreach (var o in query.OrderBy) result.Add(o.Column.Table);
+        foreach (var o in query.OrderBy.Where(o => o.Column is not null)) result.Add(o.Column!.Table);
         foreach (var a in query.Aggregates.Where(a => a.Column is not null)) result.Add(a.Column!.Table);
         foreach (var a in query.Aggregates.Where(a => a.ConditionColumn is not null)) result.Add(a.ConditionColumn!.Table);
         foreach (var c in query.CustomColumns.Where(c => c.CaseColumn is not null)) result.Add(c.CaseColumn!.Table);
@@ -151,13 +159,13 @@ public sealed class SqlQueryGeneratorEngine
 
     private static IReadOnlyList<JoinDefinition> BuildJoinPlan(QueryDefinition query, DatabaseSchema schema, string baseTable, HashSet<string> usedTables, List<string> warnings)
     {
-        var joins = new List<JoinDefinition>();
-        var connected = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { baseTable };
-        var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        List<JoinDefinition> joins = [];
+        HashSet<string> connected = new(StringComparer.OrdinalIgnoreCase) { baseTable };
+        HashSet<string> emitted = new(StringComparer.OrdinalIgnoreCase);
 
         void AddJoin(JoinDefinition join, bool autoInferred)
         {
-            var key = JoinKey(join.FromTable, join.FromColumn, join.ToTable, join.ToColumn);
+            string key = JoinKey(join.FromTable, join.FromColumn, join.ToTable, join.ToColumn);
             if (!emitted.Add(key))
             {
                 return;
@@ -173,14 +181,14 @@ public sealed class SqlQueryGeneratorEngine
             AddJoin(explicitJoin, autoInferred: false);
         }
 
-        var remaining = usedTables.Where(t => !connected.Contains(t)).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var safety = 0;
+        HashSet<string> remaining = usedTables.Where(t => !connected.Contains(t)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        int safety = 0;
         while (remaining.Count > 0 && safety++ < 256)
         {
             var bestPath = FindBestJoinPath(schema, connected, remaining, query.DisabledAutoJoinKeys);
             if (bestPath.Count == 0)
             {
-                foreach (var table in remaining.OrderBy(t => t, StringComparer.OrdinalIgnoreCase))
+                foreach (string? table in remaining.OrderBy(t => t, StringComparer.OrdinalIgnoreCase))
                 {
                     warnings.Add($"Aucune jointure fiable trouvée depuis {baseTable} vers {table}. La table n'a pas été jointe automatiquement.");
                 }
@@ -200,20 +208,20 @@ public sealed class SqlQueryGeneratorEngine
 
     private static List<JoinDefinition> FindBestJoinPath(DatabaseSchema schema, HashSet<string> connected, HashSet<string> remaining, IEnumerable<string> disabledAutoJoinKeys)
     {
-        var best = new List<JoinDefinition>();
-        var bestScore = double.NegativeInfinity;
+        List<JoinDefinition> best = [];
+        double bestScore = double.NegativeInfinity;
 
         // First-class rule: if a clean junction table exists between a connected table and
         // the requested target table, always prefer that short business path. This prevents
         // graph-search detours such as PNJ -> lineage -> quests -> pnj_item -> items.
-        foreach (var start in connected)
+        foreach (string start in connected)
         {
-            foreach (var target in remaining)
+            foreach (string target in remaining)
             {
                 var bridgePath = TryFindBestDirectJunctionPath(schema, start, target, disabledAutoJoinKeys);
                 if (bridgePath.Count > 0)
                 {
-                    var score = ScoreJoinPath(schema, bridgePath, start, target) + 5.0;
+                    double score = ScoreJoinPath(schema, bridgePath, start, target) + 5.0;
                     if (score > bestScore)
                     {
                         bestScore = score;
@@ -228,9 +236,9 @@ public sealed class SqlQueryGeneratorEngine
             return best;
         }
 
-        foreach (var start in connected)
+        foreach (string start in connected)
         {
-            foreach (var target in remaining)
+            foreach (string target in remaining)
             {
                 foreach (var path in FindCandidatePaths(schema, start, target, maxDepth: 2, disabledAutoJoinKeys))
                 {
@@ -239,7 +247,7 @@ public sealed class SqlQueryGeneratorEngine
                         continue;
                     }
 
-                    var score = ScoreJoinPath(schema, path, start, target);
+                    double score = ScoreJoinPath(schema, path, start, target);
                     if (score > bestScore)
                     {
                         bestScore = score;
@@ -251,7 +259,7 @@ public sealed class SqlQueryGeneratorEngine
 
         // Below this threshold we would rather warn than generate nonsense SQL. Users can
         // still add the join manually from the UI.
-        return bestScore >= 0.70 ? best : new List<JoinDefinition>();
+        return bestScore >= 0.70 ? best : [];
     }
 
     private static List<JoinDefinition> TryFindBestDirectJunctionPath(DatabaseSchema schema, string startTable, string targetTable, IEnumerable<string> disabledAutoJoinKeys)
@@ -260,11 +268,11 @@ public sealed class SqlQueryGeneratorEngine
         var target = schema.FindTable(targetTable);
         if (start is null || target is null)
         {
-            return new List<JoinDefinition>();
+            return [];
         }
 
-        var bestScore = double.NegativeInfinity;
-        var best = new List<JoinDefinition>();
+        double bestScore = double.NegativeInfinity;
+        List<JoinDefinition> best = [];
         foreach (var bridge in schema.Tables)
         {
             if (SqlNameNormalizer.EqualsName(bridge.FullName, startTable)
@@ -273,7 +281,7 @@ public sealed class SqlQueryGeneratorEngine
                 continue;
             }
 
-            var bridgeScore = ScoreJunctionTableCandidate(bridge, start, target);
+            double bridgeScore = ScoreJunctionTableCandidate(bridge, start, target);
             if (bridgeScore <= 0)
             {
                 continue;
@@ -298,13 +306,13 @@ public sealed class SqlQueryGeneratorEngine
                 continue;
             }
 
-            var score = bridgeScore;
+            double score = bridgeScore;
             score += KeyColumnScore(startKey, start) + KeyColumnScore(targetKey, target);
             score += BridgeColumnScore(startBridgeColumn, start) + BridgeColumnScore(targetBridgeColumn, target);
             score -= Math.Max(0, bridge.Columns.Count - 3) * 0.02;
 
-            var candidate = new List<JoinDefinition>
-            {
+            List<JoinDefinition> candidate =
+            [
                 new()
                 {
                     FromTable = start.FullName,
@@ -323,7 +331,7 @@ public sealed class SqlQueryGeneratorEngine
                     JoinType = JoinType.Inner,
                     AutoInferred = true
                 }
-            };
+            ];
 
             if (candidate.Any(join => IsJoinDisabled(join, disabledAutoJoinKeys)))
             {
@@ -337,20 +345,20 @@ public sealed class SqlQueryGeneratorEngine
             }
         }
 
-        return bestScore >= 1.25 ? best : new List<JoinDefinition>();
+        return bestScore >= 1.25 ? best : [];
     }
 
     private static double ScoreJunctionTableCandidate(TableDefinition bridge, TableDefinition left, TableDefinition right)
     {
-        var leftStem = TableStem(left.FullName);
-        var rightStem = TableStem(right.FullName);
-        var bridgeNorm = Singularize(SqlNameNormalizer.Normalize(bridge.FullName));
-        var bridgeNameOnly = Singularize(SqlNameNormalizer.Normalize(bridge.Name));
-        var tokens = bridgeNameOnly.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        string leftStem = TableStem(left.FullName);
+        string rightStem = TableStem(right.FullName);
+        string bridgeNorm = Singularize(SqlNameNormalizer.Normalize(bridge.FullName));
+        string bridgeNameOnly = Singularize(SqlNameNormalizer.Normalize(bridge.Name));
+        string[] tokens = bridgeNameOnly.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        var score = 0.0;
-        var exactA = $"{leftStem}_{rightStem}";
-        var exactB = $"{rightStem}_{leftStem}";
+        double score = 0.0;
+        string exactA = $"{leftStem}_{rightStem}";
+        string exactB = $"{rightStem}_{leftStem}";
         if (bridgeNameOnly.Equals(exactA, StringComparison.OrdinalIgnoreCase)
             || bridgeNameOnly.Equals(exactB, StringComparison.OrdinalIgnoreCase)
             || bridgeNorm.EndsWith("_" + exactA, StringComparison.OrdinalIgnoreCase)
@@ -360,15 +368,15 @@ public sealed class SqlQueryGeneratorEngine
         }
         else
         {
-            var containsLeft = tokens.Any(t => SameNameRelaxed(t, leftStem));
-            var containsRight = tokens.Any(t => SameNameRelaxed(t, rightStem));
+            bool containsLeft = tokens.Any(t => SameNameRelaxed(t, leftStem));
+            bool containsRight = tokens.Any(t => SameNameRelaxed(t, rightStem));
             if (!containsLeft || !containsRight)
             {
                 return 0.0;
             }
 
             score += 1.10;
-            var extraTokens = tokens.Count(t => !SameNameRelaxed(t, leftStem) && !SameNameRelaxed(t, rightStem));
+            int extraTokens = tokens.Count(t => !SameNameRelaxed(t, leftStem) && !SameNameRelaxed(t, rightStem));
             score -= Math.Min(0.95, extraTokens * 0.18);
         }
 
@@ -387,7 +395,7 @@ public sealed class SqlQueryGeneratorEngine
             score += 0.25;
         }
 
-        var suspiciousTokens = new[] { "focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests" };
+        string[] suspiciousTokens = ["focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests"];
         if (tokens.Any(t => suspiciousTokens.Contains(t, StringComparer.OrdinalIgnoreCase)))
         {
             score -= 1.20;
@@ -398,8 +406,8 @@ public sealed class SqlQueryGeneratorEngine
 
     private static ColumnDefinition? FindBridgeColumnForTable(TableDefinition bridge, TableDefinition table)
     {
-        var stems = TableNameStems(table.FullName).Concat(TableNameStems(table.Name)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        foreach (var stem in stems)
+        string[] stems = [.. TableNameStems(table.FullName).Concat(TableNameStems(table.Name)).Distinct(StringComparer.OrdinalIgnoreCase)];
+        foreach (string? stem in stems)
         {
             var direct = bridge.Columns.FirstOrDefault(c => IsColumnForTable(c.Name, stem));
             if (direct is not null)
@@ -416,8 +424,8 @@ public sealed class SqlQueryGeneratorEngine
 
     private static ColumnDefinition? FindBestKeyColumnForBridge(TableDefinition table, ColumnDefinition bridgeColumn)
     {
-        var tableStem = TableStem(table.FullName);
-        var bridgeNorm = Singularize(SqlNameNormalizer.Normalize(bridgeColumn.Name));
+        string tableStem = TableStem(table.FullName);
+        string bridgeNorm = Singularize(SqlNameNormalizer.Normalize(bridgeColumn.Name));
 
         var candidates = table.Columns
             .Select(c => new { Column = c, Score = CandidateKeyScore(c, tableStem, bridgeNorm) })
@@ -431,8 +439,8 @@ public sealed class SqlQueryGeneratorEngine
 
     private static double CandidateKeyScore(ColumnDefinition column, string tableStem, string bridgeColumnNorm)
     {
-        var col = Singularize(SqlNameNormalizer.Normalize(column.Name));
-        var score = 0.0;
+        string col = Singularize(SqlNameNormalizer.Normalize(column.Name));
+        double score = 0.0;
         if (column.IsPrimaryKey)
         {
             score += 3.0;
@@ -463,8 +471,8 @@ public sealed class SqlQueryGeneratorEngine
 
     private static double KeyColumnScore(ColumnDefinition column, TableDefinition table)
     {
-        var col = Singularize(SqlNameNormalizer.Normalize(column.Name));
-        var score = 0.0;
+        string col = Singularize(SqlNameNormalizer.Normalize(column.Name));
+        double score = 0.0;
         if (column.IsPrimaryKey) score += 0.45;
         if (IsGenericIdentifier(col)) score += 0.35;
         if (col == $"{TableStem(table.FullName)}_id") score += 0.15;
@@ -479,8 +487,8 @@ public sealed class SqlQueryGeneratorEngine
 
     private static IEnumerable<List<JoinDefinition>> FindCandidatePaths(DatabaseSchema schema, string startTable, string targetTable, int maxDepth, IEnumerable<string> disabledAutoJoinKeys)
     {
-        var results = new List<List<JoinDefinition>>();
-        var queue = new Queue<(string Table, List<JoinDefinition> Path, HashSet<string> Visited)>();
+        List<List<JoinDefinition>> results = [];
+        Queue<(string Table, List<JoinDefinition> Path, HashSet<string> Visited)> queue = new();
         queue.Enqueue((startTable, new List<JoinDefinition>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase) { startTable }));
 
         while (queue.Count > 0 && results.Count < 128)
@@ -500,7 +508,7 @@ public sealed class SqlQueryGeneratorEngine
 
             foreach (var edge in edges)
             {
-                var nextTable = SqlNameNormalizer.EqualsName(edge.FromTable, current.Table) ? edge.ToTable : edge.FromTable;
+                string nextTable = SqlNameNormalizer.EqualsName(edge.FromTable, current.Table) ? edge.ToTable : edge.FromTable;
                 if (current.Visited.Contains(nextTable) && !SqlNameNormalizer.EqualsName(nextTable, targetTable))
                 {
                     continue;
@@ -531,14 +539,14 @@ public sealed class SqlQueryGeneratorEngine
                     continue;
                 }
 
-                var nextPath = current.Path.Concat(new[] { oriented }).ToList();
+                List<JoinDefinition> nextPath = [.. current.Path, .. new[] { oriented }];
                 if (SqlNameNormalizer.EqualsName(nextTable, targetTable))
                 {
                     results.Add(nextPath);
                     continue;
                 }
 
-                var visited = new HashSet<string>(current.Visited, StringComparer.OrdinalIgnoreCase) { nextTable };
+                HashSet<string> visited = new(current.Visited, StringComparer.OrdinalIgnoreCase) { nextTable };
                 queue.Enqueue((nextTable, nextPath, visited));
             }
         }
@@ -550,33 +558,28 @@ public sealed class SqlQueryGeneratorEngine
     {
         var fromCol = schema.FindColumn(join.FromTable, join.FromColumn);
         var toCol = schema.FindColumn(join.ToTable, join.ToColumn);
-        var fromName = SqlNameNormalizer.Normalize(join.FromColumn);
-        var toName = SqlNameNormalizer.Normalize(join.ToColumn);
-        var bothFkLike = IsForeignKeyLike(fromName) && IsForeignKeyLike(toName);
+        string fromName = SqlNameNormalizer.Normalize(join.FromColumn);
+        string toName = SqlNameNormalizer.Normalize(join.ToColumn);
+        bool bothFkLike = IsForeignKeyLike(fromName) && IsForeignKeyLike(toName);
         if (!bothFkLike)
         {
             return false;
         }
 
-        var touchesFinalTarget = SqlNameNormalizer.EqualsName(join.FromTable, finalTargetTable) || SqlNameNormalizer.EqualsName(join.ToTable, finalTargetTable);
-        if (touchesFinalTarget)
-        {
-            return false;
-        }
-
-        return fromCol?.IsPrimaryKey != true && toCol?.IsPrimaryKey != true;
+        bool touchesFinalTarget = SqlNameNormalizer.EqualsName(join.FromTable, finalTargetTable) || SqlNameNormalizer.EqualsName(join.ToTable, finalTargetTable);
+        return touchesFinalTarget ? false : fromCol?.IsPrimaryKey != true && toCol?.IsPrimaryKey != true;
     }
 
     private static double ScoreJoinPath(DatabaseSchema schema, IReadOnlyList<JoinDefinition> path, string startTable, string targetTable)
     {
-        var score = path.Sum(j => RelationshipScore(schema, j));
+        double score = path.Sum(j => RelationshipScore(schema, j));
 
         // A shorter path is usually easier to understand and cheaper.
         score -= Math.Max(0, path.Count - 1) * 0.45;
 
         if (path.Count == 2)
         {
-            var bridge = path[0].ToTable;
+            string bridge = path[0].ToTable;
             if (SqlNameNormalizer.EqualsName(bridge, path[1].FromTable))
             {
                 score += JunctionBridgeScore(schema, startTable, bridge, targetTable);
@@ -592,7 +595,7 @@ public sealed class SqlQueryGeneratorEngine
     private static double RelationshipScore(DatabaseSchema schema, JoinDefinition join)
     {
         var relationship = FindRelationship(schema, join);
-        var score = relationship?.Confidence ?? 0.45;
+        double score = relationship?.Confidence ?? 0.45;
 
         if (relationship is not null)
         {
@@ -610,8 +613,8 @@ public sealed class SqlQueryGeneratorEngine
 
         var fromCol = schema.FindColumn(join.FromTable, join.FromColumn);
         var toCol = schema.FindColumn(join.ToTable, join.ToColumn);
-        var fromName = SqlNameNormalizer.Normalize(join.FromColumn);
-        var toName = SqlNameNormalizer.Normalize(join.ToColumn);
+        string fromName = SqlNameNormalizer.Normalize(join.FromColumn);
+        string toName = SqlNameNormalizer.Normalize(join.ToColumn);
 
         // Bad smell: local generic ID matched to a non-PK business/code column.
         // Example observed: pnj_jobs_items_focus.id = items.base_item_code.
@@ -679,27 +682,27 @@ public sealed class SqlQueryGeneratorEngine
             return 0.0;
         }
 
-        var startStem = TableStem(startTable);
-        var targetStem = TableStem(targetTable);
-        var bridgeNorm = SqlNameNormalizer.Normalize(bridgeTable);
-        var bridgeSingular = Singularize(bridgeNorm);
-        var tokens = bridgeSingular.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToArray();
+        string startStem = TableStem(startTable);
+        string targetStem = TableStem(targetTable);
+        string bridgeNorm = SqlNameNormalizer.Normalize(bridgeTable);
+        string bridgeSingular = Singularize(bridgeNorm);
+        string[] tokens = [.. bridgeSingular.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
 
-        var score = 0.0;
-        var exactA = $"{startStem}_{targetStem}";
-        var exactB = $"{targetStem}_{startStem}";
+        double score = 0.0;
+        string exactA = $"{startStem}_{targetStem}";
+        string exactB = $"{targetStem}_{startStem}";
         if (bridgeSingular.Equals(exactA, StringComparison.OrdinalIgnoreCase) || bridgeSingular.Equals(exactB, StringComparison.OrdinalIgnoreCase))
         {
             score += 1.25;
         }
         else
         {
-            var containsStart = tokens.Any(t => SameNameRelaxed(t, startStem));
-            var containsTarget = tokens.Any(t => SameNameRelaxed(t, targetStem));
+            bool containsStart = tokens.Any(t => SameNameRelaxed(t, startStem));
+            bool containsTarget = tokens.Any(t => SameNameRelaxed(t, targetStem));
             if (containsStart && containsTarget)
             {
                 score += 0.55;
-                var extraTokens = tokens.Count(t => !SameNameRelaxed(t, startStem) && !SameNameRelaxed(t, targetStem));
+                int extraTokens = tokens.Count(t => !SameNameRelaxed(t, startStem) && !SameNameRelaxed(t, targetStem));
                 score -= Math.Min(0.60, extraTokens * 0.12);
             }
         }
@@ -719,7 +722,7 @@ public sealed class SqlQueryGeneratorEngine
             score += 0.15;
         }
 
-        var suspiciousTokens = new[] { "focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests" };
+        string[] suspiciousTokens = ["focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests"];
         if (tokens.Any(t => suspiciousTokens.Contains(t, StringComparer.OrdinalIgnoreCase)))
         {
             score -= 0.95;
@@ -730,7 +733,7 @@ public sealed class SqlQueryGeneratorEngine
 
     private static bool IsColumnForTable(string columnName, string tableStem)
     {
-        var normalized = Singularize(SqlNameNormalizer.Normalize(columnName));
+        string normalized = Singularize(SqlNameNormalizer.Normalize(columnName));
         return normalized == $"{tableStem}_id"
             || normalized == $"{tableStem}_iden"
             || normalized == $"{tableStem}_ident"
@@ -755,32 +758,27 @@ public sealed class SqlQueryGeneratorEngine
 
     private static string TableStem(string tableName)
     {
-        var normalized = SqlNameNormalizer.Normalize(tableName).Trim('_');
+        string normalized = SqlNameNormalizer.Normalize(tableName).Trim('_');
         if (normalized.Length == 0)
         {
             return normalized;
         }
 
-        var tokens = normalized.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (tokens.Length == 1)
-        {
-            return Singularize(tokens[0]);
-        }
-
-        return Singularize(tokens[^1]);
+        string[] tokens = normalized.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return tokens.Length == 1 ? Singularize(tokens[0]) : Singularize(tokens[^1]);
     }
 
     private static IEnumerable<string> TableNameStems(string tableName)
     {
-        var normalized = SqlNameNormalizer.Normalize(tableName).Trim('_');
+        string normalized = SqlNameNormalizer.Normalize(tableName).Trim('_');
         if (normalized.Length == 0)
         {
             yield break;
         }
 
         yield return Singularize(normalized);
-        var tokens = normalized.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        foreach (var token in tokens)
+        string[] tokens = normalized.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (string token in tokens)
         {
             yield return Singularize(token);
         }
@@ -804,18 +802,15 @@ public sealed class SqlQueryGeneratorEngine
             return token[..^3] + "Y";
         }
 
-        if ((token.EndsWith("S", StringComparison.OrdinalIgnoreCase) || token.EndsWith("X", StringComparison.OrdinalIgnoreCase)) && token.Length > 3)
-        {
-            return token[..^1];
-        }
-
-        return token;
+        return (token.EndsWith("S", StringComparison.OrdinalIgnoreCase) || token.EndsWith("X", StringComparison.OrdinalIgnoreCase)) && token.Length > 3
+            ? token[..^1]
+            : token;
     }
 
     private static bool SameNameRelaxed(string left, string right)
     {
-        var a = Singularize(SqlNameNormalizer.Normalize(left));
-        var b = Singularize(SqlNameNormalizer.Normalize(right));
+        string a = Singularize(SqlNameNormalizer.Normalize(left));
+        string b = Singularize(SqlNameNormalizer.Normalize(right));
         return a.Equals(b, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -844,19 +839,18 @@ public sealed class SqlQueryGeneratorEngine
     private static bool IsJoinDisabled(JoinDefinition join, IEnumerable<string> disabledAutoJoinKeys)
     {
         var disabled = disabledAutoJoinKeys as ISet<string> ?? disabledAutoJoinKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var key = RelationshipKey.For(join.FromTable, join.FromColumn, join.ToTable, join.ToColumn);
-        var reverseKey = RelationshipKey.ReverseFor(join.FromTable, join.FromColumn, join.ToTable, join.ToColumn);
+        string key = RelationshipKey.For(join.FromTable, join.FromColumn, join.ToTable, join.ToColumn);
+        string reverseKey = RelationshipKey.ReverseFor(join.FromTable, join.FromColumn, join.ToTable, join.ToColumn);
         return disabled.Contains(key) || disabled.Contains(reverseKey);
     }
 
     private static List<string> BuildSelectItems(QueryDefinition query, SqlGeneratorOptions options, List<string> warnings)
     {
-        var result = new List<string>();
-        result.AddRange(query.SelectedColumns.Select(c => ColumnSql(c, options, includeAlias: true)));
+        List<string> result = [.. query.SelectedColumns.Select(c => ColumnSql(c, options, includeAlias: true))];
 
         foreach (var aggregate in query.Aggregates)
         {
-            var item = BuildAggregateExpression(aggregate, options, warnings);
+            string item = BuildAggregateExpression(aggregate, options, warnings);
             if (string.IsNullOrWhiteSpace(item))
             {
                 continue;
@@ -871,7 +865,7 @@ public sealed class SqlQueryGeneratorEngine
 
         foreach (var custom in query.CustomColumns)
         {
-            var expression = BuildCustomExpression(custom, options);
+            string expression = BuildCustomExpression(custom, options);
             if (string.IsNullOrWhiteSpace(expression))
             {
                 warnings.Add("Colonne personnalisée ignorée: expression vide.");
@@ -890,7 +884,7 @@ public sealed class SqlQueryGeneratorEngine
 
     private static string BuildAggregateExpression(AggregateSelection aggregate, SqlGeneratorOptions options, List<string> warnings)
     {
-        var fn = aggregate.Function switch
+        string fn = aggregate.Function switch
         {
             AggregateFunction.Count => "COUNT",
             AggregateFunction.Sum => "SUM",
@@ -900,8 +894,8 @@ public sealed class SqlQueryGeneratorEngine
             _ => "COUNT"
         };
 
-        var target = aggregate.Column is null ? "*" : ColumnSql(aggregate.Column, options, includeAlias: false);
-        var condition = BuildAggregateCondition(aggregate, options, warnings);
+        string target = aggregate.Column is null ? "*" : ColumnSql(aggregate.Column, options, includeAlias: false);
+        string condition = BuildAggregateCondition(aggregate, options, warnings);
         if (string.IsNullOrWhiteSpace(condition))
         {
             if (aggregate.Distinct && aggregate.Column is not null)
@@ -919,7 +913,7 @@ public sealed class SqlQueryGeneratorEngine
                 return $"COUNT(DISTINCT CASE WHEN {condition} THEN {target} END)";
             }
 
-            var countTarget = aggregate.Column is null ? "1" : target;
+            string countTarget = aggregate.Column is null ? "1" : target;
             return $"COUNT(CASE WHEN {condition} THEN {countTarget} END)";
         }
 
@@ -929,16 +923,11 @@ public sealed class SqlQueryGeneratorEngine
             return string.Empty;
         }
 
-        var caseExpression = aggregate.Function == AggregateFunction.Sum
+        string caseExpression = aggregate.Function == AggregateFunction.Sum
             ? $"CASE WHEN {condition} THEN {target} ELSE 0 END"
             : $"CASE WHEN {condition} THEN {target} END";
 
-        if (aggregate.Distinct)
-        {
-            return $"{fn}(DISTINCT {caseExpression})";
-        }
-
-        return $"{fn}({caseExpression})";
+        return aggregate.Distinct ? $"{fn}(DISTINCT {caseExpression})" : $"{fn}({caseExpression})";
     }
 
     private static string BuildAggregateCondition(AggregateSelection aggregate, SqlGeneratorOptions options, List<string> warnings)
@@ -952,9 +941,9 @@ public sealed class SqlQueryGeneratorEngine
             return string.Empty;
         }
 
-        var op = NormalizeOperator(aggregate.ConditionOperator);
-        var column = ColumnSql(aggregate.ConditionColumn, options, includeAlias: false);
-        return BuildPredicateSql(column, op, aggregate.ConditionValue, aggregate.ConditionSecondValue, aggregate.ConditionColumn.Key, warnings);
+        string op = NormalizeOperator(aggregate.ConditionOperator);
+        string column = ColumnSql(aggregate.ConditionColumn, options, includeAlias: false);
+        return BuildLiteralPredicateSql(column, op, aggregate.ConditionValue, aggregate.ConditionSecondValue, aggregate.ConditionColumn.Key, warnings);
     }
 
     private static string BuildCustomExpression(CustomColumnSelection custom, SqlGeneratorOptions options)
@@ -966,32 +955,126 @@ public sealed class SqlQueryGeneratorEngine
 
         if (custom.CaseColumn is not null && !string.IsNullOrWhiteSpace(custom.CaseOperator))
         {
-            var op = NormalizeOperator(custom.CaseOperator);
-            var column = ColumnSql(custom.CaseColumn, options, includeAlias: false);
-            var compare = op is "IS NULL" or "IS NOT NULL" ? string.Empty : " " + SqlLiteralFormatter.FormatValue(custom.CaseCompareValue);
+            string op = NormalizeOperator(custom.CaseOperator);
+            string column = ColumnSql(custom.CaseColumn, options, includeAlias: false);
+            string compare = op is "IS NULL" or "IS NOT NULL" ? string.Empty : " " + SqlLiteralFormatter.FormatValue(custom.CaseCompareValue);
             return $"CASE WHEN {column} {op}{compare} THEN {SqlLiteralFormatter.FormatValue(custom.CaseThenValue)} ELSE {SqlLiteralFormatter.FormatValue(custom.CaseElseValue)} END";
         }
 
         return string.Empty;
     }
 
-    private static List<string> BuildWhere(QueryDefinition query, SqlGeneratorOptions options, List<string> warnings)
+    private static List<(string Predicate, LogicalConnector Connector)> BuildFilterPredicates(QueryDefinition query, IReadOnlyList<FilterCondition> filters, DatabaseSchema schema, SqlGeneratorOptions options, List<string> warnings)
     {
-        var result = new List<string>();
-        foreach (var filter in query.Filters)
+        List<(string Predicate, LogicalConnector Connector)> result = [];
+        foreach (var filter in filters)
         {
-            var op = NormalizeOperator(filter.Operator);
-            var column = ColumnSql(filter.Column, options, includeAlias: false);
-            var predicate = BuildPredicateSql(column, op, filter.Value, filter.SecondValue, filter.Column.Key, warnings);
+            string op = NormalizeOperator(filter.Operator);
+            string expression = op is "EXISTS" or "NOT EXISTS" && filter.ValueKind == FilterValueKind.Subquery
+                ? string.Empty
+                : BuildFilterExpression(query, filter, options, warnings);
+            if (string.IsNullOrWhiteSpace(expression) && op is not "EXISTS" and not "NOT EXISTS")
+            {
+                continue;
+            }
+
+            string warningKey = filter.Column?.Key ?? filter.FieldAlias ?? expression;
+            string predicate = BuildPredicateSql(expression, op, filter, schema, options, warningKey, warnings);
             if (!string.IsNullOrWhiteSpace(predicate))
             {
-                result.Add(predicate);
+                result.Add((predicate, filter.Connector));
             }
         }
         return result;
     }
 
-    private static string BuildPredicateSql(string columnSql, string op, string? value, string? secondValue, string warningKey, List<string> warnings)
+    private static void AppendPredicateBlock(StringBuilder sb, string keyword, IReadOnlyList<(string Predicate, LogicalConnector Connector)> predicates)
+    {
+        if (predicates.Count == 0)
+        {
+            return;
+        }
+
+        sb.Append(keyword).Append(' ').AppendLine(predicates[0].Predicate);
+        for (int i = 1; i < predicates.Count; i++)
+        {
+            sb.Append(predicates[i].Connector == LogicalConnector.Or ? "   OR " : "  AND ").AppendLine(predicates[i].Predicate);
+        }
+    }
+
+    private static string BuildFilterExpression(QueryDefinition query, FilterCondition filter, SqlGeneratorOptions options, List<string> warnings)
+    {
+        if (filter.Column is not null)
+        {
+            return ColumnSql(filter.Column, options, includeAlias: false);
+        }
+
+        if (string.IsNullOrWhiteSpace(filter.FieldAlias))
+        {
+            warnings.Add("Filtre ignoré: aucune colonne, agrégat ou colonne calculée n'a été choisi.");
+            return string.Empty;
+        }
+
+        return filter.FieldKind switch
+        {
+            QueryFieldKind.Aggregate => ResolveAggregateExpressionByAlias(query, filter.FieldAlias!, options, warnings),
+            QueryFieldKind.CustomColumn => ResolveCustomExpressionByAlias(query, filter.FieldAlias!, options, warnings),
+            _ => string.Empty
+        };
+    }
+
+    private static string BuildOrderExpression(QueryDefinition query, OrderByItem order, SqlGeneratorOptions options, List<string> warnings)
+    {
+        if (order.Column is not null)
+        {
+            return ColumnSql(order.Column, options, includeAlias: false);
+        }
+
+        if (string.IsNullOrWhiteSpace(order.FieldAlias))
+        {
+            warnings.Add("Tri ignoré: aucune colonne, agrégat ou colonne calculée n'a été choisi.");
+            return string.Empty;
+        }
+
+        // ORDER BY alias is supported by SQLite, Oracle, PostgreSQL, SQL Server, etc. It keeps
+        // the generated query readable and avoids duplicating long CASE/aggregate expressions.
+        return Q(order.FieldAlias!, options);
+    }
+
+    private static string ResolveAggregateExpressionByAlias(QueryDefinition query, string alias, SqlGeneratorOptions options, List<string> warnings)
+    {
+        var aggregate = query.Aggregates.FirstOrDefault(a => string.Equals(a.Alias, alias, StringComparison.OrdinalIgnoreCase));
+        if (aggregate is null)
+        {
+            warnings.Add($"Filtre d'agrégat ignoré: l'alias '{alias}' n'existe plus.");
+            return string.Empty;
+        }
+
+        return BuildAggregateExpression(aggregate, options, warnings);
+    }
+
+    private static string ResolveCustomExpressionByAlias(QueryDefinition query, string alias, SqlGeneratorOptions options, List<string> warnings)
+    {
+        var custom = query.CustomColumns.FirstOrDefault(c => string.Equals(c.Alias, alias, StringComparison.OrdinalIgnoreCase));
+        if (custom is null)
+        {
+            warnings.Add($"Filtre sur colonne calculée ignoré: l'alias '{alias}' n'existe plus.");
+            return string.Empty;
+        }
+
+        string expression = BuildCustomExpression(custom, options);
+        if (string.IsNullOrWhiteSpace(expression))
+        {
+            warnings.Add($"Filtre sur colonne calculée ignoré: l'alias '{alias}' n'a pas d'expression utilisable.");
+            return string.Empty;
+        }
+
+        SqlSafety.EnsureSelectExpressionIsSafe(expression);
+        return expression;
+    }
+
+
+    private static string BuildLiteralPredicateSql(string columnSql, string op, string? value, string? secondValue, string warningKey, List<string> warnings)
     {
         if (op is "IS NULL" or "IS NOT NULL")
         {
@@ -1016,27 +1099,125 @@ public sealed class SqlQueryGeneratorEngine
         return $"{columnSql} {op} {SqlLiteralFormatter.FormatValue(value)}";
     }
 
+    private static string BuildPredicateSql(string columnSql, string op, FilterCondition filter, DatabaseSchema schema, SqlGeneratorOptions options, string warningKey, List<string> warnings)
+    {
+        if (op is "IS NULL" or "IS NOT NULL")
+        {
+            return $"{columnSql} {op}";
+        }
+
+        if (filter.ValueKind == FilterValueKind.Subquery)
+        {
+            string subquerySql = BuildSubquerySql(filter, schema, options, warnings);
+            if (string.IsNullOrWhiteSpace(subquerySql))
+            {
+                warnings.Add($"Filtre sous-requête ignoré sur {warningKey}: sous-requête vide ou invalide.");
+                return string.Empty;
+            }
+
+            return op is "EXISTS" or "NOT EXISTS" ? $"{op} ({subquerySql})" : $"{columnSql} {op} ({subquerySql})";
+        }
+
+        string valueSql = FormatFilterValue(filter.Value, filter.ValueKind, warnings);
+        string secondValueSql = FormatFilterValue(filter.SecondValue, filter.ValueKind, warnings);
+
+        if (op == "BETWEEN")
+        {
+            return $"{columnSql} BETWEEN {valueSql} AND {secondValueSql}";
+        }
+
+        if (op is "IN" or "NOT IN")
+        {
+            if (string.IsNullOrWhiteSpace(filter.Value))
+            {
+                warnings.Add($"Filtre IN ignoré sur {warningKey}: valeur vide.");
+                return string.Empty;
+            }
+
+            if (filter.ValueKind == FilterValueKind.RawSql)
+            {
+                string raw = filter.Value!.Trim();
+                SqlSafety.EnsureSelectExpressionIsSafe(raw);
+                return $"{columnSql} {op} {raw}";
+            }
+
+            return $"{columnSql} {op} {SqlLiteralFormatter.FormatRawList(filter.Value!)}";
+        }
+
+        return $"{columnSql} {op} {valueSql}";
+    }
+
+    private static string FormatFilterValue(string? raw, FilterValueKind valueKind, List<string> warnings)
+    {
+        if (valueKind == FilterValueKind.RawSql)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return "NULL";
+            }
+
+            string trimmed = raw.Trim();
+            SqlSafety.EnsureSelectExpressionIsSafe(trimmed);
+            return trimmed;
+        }
+
+        if (valueKind == FilterValueKind.Parameter)
+        {
+            string placeholder = string.IsNullOrWhiteSpace(raw) ? "?" : raw.Trim();
+            if (!placeholder.StartsWith(':') && !placeholder.StartsWith('@') && !placeholder.StartsWith('?'))
+            {
+                placeholder = ":" + placeholder;
+            }
+            return placeholder;
+        }
+
+        return SqlLiteralFormatter.FormatValue(raw);
+    }
+
+    private static string BuildSubquerySql(FilterCondition filter, DatabaseSchema schema, SqlGeneratorOptions options, List<string> warnings)
+    {
+        if (filter.Subquery is null)
+        {
+            return string.Empty;
+        }
+
+        var result = new SqlQueryGeneratorEngine().Generate(filter.Subquery, schema, options);
+        foreach (string warning in result.Warnings)
+        {
+            warnings.Add($"Sous-requête {filter.SubqueryName ?? filter.Subquery.Name ?? string.Empty}: {warning}");
+        }
+
+        return IndentSql(result.Sql.Trim().TrimEnd(';'), 4);
+    }
+
+    private static string IndentSql(string sql, int spaces)
+    {
+        string prefix = new(' ', spaces);
+        return string.Join(Environment.NewLine, sql.Split(["\r\n", "\n"], StringSplitOptions.None).Select(line => prefix + line));
+    }
+
     private static List<string> BuildGroupBy(QueryDefinition query, SqlGeneratorOptions options)
     {
-        return query.GroupBy.Select(c => ColumnSql(c, options, includeAlias: false)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return [.. query.GroupBy.Select(c => ColumnSql(c, options, includeAlias: false)).Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
     private static string NormalizeOperator(string? op)
     {
-        var value = string.IsNullOrWhiteSpace(op) ? "=" : op.Trim().ToUpperInvariant();
+        string value = string.IsNullOrWhiteSpace(op) ? "=" : op.Trim().ToUpperInvariant();
         return value switch
         {
             "==" => "=",
             "!=" => "<>",
             "ISNULL" => "IS NULL",
             "ISNOTNULL" => "IS NOT NULL",
+            "NOTEXISTS" => "NOT EXISTS",
             _ => value
         };
     }
 
     private static string ColumnSql(ColumnReference reference, SqlGeneratorOptions options, bool includeAlias)
     {
-        var sql = $"{Q(reference.Table, options)}.{Q(reference.Column, options)}";
+        string sql = $"{Q(reference.Table, options)}.{Q(reference.Column, options)}";
         if (includeAlias && !string.IsNullOrWhiteSpace(reference.Alias))
         {
             sql += " AS " + Q(reference.Alias, options);

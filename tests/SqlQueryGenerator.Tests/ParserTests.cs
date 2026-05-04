@@ -80,3 +80,26 @@ CREATE UNIQUE INDEX ux_pnj_nom ON pnj(nom);
     }
 
 }
+
+public sealed class ParserV21Tests
+{
+    [Fact]
+    public void Parse_CreateView_AddsViewAsQueryableTable()
+    {
+        const string sql = @"
+CREATE TABLE pnj (id INTEGER, age INTEGER, nom TEXT);
+CREATE VIEW v_pnj_age AS
+SELECT age, COUNT(id) AS nb_pnj
+FROM pnj
+GROUP BY age;
+";
+
+        var schema = new SqlSchemaParser().Parse(sql);
+        var view = schema.FindTable("v_pnj_age");
+
+        Assert.NotNull(view);
+        Assert.True(view!.IsView);
+        Assert.NotNull(view.FindColumn("age"));
+        Assert.NotNull(view.FindColumn("nb_pnj"));
+    }
+}
