@@ -5,7 +5,7 @@ namespace SqlQueryGenerator.App.ViewModels;
 
 public sealed class ColumnItemViewModel : ObservableObject
 {
-    public ColumnItemViewModel(ColumnDefinition column, string? foreignKeySummary = null)
+    public ColumnItemViewModel(ColumnDefinition column, string? foreignKeySummary = null, string? indexSummary = null, bool isUniqueIndexed = false)
     {
         Table = column.TableName;
         Column = column.Name;
@@ -15,6 +15,8 @@ public sealed class ColumnItemViewModel : ObservableObject
         IsNullable = column.IsNullable;
         Comment = column.Comment ?? string.Empty;
         ForeignKeySummary = foreignKeySummary ?? string.Empty;
+        IndexSummary = indexSummary ?? string.Empty;
+        IsUniqueIndexed = isUniqueIndexed;
     }
 
     public string Table { get; }
@@ -26,6 +28,10 @@ public sealed class ColumnItemViewModel : ObservableObject
     public bool IsNullable { get; }
     public string Comment { get; }
     public string ForeignKeySummary { get; }
+    public string IndexSummary { get; }
+    public bool IsIndexed => !string.IsNullOrWhiteSpace(IndexSummary);
+    public bool IsUniqueIndexed { get; }
+    public string IndexBadge => IsUniqueIndexed ? "UX" : "IX";
 
     public string TypeCategory
     {

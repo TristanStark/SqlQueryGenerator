@@ -13,6 +13,7 @@ public sealed class QueryDefinition
     public Collection<OrderByItem> OrderBy { get; } = new();
     public Collection<AggregateSelection> Aggregates { get; } = new();
     public Collection<CustomColumnSelection> CustomColumns { get; } = new();
+    public Collection<string> DisabledAutoJoinKeys { get; } = new();
     public int? LimitRows { get; set; }
 }
 

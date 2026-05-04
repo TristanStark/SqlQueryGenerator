@@ -20,6 +20,9 @@ public sealed record InferredRelationship
     public required RelationshipSource Source { get; init; }
     public required string Reason { get; init; }
 
+    public string Key => RelationshipKey.For(FromTable, FromColumn, ToTable, ToColumn);
+    public string ReverseKey => RelationshipKey.ReverseFor(FromTable, FromColumn, ToTable, ToColumn);
+
     public string DisplayName => $"{FromTable}.{FromColumn} → {ToTable}.{ToColumn} ({Confidence:P0})";
 
     public bool Connects(string leftTable, string rightTable)

@@ -11,14 +11,20 @@ public sealed class TableItemViewModel : ObservableObject
     public TableItemViewModel(
         TableDefinition table,
         IEnumerable<ColumnDefinition>? visibleColumns = null,
-        IReadOnlyDictionary<string, string>? foreignKeySummaries = null)
+        IReadOnlyDictionary<string, string>? foreignKeySummaries = null,
+        IReadOnlyDictionary<string, string>? indexSummaries = null,
+        IReadOnlySet<string>? uniqueIndexColumns = null)
     {
         Name = table.FullName;
         Comment = table.Comment ?? string.Empty;
         var sourceColumns = visibleColumns ?? table.Columns;
         Columns = new ObservableCollection<ColumnItemViewModel>(sourceColumns
             .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(c => new ColumnItemViewModel(c, LookupForeignKeySummary(c, foreignKeySummaries))));
+            .Select(c => new ColumnItemViewModel(
+                c,
+                LookupSummary(c, foreignKeySummaries),
+                LookupSummary(c, indexSummaries),
+                IsInSet(c, uniqueIndexColumns))));
     }
 
     public string Name { get; }
@@ -37,14 +43,24 @@ public sealed class TableItemViewModel : ObservableObject
         ? $"{Name} ({ColumnCount})"
         : $"{Name} ({ColumnCount}) — {Comment}";
 
-    private static string LookupForeignKeySummary(ColumnDefinition column, IReadOnlyDictionary<string, string>? foreignKeySummaries)
+    private static string LookupSummary(ColumnDefinition column, IReadOnlyDictionary<string, string>? summaries)
     {
-        if (foreignKeySummaries is null)
+        if (summaries is null)
         {
             return string.Empty;
         }
 
         var key = $"{column.TableName}.{column.Name}";
-        return foreignKeySummaries.TryGetValue(key, out var summary) ? summary : string.Empty;
+        return summaries.TryGetValue(key, out var summary) ? summary : string.Empty;
+    }
+
+    private static bool IsInSet(ColumnDefinition column, IReadOnlySet<string>? values)
+    {
+        if (values is null)
+        {
+            return false;
+        }
+
+        return values.Contains($"{column.TableName}.{column.Name}");
     }
 }

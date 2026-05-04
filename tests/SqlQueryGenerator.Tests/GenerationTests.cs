@@ -1,4 +1,5 @@
 using SqlQueryGenerator.Core.Generation;
+using SqlQueryGenerator.Core.Models;
 using SqlQueryGenerator.Core.Parsing;
 using SqlQueryGenerator.Core.Query;
 
@@ -192,6 +193,123 @@ CREATE TABLE pnj_item (
         Assert.Contains("INNER JOIN pnj_item ON pnj.id = pnj_item.pnj_id", result.Sql);
         Assert.Contains("INNER JOIN items ON pnj_item.item_id = items.id", result.Sql);
         Assert.DoesNotContain("pnj.id = items.id", result.Sql);
+    }
+
+
+    [Fact]
+    public void Generate_AutoJoin_PrefersExactJunctionTableOverSpecificFocusTable()
+    {
+        const string sql = @"
+CREATE TABLE pnj (
+    id INTEGER,
+    job_id INTEGER,
+    genre TEXT
+);
+CREATE TABLE items (
+    id INTEGER,
+    name TEXT
+);
+CREATE TABLE pnj_item (
+    pnj_id INTEGER,
+    item_id INTEGER
+);
+CREATE TABLE pnj_jobs_items_focus (
+    pnj_id INTEGER,
+    item_id INTEGER,
+    focus_score REAL
+);
+";
+        var schema = new SqlSchemaParser().Parse(sql);
+        var query = new QueryDefinition { BaseTable = "pnj" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "items", Column = "name" });
+        query.GroupBy.Add(new ColumnReference { Table = "items", Column = "name" });
+        query.Aggregates.Add(new AggregateSelection
+        {
+            Function = AggregateFunction.Count,
+            Column = new ColumnReference { Table = "pnj", Column = "genre" },
+            Alias = "count_genre"
+        });
+
+        var result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
+
+        Assert.Contains("INNER JOIN pnj_item ON pnj.id = pnj_item.pnj_id", result.Sql);
+        Assert.Contains("INNER JOIN items ON pnj_item.item_id = items.id", result.Sql);
+        Assert.DoesNotContain("pnj_jobs_items_focus", result.Sql);
+    }
+
+
+    [Fact]
+    public void Generate_AutoJoin_RejectsLongDetourWhenDirectJunctionExists()
+    {
+        const string sql = @"
+CREATE TABLE pnj (
+    id INTEGER,
+    job_id INTEGER,
+    genre TEXT
+);
+CREATE TABLE items (
+    id INTEGER,
+    base_item_code INTEGER,
+    name TEXT
+);
+CREATE TABLE pnj_item (
+    pnj_id INTEGER,
+    item_id INTEGER
+);
+CREATE TABLE pnj_lastname_lineage (
+    id INTEGER,
+    pnj_id INTEGER
+);
+CREATE TABLE quests_pnjs (
+    quest_id INTEGER,
+    pnj_id INTEGER
+);
+CREATE TABLE pnj_jobs_items_focus (
+    id INTEGER,
+    pnj_id INTEGER,
+    item_id INTEGER,
+    base_item_code INTEGER
+);
+";
+        var schema = new SqlSchemaParser().Parse(sql);
+        var query = new QueryDefinition { BaseTable = "pnj" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "items", Column = "name" });
+        query.GroupBy.Add(new ColumnReference { Table = "items", Column = "name" });
+        query.Aggregates.Add(new AggregateSelection
+        {
+            Function = AggregateFunction.Count,
+            Column = new ColumnReference { Table = "pnj", Column = "genre" },
+            Alias = "count_genre"
+        });
+
+        var result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
+
+        Assert.Contains("INNER JOIN pnj_item ON pnj.id = pnj_item.pnj_id", result.Sql);
+        Assert.Contains("INNER JOIN items ON pnj_item.item_id = items.id", result.Sql);
+        Assert.DoesNotContain("pnj_lastname_lineage", result.Sql);
+        Assert.DoesNotContain("quests_pnjs", result.Sql);
+        Assert.DoesNotContain("pnj_jobs_items_focus", result.Sql);
+        Assert.DoesNotContain("pnj_item.item_id = items.base_item_code", result.Sql);
+    }
+
+    [Fact]
+    public void Generate_DisabledAutoJoin_DoesNotUseThatDetectedRelationship()
+    {
+        const string sql = @"
+CREATE TABLE pnj (id INTEGER);
+CREATE TABLE items (id INTEGER, name TEXT);
+CREATE TABLE pnj_item (pnj_id INTEGER, item_id INTEGER);
+";
+        var schema = new SqlSchemaParser().Parse(sql);
+        var query = new QueryDefinition { BaseTable = "pnj" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "items", Column = "name" });
+        query.DisabledAutoJoinKeys.Add(RelationshipKey.For("pnj", "id", "pnj_item", "pnj_id"));
+        query.DisabledAutoJoinKeys.Add(RelationshipKey.ReverseFor("pnj", "id", "pnj_item", "pnj_id"));
+
+        var result = new SqlQueryGeneratorEngine().Generate(query, schema);
+
+        Assert.DoesNotContain("JOIN pnj_item", result.Sql);
+        Assert.Contains("Aucune jointure fiable", string.Join("\n", result.Warnings));
     }
 
 }

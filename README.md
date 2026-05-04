@@ -272,3 +272,7 @@ pnj.id -> pnj_jobs.id
 ## v12
 
 Fix regression in inline column comment parsing: comments written after a column-separating comma are now attached to the preceding column.
+
+## Performance v18
+
+`ForeignKeyInferer.Infer()` a été optimisé pour les schémas volumineux. L'ancienne version comparait quasiment toutes les colonnes entre elles (`O(C²)`), ce qui devient très coûteux avec 7000+ colonnes. La v18 construit des dictionnaires de tables/colonnes/index et génère uniquement des candidats plausibles. Voir `docs/PERFORMANCE.md`.

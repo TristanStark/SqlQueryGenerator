@@ -59,4 +59,24 @@ CREATE TABLE customer (
         Assert.Equal("display name", table.FindColumn("name")!.Comment);
     }
 
+    [Fact]
+    public void Parse_CreateIndex_ExtractsIndexedColumns()
+    {
+        const string sql = @"
+CREATE TABLE pnj (
+    id INTEGER PRIMARY KEY,
+    job_id INTEGER,
+    nom TEXT
+);
+CREATE INDEX idx_pnj_job ON pnj(job_id);
+CREATE UNIQUE INDEX ux_pnj_nom ON pnj(nom);
+";
+        var schema = new SqlSchemaParser().Parse(sql);
+
+        Assert.Equal(2, schema.Indexes.Count);
+        Assert.True(schema.IsColumnIndexed("pnj", "job_id"));
+        Assert.True(schema.IsColumnUniqueIndexed("pnj", "nom"));
+        Assert.False(schema.IsColumnUniqueIndexed("pnj", "job_id"));
+    }
+
 }

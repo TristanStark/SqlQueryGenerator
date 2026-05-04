@@ -117,3 +117,22 @@ dotnet test -c Release
 ## v12 regression fix
 
 Added parser regression coverage for inline comments written after a comma, e.g. `id INTEGER PRIMARY KEY, -- technical id`.
+
+## v18 — Optimisation ForeignKeyInferer
+
+Changements ciblés :
+
+- suppression du parcours global `sourceColumn × targetColumn` ;
+- ajout de dictionnaires de colonnes par nom normalisé ;
+- ajout de dictionnaires de tables par variante de nom et token ;
+- mise en cache des signaux index / unique / PK ;
+- remplacement de la déduplication linéaire par un dictionnaire `RelationshipKey -> index` ;
+- limitation des relations faibles same-name sur les groupes trop gros non indexés.
+
+À valider localement :
+
+```powershell
+dotnet test -c Release
+```
+
+L'environnement de génération du zip ne contient pas le SDK .NET/WPF, donc les tests doivent être exécutés sur Windows / .NET 8 côté utilisateur.

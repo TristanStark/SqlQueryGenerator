@@ -12,11 +12,11 @@ public sealed class QueryPurposeDescriber
         ArgumentNullException.ThrowIfNull(schema);
 
         var subject = HumanizeTable(query.BaseTable ?? FirstUsedTable(query) ?? "les données");
-        var groupings = query.GroupBy.Select(g => HumanizeColumn(g.Column)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var aggregates = query.Aggregates.Select(DescribeAggregate).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
-        var selected = query.SelectedColumns.Select(c => HumanizeColumn(c.Column)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var groupings = query.GroupBy.Select(DescribeGrouping).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var aggregates = query.Aggregates.Select(a => DescribeAggregate(a, query, subject)).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+        var selected = query.SelectedColumns.Select(DescribeSelectedColumn).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var filters = query.Filters.Select(DescribeFilter).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
-        var orders = query.OrderBy.Select(o => $"trié par {HumanizeColumn(o.Column.Column)} {(o.Direction == SortDirection.Descending ? "décroissant" : "croissant")}").ToArray();
+        var orders = query.OrderBy.Select(o => $"trié par {DescribeSelectedColumn(o.Column)} {(o.Direction == SortDirection.Descending ? "décroissant" : "croissant")}").ToArray();
 
         var sb = new StringBuilder();
         sb.Append("Cette requête ");
@@ -70,34 +70,93 @@ public sealed class QueryPurposeDescriber
             ?? query.Aggregates.FirstOrDefault(a => a.Column is not null)?.Column?.Table;
     }
 
-    private static string DescribeAggregate(AggregateSelection aggregate)
+    private static string DescribeAggregate(AggregateSelection aggregate, QueryDefinition query, string subject)
     {
-        var column = aggregate.Column?.Column ?? "lignes";
-        var humanColumn = HumanizeColumn(column);
         var prefix = aggregate.Distinct ? "distincts de " : string.Empty;
         var text = aggregate.Function switch
         {
-            AggregateFunction.Count => aggregate.Column is null
-                ? "le nombre de lignes"
-                : $"le nombre de {prefix}{humanColumn}",
-            AggregateFunction.Sum => $"le total de {humanColumn}",
-            AggregateFunction.Average => $"la moyenne de {humanColumn}",
-            AggregateFunction.Minimum => $"le minimum de {humanColumn}",
-            AggregateFunction.Maximum => $"le maximum de {humanColumn}",
-            _ => $"{aggregate.Function} de {humanColumn}"
+            AggregateFunction.Count => DescribeCount(aggregate, query, subject, prefix),
+            AggregateFunction.Sum => $"le total de {DescribeColumnForAggregate(aggregate.Column)}",
+            AggregateFunction.Average => $"la moyenne de {DescribeColumnForAggregate(aggregate.Column)}",
+            AggregateFunction.Minimum => $"le minimum de {DescribeColumnForAggregate(aggregate.Column)}",
+            AggregateFunction.Maximum => $"le maximum de {DescribeColumnForAggregate(aggregate.Column)}",
+            _ => $"{aggregate.Function} de {DescribeColumnForAggregate(aggregate.Column)}"
         };
 
         if (aggregate.ConditionColumn is not null && !string.IsNullOrWhiteSpace(aggregate.ConditionOperator))
         {
-            text += $" lorsque {HumanizeColumn(aggregate.ConditionColumn.Column)} {HumanizeOperator(aggregate.ConditionOperator)} {aggregate.ConditionValue}";
+            text += $" lorsque {DescribeSelectedColumn(aggregate.ConditionColumn)} {HumanizeOperator(aggregate.ConditionOperator)} {aggregate.ConditionValue}";
         }
 
         return text;
     }
 
+    private static string DescribeCount(AggregateSelection aggregate, QueryDefinition query, string subject, string distinctPrefix)
+    {
+        if (aggregate.Column is null)
+        {
+            return "le nombre de lignes";
+        }
+
+        // For non-SQL users, COUNT(pnj.genre) grouped by items.name is usually meant as
+        // “number of PNJ by item”, not “number of genre”. SQL-wise it counts non-null genre,
+        // but the business intent is the count of base rows.
+        if (!string.IsNullOrWhiteSpace(query.BaseTable) && aggregate.Column.Table.Equals(query.BaseTable, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"le nombre de {subject}";
+        }
+
+        if (IsIdentifierColumn(aggregate.Column.Column))
+        {
+            return $"le nombre de {HumanizeTable(aggregate.Column.Table)}";
+        }
+
+        return $"le nombre de {distinctPrefix}{DescribeSelectedColumn(aggregate.Column)} renseigné";
+    }
+
+    private static string DescribeColumnForAggregate(ColumnReference? column)
+    {
+        return column is null ? "lignes" : DescribeSelectedColumn(column);
+    }
+
+    private static string DescribeGrouping(ColumnReference column)
+    {
+        var columnName = SqlNameNormalizer.Normalize(column.Column);
+        var tableName = HumanizeTable(column.Table);
+
+        if (columnName is "NAME" or "NOM" or "LABEL" or "LIBELLE" or "TITLE" or "TITRE")
+        {
+            return SingularizeHuman(tableName);
+        }
+
+        return $"{HumanizeColumn(column.Column)} de {tableName}";
+    }
+
+    private static string DescribeSelectedColumn(ColumnReference column)
+    {
+        var col = HumanizeColumn(column.Column);
+        var table = HumanizeTable(column.Table);
+        return IsVeryGenericDisplayColumn(column.Column) ? $"{col} de {table}" : col;
+    }
+
+    private static bool IsVeryGenericDisplayColumn(string columnName)
+    {
+        var normalized = SqlNameNormalizer.Normalize(columnName);
+        return normalized is "NAME" or "NOM" or "LABEL" or "LIBELLE" or "TITLE" or "TITRE" or "CODE";
+    }
+
+    private static bool IsIdentifierColumn(string columnName)
+    {
+        var normalized = SqlNameNormalizer.Normalize(columnName);
+        return normalized is "ID" or "IDEN" or "IDENT"
+            || normalized.EndsWith("_ID", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith("_IDEN", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith("_IDENT", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string DescribeFilter(FilterCondition filter)
     {
-        return $"{HumanizeColumn(filter.Column.Column)} {HumanizeOperator(filter.Operator)} {filter.Value}".Trim();
+        return $"{DescribeSelectedColumn(filter.Column)} {HumanizeOperator(filter.Operator)} {filter.Value}".Trim();
     }
 
     private static string HumanizeOperator(string op)
@@ -127,6 +186,38 @@ public sealed class QueryPurposeDescriber
     private static string HumanizeName(string name)
     {
         return name.Replace('_', ' ').Trim().ToLowerInvariant();
+    }
+
+    private static string SingularizeHuman(string name)
+    {
+        var words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (words.Length == 0)
+        {
+            return name;
+        }
+
+        words[^1] = SingularizeToken(words[^1]);
+        return string.Join(' ', words);
+    }
+
+    private static string SingularizeToken(string token)
+    {
+        if (token.Length <= 3)
+        {
+            return token;
+        }
+
+        if (token.EndsWith("ies", StringComparison.OrdinalIgnoreCase) && token.Length > 4)
+        {
+            return token[..^3] + "y";
+        }
+
+        if ((token.EndsWith("s", StringComparison.OrdinalIgnoreCase) || token.EndsWith("x", StringComparison.OrdinalIgnoreCase)) && token.Length > 3)
+        {
+            return token[..^1];
+        }
+
+        return token;
     }
 
     private static string JoinFrench(IReadOnlyList<string> values)

@@ -197,7 +197,7 @@ public sealed class MainViewModel : ObservableObject
 
     public string SchemaSummary => _schema.Tables.Count == 0
         ? "Aucun schéma chargé"
-        : $"{_schema.Tables.Count} tables · {_schema.Tables.Sum(t => t.Columns.Count)} colonnes · {_schema.Relationships.Count} relations probables";
+        : $"{_schema.Tables.Count} tables · {_schema.Tables.Sum(t => t.Columns.Count)} colonnes · {_schema.Indexes.Count} index · {_schema.Relationships.Count} relations probables";
 
     public ColumnItemViewModel? SelectedAvailableColumn
     {
@@ -254,7 +254,7 @@ public sealed class MainViewModel : ObservableObject
             LoadedFile = sourceName ?? "Collé manuellement";
             ReloadSchemaViewModels();
             OnPropertyChanged(nameof(SchemaSummary));
-            Status = $"Schéma chargé: {_schema.Tables.Count} tables, {_schema.Tables.Sum(t => t.Columns.Count)} colonnes, {_schema.Relationships.Count} relations probables.";
+            Status = $"Schéma chargé: {_schema.Tables.Count} tables, {_schema.Tables.Sum(t => t.Columns.Count)} colonnes, {_schema.Indexes.Count} index, {_schema.Relationships.Count} relations probables.";
             Warnings = string.Join(Environment.NewLine, _schema.Warnings);
             if (string.IsNullOrWhiteSpace(BaseTable) && TableNames.Count > 0)
             {
@@ -353,17 +353,25 @@ public sealed class MainViewModel : ObservableObject
         RelationshipGroups.Clear();
         TableNames.Clear();
         var foreignKeySummaries = BuildForeignKeySummaries();
+        var indexSummaries = BuildIndexSummaries();
+        var uniqueIndexColumns = BuildUniqueIndexColumnSet();
         foreach (var table in _schema.Tables.OrderBy(t => t.FullName, StringComparer.OrdinalIgnoreCase))
         {
             TableNames.Add(table.FullName);
             foreach (var col in table.Columns.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase))
             {
-                AllColumns.Add(new ColumnItemViewModel(col, LookupForeignKeySummary(col, foreignKeySummaries)));
+                AllColumns.Add(new ColumnItemViewModel(
+                    col,
+                    LookupSummary(col, foreignKeySummaries),
+                    LookupSummary(col, indexSummaries),
+                    uniqueIndexColumns.Contains($"{col.TableName}.{col.Name}")));
             }
         }
         foreach (var rel in _schema.Relationships.OrderByDescending(r => r.Confidence).Take(500))
         {
-            Relationships.Add(new RelationshipItemViewModel(rel));
+            var vm = new RelationshipItemViewModel(rel);
+            vm.PropertyChanged += Relationship_PropertyChanged;
+            Relationships.Add(vm);
         }
 
         foreach (var group in Relationships
@@ -386,6 +394,8 @@ public sealed class MainViewModel : ObservableObject
 
         var needle = ColumnSearchText?.Trim();
         var foreignKeySummaries = BuildForeignKeySummaries();
+        var indexSummaries = BuildIndexSummaries();
+        var uniqueIndexColumns = BuildUniqueIndexColumnSet();
         foreach (var table in _schema.Tables.OrderBy(t => t.FullName, StringComparer.OrdinalIgnoreCase))
         {
             IEnumerable<ColumnDefinition> visibleColumns = table.Columns;
@@ -408,7 +418,7 @@ public sealed class MainViewModel : ObservableObject
                 continue;
             }
 
-            Tables.Add(new TableItemViewModel(table, visibleList, foreignKeySummaries)
+            Tables.Add(new TableItemViewModel(table, visibleList, foreignKeySummaries, indexSummaries, uniqueIndexColumns)
             {
                 IsExpanded = !string.IsNullOrWhiteSpace(needle)
             });
@@ -425,10 +435,42 @@ public sealed class MainViewModel : ObservableObject
                 StringComparer.OrdinalIgnoreCase);
     }
 
-    private static string LookupForeignKeySummary(ColumnDefinition column, IReadOnlyDictionary<string, string> foreignKeySummaries)
+    private IReadOnlyDictionary<string, string> BuildIndexSummaries()
+    {
+        return _schema.Tables
+            .SelectMany(t => t.Columns)
+            .Select(c => new
+            {
+                Key = $"{c.TableName}.{c.Name}",
+                Summary = string.Join(" | ", _schema.FindIndexesForColumn(c.TableName, c.Name)
+                    .Take(4)
+                    .Select(i => $"{(i.IsUnique ? "UNIQUE " : string.Empty)}{i.Name}"))
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Summary))
+            .ToDictionary(x => x.Key, x => x.Summary, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private IReadOnlySet<string> BuildUniqueIndexColumnSet()
+    {
+        return _schema.Tables
+            .SelectMany(t => t.Columns)
+            .Where(c => _schema.IsColumnUniqueIndexed(c.TableName, c.Name))
+            .Select(c => $"{c.TableName}.{c.Name}")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string LookupSummary(ColumnDefinition column, IReadOnlyDictionary<string, string> summaries)
     {
         var key = $"{column.TableName}.{column.Name}";
-        return foreignKeySummaries.TryGetValue(key, out var summary) ? summary : string.Empty;
+        return summaries.TryGetValue(key, out var summary) ? summary : string.Empty;
+    }
+
+    private void Relationship_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(RelationshipItemViewModel.IsEnabled))
+        {
+            AutoGenerateSql();
+        }
     }
 
     private void AddManualJoin()
@@ -553,6 +595,12 @@ public sealed class MainViewModel : ObservableObject
                 CaseThenValue = row.CaseThenValue,
                 CaseElseValue = row.CaseElseValue
             });
+        }
+
+        foreach (var disabled in Relationships.Where(r => !r.IsEnabled))
+        {
+            query.DisabledAutoJoinKeys.Add(disabled.Key);
+            query.DisabledAutoJoinKeys.Add(disabled.ReverseKey);
         }
 
         return query;

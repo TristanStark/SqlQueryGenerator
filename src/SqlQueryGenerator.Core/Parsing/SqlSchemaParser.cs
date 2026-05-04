@@ -44,6 +44,12 @@ public sealed partial class SqlSchemaParser
             if (CreateTableRegex().Match(trimmed) is { Success: true } match)
             {
                 TryParseCreateTable(trimmed, match, commentsByColumn, commentsByTable, schema);
+                continue;
+            }
+
+            if (CreateIndexRegex().Match(trimmed) is { Success: true } indexMatch)
+            {
+                TryParseCreateIndex(trimmed, indexMatch, schema);
             }
         }
 
@@ -77,6 +83,61 @@ public sealed partial class SqlSchemaParser
         }
 
         return schema;
+    }
+
+    private static void TryParseCreateIndex(string statement, Match indexMatch, DatabaseSchema schema)
+    {
+        var indexName = CleanQualifiedIdentifier(indexMatch.Groups["name"].Value);
+        var tableName = CleanQualifiedIdentifier(indexMatch.Groups["table"].Value);
+        var unique = indexMatch.Groups["unique"].Success;
+
+        var open = statement.IndexOf('(', StringComparison.Ordinal);
+        var close = FindMatchingParenthesis(statement, open);
+        if (open < 0 || close <= open)
+        {
+            schema.Warnings.Add($"Impossible de lire le CREATE INDEX {indexName}: parenthèses introuvables.");
+            return;
+        }
+
+        var columns = SplitTopLevelComma(statement[(open + 1)..close])
+            .Select(TryExtractIndexedColumnName)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (columns.Length == 0)
+        {
+            schema.Warnings.Add($"Index {indexName} ignoré: aucune colonne simple lisible.");
+            return;
+        }
+
+        schema.Indexes.Add(new IndexDefinition(indexName, tableName, unique, columns));
+    }
+
+    private static string? TryExtractIndexedColumnName(string expression)
+    {
+        var trimmed = expression.Trim();
+        if (trimmed.Length == 0)
+        {
+            return null;
+        }
+
+        // Ignore functional indexes such as UPPER(NAME) for FK inference. They are not useful
+        // for equality joins on the raw column and parsing them as columns would be misleading.
+        if (trimmed.Contains('(') || trimmed.Contains(')'))
+        {
+            return null;
+        }
+
+        var firstToken = trimmed.Split([' ', '\t', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(firstToken))
+        {
+            return null;
+        }
+
+        var cleaned = CleanIdentifier(firstToken);
+        return Regex.IsMatch(cleaned, @"^[A-Za-z_][A-Za-z0-9_$#]*$", RegexOptions.IgnoreCase) ? cleaned : null;
     }
 
     private static void TryParseCreateTable(
@@ -641,6 +702,9 @@ public sealed partial class SqlSchemaParser
 
     [GeneratedRegex(@"CREATE\s+(?:GLOBAL\s+TEMPORARY\s+|TEMPORARY\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?<name>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)\s*\(", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex CreateTableRegex();
+
+    [GeneratedRegex(@"CREATE\s+(?<unique>UNIQUE\s+)?(?:BITMAP\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(?<name>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)\s+ON\s+(?<table>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)\s*\(", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    private static partial Regex CreateIndexRegex();
 
     [GeneratedRegex(@"COMMENT\s+ON\s+COLUMN\s+(?<table>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)\.(?<column>[`""\[]?\w+[`""\]]?)\s+IS\s+'(?<comment>(?:''|[^'])*)'", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex CommentOnColumnRegex();

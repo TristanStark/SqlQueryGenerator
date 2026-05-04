@@ -150,4 +150,27 @@ CREATE TABLE pnj_item (
         Assert.DoesNotContain(schema.Relationships, r => r.FromTable == "pnj" && r.FromColumn == "id" && r.ToTable == "items" && r.ToColumn == "id");
     }
 
+    [Fact]
+    public void Infer_IndexedForeignKey_GetsHigherConfidenceThanUnindexedAlternative()
+    {
+        const string sql = @"
+CREATE TABLE pnj (
+    id INTEGER,
+    item_id INTEGER,
+    item_code INTEGER
+);
+CREATE TABLE items (
+    id INTEGER,
+    item_code INTEGER
+);
+CREATE INDEX idx_pnj_item_id ON pnj(item_id);
+CREATE UNIQUE INDEX ux_items_id ON items(id);
+";
+        var schema = new SqlSchemaParser().Parse(sql);
+
+        var indexed = schema.Relationships.Single(r => r.FromTable == "pnj" && r.FromColumn == "item_id" && r.ToTable == "items" && r.ToColumn == "id");
+        Assert.Contains("Signal index", indexed.Reason);
+        Assert.True(indexed.Confidence >= 0.98);
+    }
+
 }

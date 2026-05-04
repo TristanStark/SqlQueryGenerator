@@ -177,7 +177,7 @@ public sealed class SqlQueryGeneratorEngine
         var safety = 0;
         while (remaining.Count > 0 && safety++ < 256)
         {
-            var bestPath = FindBestJoinPath(schema, connected, remaining);
+            var bestPath = FindBestJoinPath(schema, connected, remaining, query.DisabledAutoJoinKeys);
             if (bestPath.Count == 0)
             {
                 foreach (var table in remaining.OrderBy(t => t, StringComparer.OrdinalIgnoreCase))
@@ -198,42 +198,292 @@ public sealed class SqlQueryGeneratorEngine
         return joins;
     }
 
-    private static List<JoinDefinition> FindBestJoinPath(DatabaseSchema schema, HashSet<string> connected, HashSet<string> remaining)
+    private static List<JoinDefinition> FindBestJoinPath(DatabaseSchema schema, HashSet<string> connected, HashSet<string> remaining, IEnumerable<string> disabledAutoJoinKeys)
     {
         var best = new List<JoinDefinition>();
         var bestScore = double.NegativeInfinity;
+
+        // First-class rule: if a clean junction table exists between a connected table and
+        // the requested target table, always prefer that short business path. This prevents
+        // graph-search detours such as PNJ -> lineage -> quests -> pnj_item -> items.
+        foreach (var start in connected)
+        {
+            foreach (var target in remaining)
+            {
+                var bridgePath = TryFindBestDirectJunctionPath(schema, start, target, disabledAutoJoinKeys);
+                if (bridgePath.Count > 0)
+                {
+                    var score = ScoreJoinPath(schema, bridgePath, start, target) + 5.0;
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        best = bridgePath;
+                    }
+                }
+            }
+        }
+
+        if (best.Count > 0)
+        {
+            return best;
+        }
 
         foreach (var start in connected)
         {
             foreach (var target in remaining)
             {
-                var path = FindPath(schema, start, target, maxDepth: 4);
-                if (path.Count == 0)
+                foreach (var path in FindCandidatePaths(schema, start, target, maxDepth: 2, disabledAutoJoinKeys))
                 {
-                    continue;
-                }
+                    if (path.Count == 0)
+                    {
+                        continue;
+                    }
 
-                // Prefer high-confidence, short paths. This allows automatic many-to-many joins:
-                // PNJ -> PNJ_ITEM -> ITEMS when PNJ_ITEM is not explicitly selected.
-                var score = path.Sum(j => RelationshipConfidence(schema, j)) - ((path.Count - 1) * 0.20);
-                if (score > bestScore)
-                {
-                    bestScore = score;
-                    best = path;
+                    var score = ScoreJoinPath(schema, path, start, target);
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        best = path;
+                    }
                 }
             }
         }
 
-        return best;
+        // Below this threshold we would rather warn than generate nonsense SQL. Users can
+        // still add the join manually from the UI.
+        return bestScore >= 0.70 ? best : new List<JoinDefinition>();
     }
 
-    private static List<JoinDefinition> FindPath(DatabaseSchema schema, string startTable, string targetTable, int maxDepth)
+    private static List<JoinDefinition> TryFindBestDirectJunctionPath(DatabaseSchema schema, string startTable, string targetTable, IEnumerable<string> disabledAutoJoinKeys)
     {
-        var queue = new Queue<(string Table, List<JoinDefinition> Path)>();
-        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { startTable };
-        queue.Enqueue((startTable, new List<JoinDefinition>()));
+        var start = schema.FindTable(startTable);
+        var target = schema.FindTable(targetTable);
+        if (start is null || target is null)
+        {
+            return new List<JoinDefinition>();
+        }
 
-        while (queue.Count > 0)
+        var bestScore = double.NegativeInfinity;
+        var best = new List<JoinDefinition>();
+        foreach (var bridge in schema.Tables)
+        {
+            if (SqlNameNormalizer.EqualsName(bridge.FullName, startTable)
+                || SqlNameNormalizer.EqualsName(bridge.FullName, targetTable))
+            {
+                continue;
+            }
+
+            var bridgeScore = ScoreJunctionTableCandidate(bridge, start, target);
+            if (bridgeScore <= 0)
+            {
+                continue;
+            }
+
+            var startBridgeColumn = FindBridgeColumnForTable(bridge, start);
+            var targetBridgeColumn = FindBridgeColumnForTable(bridge, target);
+            if (startBridgeColumn is null || targetBridgeColumn is null)
+            {
+                continue;
+            }
+
+            var startKey = FindBestKeyColumnForBridge(start, startBridgeColumn);
+            var targetKey = FindBestKeyColumnForBridge(target, targetBridgeColumn);
+            if (startKey is null || targetKey is null)
+            {
+                continue;
+            }
+
+            if (SqlNameNormalizer.EqualsName(startBridgeColumn.Name, targetBridgeColumn.Name))
+            {
+                continue;
+            }
+
+            var score = bridgeScore;
+            score += KeyColumnScore(startKey, start) + KeyColumnScore(targetKey, target);
+            score += BridgeColumnScore(startBridgeColumn, start) + BridgeColumnScore(targetBridgeColumn, target);
+            score -= Math.Max(0, bridge.Columns.Count - 3) * 0.02;
+
+            var candidate = new List<JoinDefinition>
+            {
+                new()
+                {
+                    FromTable = start.FullName,
+                    FromColumn = startKey.Name,
+                    ToTable = bridge.FullName,
+                    ToColumn = startBridgeColumn.Name,
+                    JoinType = JoinType.Inner,
+                    AutoInferred = true
+                },
+                new()
+                {
+                    FromTable = bridge.FullName,
+                    FromColumn = targetBridgeColumn.Name,
+                    ToTable = target.FullName,
+                    ToColumn = targetKey.Name,
+                    JoinType = JoinType.Inner,
+                    AutoInferred = true
+                }
+            };
+
+            if (candidate.Any(join => IsJoinDisabled(join, disabledAutoJoinKeys)))
+            {
+                continue;
+            }
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = candidate;
+            }
+        }
+
+        return bestScore >= 1.25 ? best : new List<JoinDefinition>();
+    }
+
+    private static double ScoreJunctionTableCandidate(TableDefinition bridge, TableDefinition left, TableDefinition right)
+    {
+        var leftStem = TableStem(left.FullName);
+        var rightStem = TableStem(right.FullName);
+        var bridgeNorm = Singularize(SqlNameNormalizer.Normalize(bridge.FullName));
+        var bridgeNameOnly = Singularize(SqlNameNormalizer.Normalize(bridge.Name));
+        var tokens = bridgeNameOnly.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var score = 0.0;
+        var exactA = $"{leftStem}_{rightStem}";
+        var exactB = $"{rightStem}_{leftStem}";
+        if (bridgeNameOnly.Equals(exactA, StringComparison.OrdinalIgnoreCase)
+            || bridgeNameOnly.Equals(exactB, StringComparison.OrdinalIgnoreCase)
+            || bridgeNorm.EndsWith("_" + exactA, StringComparison.OrdinalIgnoreCase)
+            || bridgeNorm.EndsWith("_" + exactB, StringComparison.OrdinalIgnoreCase))
+        {
+            score += 2.50;
+        }
+        else
+        {
+            var containsLeft = tokens.Any(t => SameNameRelaxed(t, leftStem));
+            var containsRight = tokens.Any(t => SameNameRelaxed(t, rightStem));
+            if (!containsLeft || !containsRight)
+            {
+                return 0.0;
+            }
+
+            score += 1.10;
+            var extraTokens = tokens.Count(t => !SameNameRelaxed(t, leftStem) && !SameNameRelaxed(t, rightStem));
+            score -= Math.Min(0.95, extraTokens * 0.18);
+        }
+
+        if (FindBridgeColumnForTable(bridge, left) is not null)
+        {
+            score += 0.55;
+        }
+
+        if (FindBridgeColumnForTable(bridge, right) is not null)
+        {
+            score += 0.55;
+        }
+
+        if (bridge.Columns.Count <= 4)
+        {
+            score += 0.25;
+        }
+
+        var suspiciousTokens = new[] { "focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests" };
+        if (tokens.Any(t => suspiciousTokens.Contains(t, StringComparer.OrdinalIgnoreCase)))
+        {
+            score -= 1.20;
+        }
+
+        return score;
+    }
+
+    private static ColumnDefinition? FindBridgeColumnForTable(TableDefinition bridge, TableDefinition table)
+    {
+        var stems = TableNameStems(table.FullName).Concat(TableNameStems(table.Name)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        foreach (var stem in stems)
+        {
+            var direct = bridge.Columns.FirstOrDefault(c => IsColumnForTable(c.Name, stem));
+            if (direct is not null)
+            {
+                return direct;
+            }
+        }
+
+        return bridge.Columns
+            .Where(c => IsForeignKeyLike(SqlNameNormalizer.Normalize(c.Name)))
+            .FirstOrDefault(c => stems.Any(stem => Singularize(SqlNameNormalizer.Normalize(c.Name)).Contains(stem + "_", StringComparison.OrdinalIgnoreCase)
+                || Singularize(SqlNameNormalizer.Normalize(c.Name)).StartsWith(stem, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static ColumnDefinition? FindBestKeyColumnForBridge(TableDefinition table, ColumnDefinition bridgeColumn)
+    {
+        var tableStem = TableStem(table.FullName);
+        var bridgeNorm = Singularize(SqlNameNormalizer.Normalize(bridgeColumn.Name));
+
+        var candidates = table.Columns
+            .Select(c => new { Column = c, Score = CandidateKeyScore(c, tableStem, bridgeNorm) })
+            .Where(x => x.Score > 0)
+            .OrderByDescending(x => x.Score)
+            .ThenBy(x => x.Column.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return candidates.FirstOrDefault()?.Column;
+    }
+
+    private static double CandidateKeyScore(ColumnDefinition column, string tableStem, string bridgeColumnNorm)
+    {
+        var col = Singularize(SqlNameNormalizer.Normalize(column.Name));
+        var score = 0.0;
+        if (column.IsPrimaryKey)
+        {
+            score += 3.0;
+        }
+
+        if (IsGenericIdentifier(col))
+        {
+            score += 2.5;
+        }
+
+        if (col == bridgeColumnNorm)
+        {
+            score += 2.1;
+        }
+
+        if (col == $"{tableStem}_id" || col == $"{tableStem}_iden" || col == $"{tableStem}_ident" || col == $"{tableStem}_code")
+        {
+            score += 1.9;
+        }
+
+        if (col == "code" || col == $"base_{tableStem}_code")
+        {
+            score += 1.0;
+        }
+
+        return score;
+    }
+
+    private static double KeyColumnScore(ColumnDefinition column, TableDefinition table)
+    {
+        var col = Singularize(SqlNameNormalizer.Normalize(column.Name));
+        var score = 0.0;
+        if (column.IsPrimaryKey) score += 0.45;
+        if (IsGenericIdentifier(col)) score += 0.35;
+        if (col == $"{TableStem(table.FullName)}_id") score += 0.15;
+        return score;
+    }
+
+    private static double BridgeColumnScore(ColumnDefinition column, TableDefinition targetTable)
+    {
+        var stems = TableNameStems(targetTable.FullName).Concat(TableNameStems(targetTable.Name)).Distinct(StringComparer.OrdinalIgnoreCase);
+        return stems.Any(stem => IsColumnForTable(column.Name, stem)) ? 0.35 : 0.0;
+    }
+
+    private static IEnumerable<List<JoinDefinition>> FindCandidatePaths(DatabaseSchema schema, string startTable, string targetTable, int maxDepth, IEnumerable<string> disabledAutoJoinKeys)
+    {
+        var results = new List<List<JoinDefinition>>();
+        var queue = new Queue<(string Table, List<JoinDefinition> Path, HashSet<string> Visited)>();
+        queue.Enqueue((startTable, new List<JoinDefinition>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase) { startTable }));
+
+        while (queue.Count > 0 && results.Count < 128)
         {
             var current = queue.Dequeue();
             if (current.Path.Count >= maxDepth)
@@ -242,14 +492,16 @@ public sealed class SqlQueryGeneratorEngine
             }
 
             var edges = schema.Relationships
+                .Where(r => !IsRelationshipDisabled(r, disabledAutoJoinKeys))
                 .Where(r => SqlNameNormalizer.EqualsName(r.FromTable, current.Table) || SqlNameNormalizer.EqualsName(r.ToTable, current.Table))
                 .OrderByDescending(r => r.Confidence)
+                .Take(80)
                 .ToArray();
 
             foreach (var edge in edges)
             {
                 var nextTable = SqlNameNormalizer.EqualsName(edge.FromTable, current.Table) ? edge.ToTable : edge.FromTable;
-                if (!visited.Add(nextTable) && !SqlNameNormalizer.EqualsName(nextTable, targetTable))
+                if (current.Visited.Contains(nextTable) && !SqlNameNormalizer.EqualsName(nextTable, targetTable))
                 {
                     continue;
                 }
@@ -274,39 +526,327 @@ public sealed class SqlQueryGeneratorEngine
                         AutoInferred = true
                     };
 
+                if (IsJoinDisabled(oriented, disabledAutoJoinKeys) || IsBadFkToFkHop(schema, oriented, targetTable))
+                {
+                    continue;
+                }
+
                 var nextPath = current.Path.Concat(new[] { oriented }).ToList();
                 if (SqlNameNormalizer.EqualsName(nextTable, targetTable))
                 {
-                    return nextPath;
+                    results.Add(nextPath);
+                    continue;
                 }
 
-                queue.Enqueue((nextTable, nextPath));
+                var visited = new HashSet<string>(current.Visited, StringComparer.OrdinalIgnoreCase) { nextTable };
+                queue.Enqueue((nextTable, nextPath, visited));
             }
         }
 
-        return new List<JoinDefinition>();
+        return results;
     }
 
-    private static double RelationshipConfidence(DatabaseSchema schema, JoinDefinition join)
+    private static bool IsBadFkToFkHop(DatabaseSchema schema, JoinDefinition join, string finalTargetTable)
+    {
+        var fromCol = schema.FindColumn(join.FromTable, join.FromColumn);
+        var toCol = schema.FindColumn(join.ToTable, join.ToColumn);
+        var fromName = SqlNameNormalizer.Normalize(join.FromColumn);
+        var toName = SqlNameNormalizer.Normalize(join.ToColumn);
+        var bothFkLike = IsForeignKeyLike(fromName) && IsForeignKeyLike(toName);
+        if (!bothFkLike)
+        {
+            return false;
+        }
+
+        var touchesFinalTarget = SqlNameNormalizer.EqualsName(join.FromTable, finalTargetTable) || SqlNameNormalizer.EqualsName(join.ToTable, finalTargetTable);
+        if (touchesFinalTarget)
+        {
+            return false;
+        }
+
+        return fromCol?.IsPrimaryKey != true && toCol?.IsPrimaryKey != true;
+    }
+
+    private static double ScoreJoinPath(DatabaseSchema schema, IReadOnlyList<JoinDefinition> path, string startTable, string targetTable)
+    {
+        var score = path.Sum(j => RelationshipScore(schema, j));
+
+        // A shorter path is usually easier to understand and cheaper.
+        score -= Math.Max(0, path.Count - 1) * 0.45;
+
+        if (path.Count == 2)
+        {
+            var bridge = path[0].ToTable;
+            if (SqlNameNormalizer.EqualsName(bridge, path[1].FromTable))
+            {
+                score += JunctionBridgeScore(schema, startTable, bridge, targetTable);
+            }
+        }
+
+        // Very long semantic detours are almost always wrong in this UI. The user can add
+        // them manually if needed.
+        score -= Math.Max(0, path.Count - 2) * 2.00;
+        return score;
+    }
+
+    private static double RelationshipScore(DatabaseSchema schema, JoinDefinition join)
+    {
+        var relationship = FindRelationship(schema, join);
+        var score = relationship?.Confidence ?? 0.45;
+
+        if (relationship is not null)
+        {
+            score += relationship.Source switch
+            {
+                RelationshipSource.DeclaredForeignKey => 0.35,
+                RelationshipSource.TableNameColumnPattern => 0.18,
+                RelationshipSource.CompositeTablePattern => 0.08,
+                RelationshipSource.SameColumnPrimaryKey => 0.02,
+                RelationshipSource.SameColumnName => -0.55,
+                RelationshipSource.CommentSimilarity => -0.12,
+                _ => 0.0
+            };
+        }
+
+        var fromCol = schema.FindColumn(join.FromTable, join.FromColumn);
+        var toCol = schema.FindColumn(join.ToTable, join.ToColumn);
+        var fromName = SqlNameNormalizer.Normalize(join.FromColumn);
+        var toName = SqlNameNormalizer.Normalize(join.ToColumn);
+
+        // Bad smell: local generic ID matched to a non-PK business/code column.
+        // Example observed: pnj_jobs_items_focus.id = items.base_item_code.
+        if (IsGenericIdentifier(fromName) && toCol?.IsPrimaryKey != true && !IsGenericIdentifier(toName))
+        {
+            score -= 0.90;
+        }
+
+        if (IsGenericIdentifier(toName) && fromCol?.IsPrimaryKey != true && !IsGenericIdentifier(fromName))
+        {
+            score -= 0.65;
+        }
+
+        if (IsForeignKeyLike(fromName) && IsForeignKeyLike(toName) && fromCol?.IsPrimaryKey != true && toCol?.IsPrimaryKey != true)
+        {
+            score -= 0.80;
+        }
+
+        if ((fromCol?.IsPrimaryKey == true && IsForeignKeyLike(toName)) || (toCol?.IsPrimaryKey == true && IsForeignKeyLike(fromName)))
+        {
+            score += 0.15;
+        }
+
+        if (schema.IsColumnIndexed(join.FromTable, join.FromColumn))
+        {
+            score += IsForeignKeyLike(fromName) ? 0.08 : 0.03;
+        }
+
+        if (schema.IsColumnUniqueIndexed(join.ToTable, join.ToColumn) || toCol?.IsPrimaryKey == true)
+        {
+            score += 0.09;
+        }
+        else if (schema.IsColumnIndexed(join.ToTable, join.ToColumn))
+        {
+            score += 0.04;
+        }
+
+        return score;
+    }
+
+    private static InferredRelationship? FindRelationship(DatabaseSchema schema, JoinDefinition join)
     {
         return schema.Relationships.FirstOrDefault(r =>
             SqlNameNormalizer.EqualsName(r.FromTable, join.FromTable)
             && SqlNameNormalizer.EqualsName(r.FromColumn, join.FromColumn)
             && SqlNameNormalizer.EqualsName(r.ToTable, join.ToTable)
-            && SqlNameNormalizer.EqualsName(r.ToColumn, join.ToColumn))?.Confidence
+            && SqlNameNormalizer.EqualsName(r.ToColumn, join.ToColumn))
             ?? schema.Relationships.FirstOrDefault(r =>
                 SqlNameNormalizer.EqualsName(r.FromTable, join.ToTable)
                 && SqlNameNormalizer.EqualsName(r.FromColumn, join.ToColumn)
                 && SqlNameNormalizer.EqualsName(r.ToTable, join.FromTable)
-                && SqlNameNormalizer.EqualsName(r.ToColumn, join.FromColumn))?.Confidence
-            ?? 0.50;
+                && SqlNameNormalizer.EqualsName(r.ToColumn, join.FromColumn));
+    }
+
+    private static double RelationshipConfidence(DatabaseSchema schema, JoinDefinition join)
+    {
+        return FindRelationship(schema, join)?.Confidence ?? 0.50;
+    }
+
+    private static double JunctionBridgeScore(DatabaseSchema schema, string startTable, string bridgeTable, string targetTable)
+    {
+        var bridge = schema.FindTable(bridgeTable);
+        if (bridge is null)
+        {
+            return 0.0;
+        }
+
+        var startStem = TableStem(startTable);
+        var targetStem = TableStem(targetTable);
+        var bridgeNorm = SqlNameNormalizer.Normalize(bridgeTable);
+        var bridgeSingular = Singularize(bridgeNorm);
+        var tokens = bridgeSingular.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToArray();
+
+        var score = 0.0;
+        var exactA = $"{startStem}_{targetStem}";
+        var exactB = $"{targetStem}_{startStem}";
+        if (bridgeSingular.Equals(exactA, StringComparison.OrdinalIgnoreCase) || bridgeSingular.Equals(exactB, StringComparison.OrdinalIgnoreCase))
+        {
+            score += 1.25;
+        }
+        else
+        {
+            var containsStart = tokens.Any(t => SameNameRelaxed(t, startStem));
+            var containsTarget = tokens.Any(t => SameNameRelaxed(t, targetStem));
+            if (containsStart && containsTarget)
+            {
+                score += 0.55;
+                var extraTokens = tokens.Count(t => !SameNameRelaxed(t, startStem) && !SameNameRelaxed(t, targetStem));
+                score -= Math.Min(0.60, extraTokens * 0.12);
+            }
+        }
+
+        if (bridge.Columns.Any(c => IsColumnForTable(c.Name, startStem)))
+        {
+            score += 0.45;
+        }
+
+        if (bridge.Columns.Any(c => IsColumnForTable(c.Name, targetStem)))
+        {
+            score += 0.45;
+        }
+
+        if (bridge.Columns.Count <= 4)
+        {
+            score += 0.15;
+        }
+
+        var suspiciousTokens = new[] { "focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests" };
+        if (tokens.Any(t => suspiciousTokens.Contains(t, StringComparer.OrdinalIgnoreCase)))
+        {
+            score -= 0.95;
+        }
+
+        return score;
+    }
+
+    private static bool IsColumnForTable(string columnName, string tableStem)
+    {
+        var normalized = Singularize(SqlNameNormalizer.Normalize(columnName));
+        return normalized == $"{tableStem}_id"
+            || normalized == $"{tableStem}_iden"
+            || normalized == $"{tableStem}_ident"
+            || normalized == $"{tableStem}_code"
+            || normalized == $"id_{tableStem}";
+    }
+
+    private static bool IsForeignKeyLike(string normalizedColumnName)
+    {
+        return normalizedColumnName.EndsWith("_ID", StringComparison.OrdinalIgnoreCase)
+            || normalizedColumnName.EndsWith("_IDEN", StringComparison.OrdinalIgnoreCase)
+            || normalizedColumnName.EndsWith("_IDENT", StringComparison.OrdinalIgnoreCase)
+            || normalizedColumnName.EndsWith("_CODE", StringComparison.OrdinalIgnoreCase)
+            || normalizedColumnName.StartsWith("ID_", StringComparison.OrdinalIgnoreCase)
+            || normalizedColumnName.StartsWith("FK_", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsGenericIdentifier(string normalizedColumnName)
+    {
+        return normalizedColumnName is "ID" or "IDEN" or "IDENT";
+    }
+
+    private static string TableStem(string tableName)
+    {
+        var normalized = SqlNameNormalizer.Normalize(tableName).Trim('_');
+        if (normalized.Length == 0)
+        {
+            return normalized;
+        }
+
+        var tokens = normalized.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokens.Length == 1)
+        {
+            return Singularize(tokens[0]);
+        }
+
+        return Singularize(tokens[^1]);
+    }
+
+    private static IEnumerable<string> TableNameStems(string tableName)
+    {
+        var normalized = SqlNameNormalizer.Normalize(tableName).Trim('_');
+        if (normalized.Length == 0)
+        {
+            yield break;
+        }
+
+        yield return Singularize(normalized);
+        var tokens = normalized.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var token in tokens)
+        {
+            yield return Singularize(token);
+        }
+    }
+
+    private static string Singularize(string normalizedName)
+    {
+        var parts = normalizedName.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(SingularizeToken);
+        return string.Join('_', parts);
+    }
+
+    private static string SingularizeToken(string token)
+    {
+        if (token.Length <= 3)
+        {
+            return token;
+        }
+
+        if (token.EndsWith("IES", StringComparison.OrdinalIgnoreCase) && token.Length > 4)
+        {
+            return token[..^3] + "Y";
+        }
+
+        if ((token.EndsWith("S", StringComparison.OrdinalIgnoreCase) || token.EndsWith("X", StringComparison.OrdinalIgnoreCase)) && token.Length > 3)
+        {
+            return token[..^1];
+        }
+
+        return token;
+    }
+
+    private static bool SameNameRelaxed(string left, string right)
+    {
+        var a = Singularize(SqlNameNormalizer.Normalize(left));
+        var b = Singularize(SqlNameNormalizer.Normalize(right));
+        return a.Equals(b, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string JoinKey(string fromTable, string fromColumn, string toTable, string toColumn)
     {
-        var a = $"{fromTable}.{fromColumn}";
-        var b = $"{toTable}.{toColumn}";
-        return string.Compare(a, b, StringComparison.OrdinalIgnoreCase) <= 0 ? $"{a}<->{b}" : $"{b}<->{a}";
+        return string.Join("|",
+            NormalizeKeyPart(fromTable),
+            NormalizeKeyPart(fromColumn),
+            NormalizeKeyPart(toTable),
+            NormalizeKeyPart(toColumn));
+    }
+
+    private static string NormalizeKeyPart(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : value.Trim().ToUpperInvariant();
+    }
+
+    private static bool IsRelationshipDisabled(InferredRelationship relationship, IEnumerable<string> disabledAutoJoinKeys)
+    {
+        var disabled = disabledAutoJoinKeys as ISet<string> ?? disabledAutoJoinKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return disabled.Contains(relationship.Key) || disabled.Contains(relationship.ReverseKey);
+    }
+
+    private static bool IsJoinDisabled(JoinDefinition join, IEnumerable<string> disabledAutoJoinKeys)
+    {
+        var disabled = disabledAutoJoinKeys as ISet<string> ?? disabledAutoJoinKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var key = RelationshipKey.For(join.FromTable, join.FromColumn, join.ToTable, join.ToColumn);
+        var reverseKey = RelationshipKey.ReverseFor(join.FromTable, join.FromColumn, join.ToTable, join.ToColumn);
+        return disabled.Contains(key) || disabled.Contains(reverseKey);
     }
 
     private static List<string> BuildSelectItems(QueryDefinition query, SqlGeneratorOptions options, List<string> warnings)
