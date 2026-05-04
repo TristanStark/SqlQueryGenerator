@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.8.34330.188
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlQueryGenerator.Core", "src\SqlQueryGenerator.Core\SqlQueryGenerator.Core.csproj", "{9F41E2BC-3B0D-4272-9F95-19B78D90D59A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlQueryGenerator.App", "src\SqlQueryGenerator.App\SqlQueryGenerator.App.csproj", "{F63A97BF-A218-49C1-AFBF-F90D27AB19C2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlQueryGenerator.Tests", "tests\SqlQueryGenerator.Tests\SqlQueryGenerator.Tests.csproj", "{8D621214-63B1-490F-A729-A8E836D3BB83}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9F41E2BC-3B0D-4272-9F95-19B78D90D59A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9F41E2BC-3B0D-4272-9F95-19B78D90D59A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9F41E2BC-3B0D-4272-9F95-19B78D90D59A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9F41E2BC-3B0D-4272-9F95-19B78D90D59A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F63A97BF-A218-49C1-AFBF-F90D27AB19C2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F63A97BF-A218-49C1-AFBF-F90D27AB19C2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F63A97BF-A218-49C1-AFBF-F90D27AB19C2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F63A97BF-A218-49C1-AFBF-F90D27AB19C2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8D621214-63B1-490F-A729-A8E836D3BB83}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8D621214-63B1-490F-A729-A8E836D3BB83}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8D621214-63B1-490F-A729-A8E836D3BB83}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8D621214-63B1-490F-A729-A8E836D3BB83}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
