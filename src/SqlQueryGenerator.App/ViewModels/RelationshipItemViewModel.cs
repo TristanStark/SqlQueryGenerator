@@ -22,5 +22,7 @@ public sealed class RelationshipItemViewModel
     public double Confidence { get; }
     public string Source { get; }
     public string Reason { get; }
-    public string Display => $"{FromTable}.{FromColumn} → {ToTable}.{ToColumn}";
+    public string FromDisplay => $"{FromTable}.{FromColumn}";
+    public string ToDisplay => $"{ToTable}.{ToColumn}";
+    public string Display => $"{FromDisplay} → {ToDisplay}";
 }

@@ -165,4 +165,33 @@ CREATE TABLE jobs (
         Assert.DoesNotContain("pnj.id = jobs.id", result.Sql);
     }
 
+
+    [Fact]
+    public void Generate_AutoJoin_UsesJunctionTableBetweenBaseAndSelectedTable()
+    {
+        const string sql = @"
+CREATE TABLE pnj (
+    id INTEGER,
+    nom TEXT
+);
+CREATE TABLE items (
+    id INTEGER,
+    name TEXT
+);
+CREATE TABLE pnj_item (
+    pnj_id INTEGER,
+    item_id INTEGER
+);
+";
+        var schema = new SqlSchemaParser().Parse(sql);
+        var query = new QueryDefinition { BaseTable = "pnj" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "items", Column = "name" });
+
+        var result = new SqlQueryGeneratorEngine().Generate(query, schema);
+
+        Assert.Contains("INNER JOIN pnj_item ON pnj.id = pnj_item.pnj_id", result.Sql);
+        Assert.Contains("INNER JOIN items ON pnj_item.item_id = items.id", result.Sql);
+        Assert.DoesNotContain("pnj.id = items.id", result.Sql);
+    }
+
 }

@@ -125,4 +125,29 @@ CREATE TABLE pnj_jobs (
         Assert.True(pnjJobs.Confidence > jobs.Confidence);
     }
 
+
+    [Fact]
+    public void Infer_JunctionTable_FindsBothSides()
+    {
+        const string sql = @"
+CREATE TABLE pnj (
+    id INTEGER,
+    nom TEXT
+);
+CREATE TABLE items (
+    id INTEGER,
+    name TEXT
+);
+CREATE TABLE pnj_item (
+    pnj_id INTEGER,
+    item_id INTEGER
+);
+";
+        var schema = new SqlSchemaParser().Parse(sql);
+
+        Assert.Contains(schema.Relationships, r => r.FromTable == "pnj_item" && r.FromColumn == "pnj_id" && r.ToTable == "pnj" && r.ToColumn == "id");
+        Assert.Contains(schema.Relationships, r => r.FromTable == "pnj_item" && r.FromColumn == "item_id" && r.ToTable == "items" && r.ToColumn == "id");
+        Assert.DoesNotContain(schema.Relationships, r => r.FromTable == "pnj" && r.FromColumn == "id" && r.ToTable == "items" && r.ToColumn == "id");
+    }
+
 }

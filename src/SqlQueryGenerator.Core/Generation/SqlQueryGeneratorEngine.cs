@@ -153,24 +153,32 @@ public sealed class SqlQueryGeneratorEngine
     {
         var joins = new List<JoinDefinition>();
         var connected = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { baseTable };
+        var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddJoin(JoinDefinition join, bool autoInferred)
+        {
+            var key = JoinKey(join.FromTable, join.FromColumn, join.ToTable, join.ToColumn);
+            if (!emitted.Add(key))
+            {
+                return;
+            }
+
+            joins.Add(join with { AutoInferred = autoInferred });
+            connected.Add(join.FromTable);
+            connected.Add(join.ToTable);
+        }
 
         foreach (var explicitJoin in query.Joins)
         {
-            joins.Add(explicitJoin with { AutoInferred = false });
-            connected.Add(explicitJoin.FromTable);
-            connected.Add(explicitJoin.ToTable);
+            AddJoin(explicitJoin, autoInferred: false);
         }
 
         var remaining = usedTables.Where(t => !connected.Contains(t)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var safety = 0;
         while (remaining.Count > 0 && safety++ < 256)
         {
-            var candidates = schema.Relationships
-                .Where(r => (connected.Contains(r.FromTable) && remaining.Contains(r.ToTable)) || (connected.Contains(r.ToTable) && remaining.Contains(r.FromTable)))
-                .OrderByDescending(r => r.Confidence)
-                .ToArray();
-
-            if (candidates.Length == 0)
+            var bestPath = FindBestJoinPath(schema, connected, remaining);
+            if (bestPath.Count == 0)
             {
                 foreach (var table in remaining.OrderBy(t => t, StringComparer.OrdinalIgnoreCase))
                 {
@@ -179,38 +187,126 @@ public sealed class SqlQueryGeneratorEngine
                 break;
             }
 
-            var best = candidates[0];
-            if (connected.Contains(best.FromTable) && remaining.Contains(best.ToTable))
+            foreach (var join in bestPath)
             {
-                joins.Add(new JoinDefinition
-                {
-                    FromTable = best.FromTable,
-                    FromColumn = best.FromColumn,
-                    ToTable = best.ToTable,
-                    ToColumn = best.ToColumn,
-                    JoinType = JoinType.Inner,
-                    AutoInferred = true
-                });
-                connected.Add(best.ToTable);
-                remaining.Remove(best.ToTable);
+                AddJoin(join, autoInferred: true);
             }
-            else
-            {
-                joins.Add(new JoinDefinition
-                {
-                    FromTable = best.ToTable,
-                    FromColumn = best.ToColumn,
-                    ToTable = best.FromTable,
-                    ToColumn = best.FromColumn,
-                    JoinType = JoinType.Inner,
-                    AutoInferred = true
-                });
-                connected.Add(best.FromTable);
-                remaining.Remove(best.FromTable);
-            }
+
+            remaining = usedTables.Where(t => !connected.Contains(t)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
         return joins;
+    }
+
+    private static List<JoinDefinition> FindBestJoinPath(DatabaseSchema schema, HashSet<string> connected, HashSet<string> remaining)
+    {
+        var best = new List<JoinDefinition>();
+        var bestScore = double.NegativeInfinity;
+
+        foreach (var start in connected)
+        {
+            foreach (var target in remaining)
+            {
+                var path = FindPath(schema, start, target, maxDepth: 4);
+                if (path.Count == 0)
+                {
+                    continue;
+                }
+
+                // Prefer high-confidence, short paths. This allows automatic many-to-many joins:
+                // PNJ -> PNJ_ITEM -> ITEMS when PNJ_ITEM is not explicitly selected.
+                var score = path.Sum(j => RelationshipConfidence(schema, j)) - ((path.Count - 1) * 0.20);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = path;
+                }
+            }
+        }
+
+        return best;
+    }
+
+    private static List<JoinDefinition> FindPath(DatabaseSchema schema, string startTable, string targetTable, int maxDepth)
+    {
+        var queue = new Queue<(string Table, List<JoinDefinition> Path)>();
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { startTable };
+        queue.Enqueue((startTable, new List<JoinDefinition>()));
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (current.Path.Count >= maxDepth)
+            {
+                continue;
+            }
+
+            var edges = schema.Relationships
+                .Where(r => SqlNameNormalizer.EqualsName(r.FromTable, current.Table) || SqlNameNormalizer.EqualsName(r.ToTable, current.Table))
+                .OrderByDescending(r => r.Confidence)
+                .ToArray();
+
+            foreach (var edge in edges)
+            {
+                var nextTable = SqlNameNormalizer.EqualsName(edge.FromTable, current.Table) ? edge.ToTable : edge.FromTable;
+                if (!visited.Add(nextTable) && !SqlNameNormalizer.EqualsName(nextTable, targetTable))
+                {
+                    continue;
+                }
+
+                var oriented = SqlNameNormalizer.EqualsName(edge.FromTable, current.Table)
+                    ? new JoinDefinition
+                    {
+                        FromTable = edge.FromTable,
+                        FromColumn = edge.FromColumn,
+                        ToTable = edge.ToTable,
+                        ToColumn = edge.ToColumn,
+                        JoinType = JoinType.Inner,
+                        AutoInferred = true
+                    }
+                    : new JoinDefinition
+                    {
+                        FromTable = edge.ToTable,
+                        FromColumn = edge.ToColumn,
+                        ToTable = edge.FromTable,
+                        ToColumn = edge.FromColumn,
+                        JoinType = JoinType.Inner,
+                        AutoInferred = true
+                    };
+
+                var nextPath = current.Path.Concat(new[] { oriented }).ToList();
+                if (SqlNameNormalizer.EqualsName(nextTable, targetTable))
+                {
+                    return nextPath;
+                }
+
+                queue.Enqueue((nextTable, nextPath));
+            }
+        }
+
+        return new List<JoinDefinition>();
+    }
+
+    private static double RelationshipConfidence(DatabaseSchema schema, JoinDefinition join)
+    {
+        return schema.Relationships.FirstOrDefault(r =>
+            SqlNameNormalizer.EqualsName(r.FromTable, join.FromTable)
+            && SqlNameNormalizer.EqualsName(r.FromColumn, join.FromColumn)
+            && SqlNameNormalizer.EqualsName(r.ToTable, join.ToTable)
+            && SqlNameNormalizer.EqualsName(r.ToColumn, join.ToColumn))?.Confidence
+            ?? schema.Relationships.FirstOrDefault(r =>
+                SqlNameNormalizer.EqualsName(r.FromTable, join.ToTable)
+                && SqlNameNormalizer.EqualsName(r.FromColumn, join.ToColumn)
+                && SqlNameNormalizer.EqualsName(r.ToTable, join.FromTable)
+                && SqlNameNormalizer.EqualsName(r.ToColumn, join.FromColumn))?.Confidence
+            ?? 0.50;
+    }
+
+    private static string JoinKey(string fromTable, string fromColumn, string toTable, string toColumn)
+    {
+        var a = $"{fromTable}.{fromColumn}";
+        var b = $"{toTable}.{toColumn}";
+        return string.Compare(a, b, StringComparison.OrdinalIgnoreCase) <= 0 ? $"{a}<->{b}" : $"{b}<->{a}";
     }
 
     private static List<string> BuildSelectItems(QueryDefinition query, SqlGeneratorOptions options, List<string> warnings)

@@ -5,6 +5,7 @@ using System.IO;
 using System.Windows;
 using SqlQueryGenerator.App.Infrastructure;
 using SqlQueryGenerator.Core.Generation;
+using SqlQueryGenerator.Core.Heuristics;
 using SqlQueryGenerator.Core.Models;
 using SqlQueryGenerator.Core.Parsing;
 using SqlQueryGenerator.Core.Query;
@@ -17,11 +18,13 @@ public sealed class MainViewModel : ObservableObject
     private readonly SqlSchemaParser _parser = new();
     private readonly SqlQueryGeneratorEngine _generator = new();
     private readonly QueryValidator _validator = new();
+    private readonly QueryPurposeDescriber _purposeDescriber = new();
     private DatabaseSchema _schema = new();
     private string _loadedFile = string.Empty;
     private string _status = "Charge un schéma SQL/TXT pour commencer.";
     private string _generatedSql = "-- La requête générée apparaîtra ici.";
     private string _warnings = string.Empty;
+    private string _queryPurpose = "Charge un schéma et construis une requête pour obtenir une explication en français.";
     private string _baseTable = string.Empty;
     private SqlDialect _dialect = SqlDialect.SQLite;
     private bool _quoteIdentifiers;
@@ -66,6 +69,7 @@ public sealed class MainViewModel : ObservableObject
     public ObservableCollection<TableItemViewModel> Tables { get; } = new();
     public ObservableCollection<ColumnItemViewModel> AllColumns { get; } = new();
     public ObservableCollection<RelationshipItemViewModel> Relationships { get; } = new();
+    public ObservableCollection<RelationshipGroupViewModel> RelationshipGroups { get; } = new();
     public ObservableCollection<SelectColumnRowViewModel> SelectedColumns { get; } = new();
     public ObservableCollection<FilterRowViewModel> Filters { get; } = new();
     public ObservableCollection<GroupByRowViewModel> GroupBy { get; } = new();
@@ -104,6 +108,7 @@ public sealed class MainViewModel : ObservableObject
     public string Status { get => _status; set => SetProperty(ref _status, value); }
     public string GeneratedSql { get => _generatedSql; set => SetProperty(ref _generatedSql, value); }
     public string Warnings { get => _warnings; set => SetProperty(ref _warnings, value); }
+    public string QueryPurpose { get => _queryPurpose; set => SetProperty(ref _queryPurpose, value); }
     public string BaseTable
     {
         get => _baseTable;
@@ -345,6 +350,7 @@ public sealed class MainViewModel : ObservableObject
         Tables.Clear();
         AllColumns.Clear();
         Relationships.Clear();
+        RelationshipGroups.Clear();
         TableNames.Clear();
         var foreignKeySummaries = BuildForeignKeySummaries();
         foreach (var table in _schema.Tables.OrderBy(t => t.FullName, StringComparer.OrdinalIgnoreCase))
@@ -359,6 +365,17 @@ public sealed class MainViewModel : ObservableObject
         {
             Relationships.Add(new RelationshipItemViewModel(rel));
         }
+
+        foreach (var group in Relationships
+                     .GroupBy(r => r.FromTable, StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            RelationshipGroups.Add(new RelationshipGroupViewModel($"{group.Key} ({group.Count()})", group.OrderByDescending(r => r.Confidence))
+            {
+                IsExpanded = false
+            });
+        }
+
         ApplyColumnTreeFilter();
     }
 
@@ -442,12 +459,14 @@ public sealed class MainViewModel : ObservableObject
             });
 
             GeneratedSql = result.Sql;
+            QueryPurpose = _purposeDescriber.Describe(query, _schema);
             var messages = validationErrors.Concat(result.Warnings).Concat(_schema.Warnings).Distinct().ToArray();
             Warnings = messages.Length == 0 ? "Aucun avertissement." : string.Join(Environment.NewLine, messages);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
             GeneratedSql = "-- Impossible de générer la requête. Corrige les champs signalés.";
+            QueryPurpose = "Impossible d'expliquer le but tant que la requête contient des erreurs.";
             Warnings = ex.Message;
         }
     }
@@ -558,6 +577,7 @@ public sealed class MainViewModel : ObservableObject
         }
 
         GeneratedSql = "-- Requête vidée.";
+        QueryPurpose = "Requête vidée.";
         Warnings = "Aucun avertissement.";
     }
 

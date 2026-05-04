@@ -84,6 +84,12 @@ public partial class MainWindow : Window
         }
     }
 
+
+    private void RelationshipsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        ViewModel.SelectedRelationship = e.NewValue as RelationshipItemViewModel;
+    }
+
     private void AddColumnToSelectMenu_Click(object sender, RoutedEventArgs e) => AddColumnFromMenu(sender, "select");
     private void AddColumnToFilterMenu_Click(object sender, RoutedEventArgs e) => AddColumnFromMenu(sender, "filter");
     private void AddColumnToGroupMenu_Click(object sender, RoutedEventArgs e) => AddColumnFromMenu(sender, "group");
