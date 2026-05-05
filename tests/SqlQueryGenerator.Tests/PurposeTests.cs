@@ -15,7 +15,7 @@ CREATE TABLE pnj (id INTEGER, genre TEXT);
 CREATE TABLE items (id INTEGER, name TEXT);
 ";
         DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
-        QueryDefinition query = new QueryDefinition { BaseTable = "pnj" };
+        QueryDefinition query = new() { BaseTable = "pnj" };
         query.SelectedColumns.Add(new ColumnReference { Table = "items", Column = "name" });
         query.GroupBy.Add(new ColumnReference { Table = "items", Column = "name" });
         query.Aggregates.Add(new AggregateSelection

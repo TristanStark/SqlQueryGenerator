@@ -10,7 +10,7 @@ public sealed class QueryPerformanceAnalyzer
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(schema);
 
-        QueryPerformanceReport report = new QueryPerformanceReport();
+        QueryPerformanceReport report = new();
         HashSet<string> usedTables = CollectUsedTables(query);
         if (!string.IsNullOrWhiteSpace(query.BaseTable))
         {
@@ -48,6 +48,11 @@ public sealed class QueryPerformanceAnalyzer
         {
             AnalyzeJoinSide(report, schema, join.FromTable, join.FromColumn, "gauche");
             AnalyzeJoinSide(report, schema, join.ToTable, join.ToColumn, "droite");
+            foreach (JoinColumnPair? pair in join.AdditionalColumnPairs.Where(p => p.Enabled))
+            {
+                AnalyzeJoinSide(report, schema, join.FromTable, pair.FromColumn, "gauche composite");
+                AnalyzeJoinSide(report, schema, join.ToTable, pair.ToColumn, "droite composite");
+            }
         }
 
         foreach (ColumnReference group in query.GroupBy)
@@ -122,7 +127,7 @@ public sealed class QueryPerformanceAnalyzer
 
     private static HashSet<string> CollectUsedTables(QueryDefinition query)
     {
-        HashSet<string> result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> result = new(StringComparer.OrdinalIgnoreCase);
         foreach (ColumnReference c in query.SelectedColumns) result.Add(c.Table);
         foreach (FilterCondition? f in query.Filters.Where(f => f.Column is not null)) result.Add(f.Column!.Table);
         foreach (ColumnReference g in query.GroupBy) result.Add(g.Table);

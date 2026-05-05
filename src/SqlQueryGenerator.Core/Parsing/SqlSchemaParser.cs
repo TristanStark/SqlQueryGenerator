@@ -27,7 +27,7 @@ public sealed partial class SqlSchemaParser
             throw new InvalidOperationException($"Le fichier de schéma dépasse la taille autorisée ({options.MaxInputCharacters:N0} caractères). Ajuste SchemaParseOptions.MaxInputCharacters si nécessaire.");
         }
 
-        DatabaseSchema schema = new DatabaseSchema();
+        DatabaseSchema schema = new();
         string text = NormalizeLineEndings(sqlText);
         IReadOnlyDictionary<string, string> commentsByColumn = ExtractCommentOnColumnStatements(text);
         IReadOnlyDictionary<string, string> commentsByTable = ExtractCommentOnTableStatements(text);
@@ -107,7 +107,7 @@ public sealed partial class SqlSchemaParser
         }
 
         string viewSql = statement[asIndex..].Trim();
-        TableDefinition view = new TableDefinition(viewName, schemaName, isView: true, viewSql: viewSql);
+        TableDefinition view = new(viewName, schemaName, isView: true, viewSql: viewSql);
         if (commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(view.FullName), out string? comment) || commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(view.Name), out comment))
         {
             view.Comment = comment;
@@ -289,12 +289,11 @@ public sealed partial class SqlSchemaParser
             return;
         }
 
-        string[] columns = SplitTopLevelComma(statement[(open + 1)..close])
+        string[] columns = [.. SplitTopLevelComma(statement[(open + 1)..close])
             .Select(TryExtractIndexedColumnName)
             .Where(c => !string.IsNullOrWhiteSpace(c))
             .Cast<string>()
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
 
         if (columns.Length == 0)
         {
@@ -339,7 +338,7 @@ public sealed partial class SqlSchemaParser
     {
         string rawTableName = createMatch.Groups["name"].Value.Trim();
         (string? schemaName, string? tableName) = SplitQualifiedName(rawTableName);
-        TableDefinition table = new TableDefinition(tableName, schemaName);
+        TableDefinition table = new(tableName, schemaName);
         int bodyStart = statement.IndexOf('(', StringComparison.Ordinal);
         int bodyEnd = FindMatchingParenthesis(statement, bodyStart);
         if (bodyStart < 0 || bodyEnd <= bodyStart)
@@ -350,7 +349,7 @@ public sealed partial class SqlSchemaParser
 
         string body = statement[(bodyStart + 1)..bodyEnd];
         IReadOnlyList<string> parts = SplitTopLevelComma(body);
-        HashSet<string> tableLevelPk = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> tableLevelPk = new(StringComparer.OrdinalIgnoreCase);
         List<ColumnDefinition> inlineColumns = [];
 
         foreach (string part in parts)
@@ -454,9 +453,9 @@ public sealed partial class SqlSchemaParser
         Match fkMatch = ForeignKeyRegex().Match(normalized);
         if (fkMatch.Success)
         {
-            string[] sourceCols = SplitTopLevelComma(fkMatch.Groups["fromCols"].Value).Select(CleanIdentifier).ToArray();
+            string[] sourceCols = [.. SplitTopLevelComma(fkMatch.Groups["fromCols"].Value).Select(CleanIdentifier)];
             string targetTable = CleanQualifiedIdentifier(fkMatch.Groups["toTable"].Value);
-            string[] targetCols = SplitTopLevelComma(fkMatch.Groups["toCols"].Value).Select(CleanIdentifier).ToArray();
+            string[] targetCols = [.. SplitTopLevelComma(fkMatch.Groups["toCols"].Value).Select(CleanIdentifier)];
             int pairCount = Math.Min(sourceCols.Length, targetCols.Length);
             for (int i = 0; i < pairCount; i++)
             {
@@ -474,12 +473,12 @@ public sealed partial class SqlSchemaParser
 
     private static string ExtractDataType(IReadOnlyList<string> tokens)
     {
-        HashSet<string> stopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        HashSet<string> stopWords = new(StringComparer.OrdinalIgnoreCase)
         {
             "PRIMARY", "NOT", "NULL", "DEFAULT", "CONSTRAINT", "REFERENCES", "CHECK", "UNIQUE", "COMMENT", "COLLATE", "GENERATED", "IDENTITY"
         };
 
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new();
         for (int i = 1; i < tokens.Count; i++)
         {
             if (stopWords.Contains(tokens[i]))
@@ -500,7 +499,7 @@ public sealed partial class SqlSchemaParser
 
     private static IReadOnlyDictionary<string, string> ExtractCommentOnColumnStatements(string text)
     {
-        Dictionary<string, string> result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> result = new(StringComparer.OrdinalIgnoreCase);
         foreach (Match match in CommentOnColumnRegex().Matches(text))
         {
             string table = CleanQualifiedIdentifier(match.Groups["table"].Value);
@@ -514,7 +513,7 @@ public sealed partial class SqlSchemaParser
 
     private static IReadOnlyDictionary<string, string> ExtractCommentOnTableStatements(string text)
     {
-        Dictionary<string, string> result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> result = new(StringComparer.OrdinalIgnoreCase);
         foreach (Match match in CommentOnTableRegex().Matches(text))
         {
             string table = CleanQualifiedIdentifier(match.Groups["table"].Value);
@@ -528,7 +527,7 @@ public sealed partial class SqlSchemaParser
     public static IReadOnlyList<string> SplitStatements(string text)
     {
         List<string> statements = [];
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new();
         bool inSingle = false;
         bool inDouble = false;
         bool inLineComment = false;
@@ -618,7 +617,7 @@ public sealed partial class SqlSchemaParser
     public static IReadOnlyList<string> SplitTopLevelComma(string text)
     {
         List<string> result = [];
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new();
         int depth = 0;
         bool inSingle = false;
         bool inDouble = false;
@@ -778,7 +777,7 @@ public sealed partial class SqlSchemaParser
     private static IReadOnlyList<string> TokenizeDefinition(string definition)
     {
         List<string> tokens = [];
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new();
         int depth = 0;
         bool inSingle = false;
         bool inDouble = false;

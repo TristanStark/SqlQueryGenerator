@@ -6,6 +6,7 @@ namespace SqlQueryGenerator.App.ViewModels;
 public sealed class RelationshipItemViewModel : ObservableObject
 {
     private bool _isEnabled = true;
+    private bool _isExpanded;
 
     public RelationshipItemViewModel(InferredRelationship relationship)
     {
@@ -29,6 +30,14 @@ public sealed class RelationshipItemViewModel : ObservableObject
     public string Reason { get; }
     public string Key { get; }
     public string ReverseKey { get; }
+
+    // Required because the TreeView uses a generic TreeViewItem style that binds IsExpanded.
+    // Relationship rows are leaves, but this avoids WPF BindingExpression noise.
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => SetProperty(ref _isExpanded, value);
+    }
 
     public bool IsEnabled
     {

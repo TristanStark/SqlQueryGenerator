@@ -27,6 +27,22 @@ public sealed class QueryValidator
             errors.Add("Des jointures identiques sont présentes plusieurs fois.");
         }
 
+        foreach (JoinDefinition join in query.Joins)
+        {
+            foreach (JoinColumnPair? pair in join.AdditionalColumnPairs.Where(p => p.Enabled))
+            {
+                if (schema.FindColumn(join.FromTable, pair.FromColumn) is null)
+                {
+                    errors.Add($"Colonne de jointure inconnue: {join.FromTable}.{pair.FromColumn}");
+                }
+
+                if (schema.FindColumn(join.ToTable, pair.ToColumn) is null)
+                {
+                    errors.Add($"Colonne de jointure inconnue: {join.ToTable}.{pair.ToColumn}");
+                }
+            }
+        }
+
         foreach (FilterCondition? subqueryFilter in query.Filters.Where(f => f.ValueKind == FilterValueKind.Subquery))
         {
             if (subqueryFilter.Subquery is null)

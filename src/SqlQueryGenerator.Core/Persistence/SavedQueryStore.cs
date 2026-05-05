@@ -74,8 +74,8 @@ public sealed class SavedQueryStore
     public static string MakeSafeFileName(string name)
     {
         HashSet<char> invalid = Path.GetInvalidFileNameChars().ToHashSet();
-        char[] chars = name.Trim().Select(c => invalid.Contains(c) ? '_' : c).ToArray();
-        string cleaned = new string(chars);
+        char[] chars = [.. name.Trim().Select(c => invalid.Contains(c) ? '_' : c)];
+        string cleaned = new(chars);
         return string.IsNullOrWhiteSpace(cleaned) ? "query" : cleaned;
     }
 }

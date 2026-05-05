@@ -22,6 +22,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly QueryPurposeDescriber _purposeDescriber = new();
     private readonly QueryPerformanceAnalyzer _performanceAnalyzer = new();
     private readonly SavedQueryStore _savedQueryStore = new(Path.Combine(Environment.CurrentDirectory, "saved_queries"));
+    private readonly SchemaDocumentationImporter _documentationImporter = new();
     private DatabaseSchema _schema = new();
     private string _loadedFile = string.Empty;
     private string _status = "Charge un schéma SQL/TXT pour commencer.";
@@ -61,6 +62,8 @@ public sealed class MainViewModel : ObservableObject
         AddSelectedAggregateCommand = new RelayCommand(_ => AddSelectedColumnTo("aggregate"), _ => SelectedAvailableColumn is not null);
         AddJoinFromRelationshipCommand = new RelayCommand(_ => AddSelectedRelationshipAsJoin(), _ => SelectedRelationship is not null);
         AddManualJoinCommand = new RelayCommand(AddManualJoin);
+        AddJoinPairCommand = new RelayCommand(obj => AddJoinPair(obj as JoinRowViewModel));
+        RemoveJoinPairCommand = new RelayCommand(obj => RemoveJoinPair(obj as JoinColumnPairRowViewModel));
         AddEmptyCustomColumnCommand = new RelayCommand(() => CustomColumns.Add(new CustomColumnRowViewModel { Alias = BuildDefaultCustomAlias() }));
         AddAggregateFilterCommand = new RelayCommand(obj => AddAggregateToFilter(obj as AggregateRowViewModel));
         AddAggregateOrderByCommand = new RelayCommand(obj => AddAggregateToOrderBy(obj as AggregateRowViewModel));
@@ -123,6 +126,8 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand AddSelectedAggregateCommand { get; }
     public RelayCommand AddJoinFromRelationshipCommand { get; }
     public RelayCommand AddManualJoinCommand { get; }
+    public RelayCommand AddJoinPairCommand { get; }
+    public RelayCommand RemoveJoinPairCommand { get; }
     public RelayCommand AddEmptyCustomColumnCommand { get; }
     public RelayCommand AddAggregateFilterCommand { get; }
     public RelayCommand AddAggregateOrderByCommand { get; }
@@ -284,7 +289,7 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        FileInfo info = new FileInfo(filePath);
+        FileInfo info = new(filePath);
         if (info.Length > 20_000_000)
         {
             MessageBox.Show("Le fichier dépasse 20 Mo. Pour éviter de bloquer l'interface, réduis le schéma ou augmente la limite dans MainViewModel.", "Fichier trop volumineux", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -293,6 +298,30 @@ public sealed class MainViewModel : ObservableObject
 
         string text = File.ReadAllText(filePath);
         LoadSchemaFromText(text, filePath);
+    }
+
+    public void ImportDocumentationFromFile(string filePath)
+    {
+        if (_schema.Tables.Count == 0)
+        {
+            MessageBox.Show("Charge d'abord un schéma SQL avant d'importer la documentation.", "Documentation", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            SchemaDocumentationImportResult result = _documentationImporter.ApplyFromFile(_schema, filePath);
+            ReloadSchemaViewModels();
+            OnPropertyChanged(nameof(SchemaSummary));
+            Status = result.ToString();
+            Warnings = result.Warnings.Count == 0 ? "Documentation importée sans avertissement." : string.Join(Environment.NewLine, result.Warnings);
+            GenerateSql();
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException)
+        {
+            Status = "Erreur pendant l'import de documentation.";
+            Warnings = ex.Message;
+        }
     }
 
     public void LoadSchemaFromText(string text, string? sourceName = null)
@@ -527,7 +556,7 @@ public sealed class MainViewModel : ObservableObject
         }
         foreach (InferredRelationship? rel in _schema.Relationships.OrderByDescending(r => r.Confidence).Take(500))
         {
-            RelationshipItemViewModel vm = new RelationshipItemViewModel(rel);
+            RelationshipItemViewModel vm = new(rel);
             vm.PropertyChanged += Relationship_PropertyChanged;
             Relationships.Add(vm);
         }
@@ -644,6 +673,34 @@ public sealed class MainViewModel : ObservableObject
         GenerateSql();
     }
 
+    private void AddJoinPair(JoinRowViewModel? join)
+    {
+        if (join is null)
+        {
+            return;
+        }
+
+        join.AdditionalPairs.Add(new JoinColumnPairRowViewModel { Enabled = true });
+        GenerateSql();
+    }
+
+    private void RemoveJoinPair(JoinColumnPairRowViewModel? pair)
+    {
+        if (pair is null)
+        {
+            return;
+        }
+
+        foreach (JoinRowViewModel join in Joins)
+        {
+            if (join.AdditionalPairs.Remove(pair))
+            {
+                GenerateSql();
+                return;
+            }
+        }
+    }
+
     private void GenerateSql()
     {
         try
@@ -661,7 +718,7 @@ public sealed class MainViewModel : ObservableObject
             GeneratedSql = result.Sql;
             QueryPurpose = _purposeDescriber.Describe(query, _schema);
             PerformanceReport = _performanceAnalyzer.Analyze(query, _schema).ToString();
-            string[] messages = validationErrors.Concat(result.Warnings).Concat(_schema.Warnings).Distinct().ToArray();
+            string[] messages = [.. validationErrors.Concat(result.Warnings).Concat(_schema.Warnings).Distinct()];
             Warnings = messages.Length == 0 ? "Aucun avertissement." : string.Join(Environment.NewLine, messages);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
@@ -675,7 +732,7 @@ public sealed class MainViewModel : ObservableObject
 
     private QueryDefinition BuildQueryDefinition()
     {
-        QueryDefinition query = new QueryDefinition
+        QueryDefinition query = new()
         {
             Name = BlankToNull(QueryName),
             Description = BlankToNull(QueryDescription),
@@ -783,14 +840,27 @@ public sealed class MainViewModel : ObservableObject
                      && !string.IsNullOrWhiteSpace(j.ToTable)
                      && !string.IsNullOrWhiteSpace(j.ToColumn)))
         {
-            query.Joins.Add(new JoinDefinition
+            JoinDefinition join = new()
             {
                 FromTable = row.FromTable,
                 FromColumn = row.FromColumn,
                 ToTable = row.ToTable,
                 ToColumn = row.ToColumn,
                 JoinType = row.JoinType
-            });
+            };
+
+            foreach (JoinColumnPairRowViewModel? pair in row.AdditionalPairs.Where(p => !string.IsNullOrWhiteSpace(p.FromColumn)
+                         && !string.IsNullOrWhiteSpace(p.ToColumn)))
+            {
+                join.AdditionalColumnPairs.Add(new JoinColumnPair
+                {
+                    FromColumn = pair.FromColumn,
+                    ToColumn = pair.ToColumn,
+                    Enabled = pair.Enabled
+                });
+            }
+
+            query.Joins.Add(join);
         }
 
         foreach (CustomColumnRowViewModel row in CustomColumns)
@@ -914,7 +984,7 @@ public sealed class MainViewModel : ObservableObject
             string name = string.IsNullOrWhiteSpace(QueryName) ? $"requete_{DateTime.Now:yyyyMMdd_HHmmss}" : QueryName.Trim();
             query.Name = name;
             query.Description = BlankToNull(QueryDescription);
-            SavedQueryDefinition saved = new SavedQueryDefinition
+            SavedQueryDefinition saved = new()
             {
                 Name = name,
                 Description = BlankToNull(QueryDescription),
@@ -957,7 +1027,7 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        FilterRowViewModel filter = new FilterRowViewModel
+        FilterRowViewModel filter = new()
         {
             Operator = SelectedAvailableColumn is null ? "EXISTS" : "IN",
             ValueKind = FilterValueKind.Subquery,
@@ -1015,7 +1085,21 @@ public sealed class MainViewModel : ObservableObject
             foreach (ColumnReference g in query.GroupBy) GroupBy.Add(new GroupByRowViewModel { Table = g.Table, Column = g.Column });
             foreach (OrderByItem o in query.OrderBy) OrderBy.Add(new OrderByRowViewModel { Table = o.Column?.Table ?? (o.FieldKind == QueryFieldKind.Aggregate ? "Agrégat" : "Calculé"), Column = o.Column?.Column ?? o.FieldAlias ?? string.Empty, FieldKind = o.FieldKind, FieldAlias = o.FieldAlias ?? string.Empty, Direction = o.Direction });
             foreach (AggregateSelection a in query.Aggregates) Aggregates.Add(new AggregateRowViewModel { Table = a.Column?.Table ?? string.Empty, Column = a.Column?.Column ?? string.Empty, Function = a.Function, Alias = a.Alias ?? string.Empty, Distinct = a.Distinct, ConditionTable = a.ConditionColumn?.Table ?? string.Empty, ConditionColumn = a.ConditionColumn?.Column ?? string.Empty, ConditionOperator = a.ConditionOperator ?? "=", ConditionValue = a.ConditionValue ?? string.Empty, ConditionSecondValue = a.ConditionSecondValue ?? string.Empty });
-            foreach (JoinDefinition j in query.Joins) Joins.Add(new JoinRowViewModel { FromTable = j.FromTable, FromColumn = j.FromColumn, ToTable = j.ToTable, ToColumn = j.ToColumn, JoinType = j.JoinType });
+            foreach (JoinDefinition j in query.Joins)
+            {
+                JoinRowViewModel joinVm = new() { FromTable = j.FromTable, FromColumn = j.FromColumn, ToTable = j.ToTable, ToColumn = j.ToColumn, JoinType = j.JoinType };
+                foreach (JoinColumnPair pair in j.AdditionalColumnPairs)
+                {
+                    joinVm.AdditionalPairs.Add(new JoinColumnPairRowViewModel
+                    {
+                        FromColumn = pair.FromColumn,
+                        ToColumn = pair.ToColumn,
+                        Enabled = pair.Enabled
+                    });
+                }
+
+                Joins.Add(joinVm);
+            }
             foreach (CustomColumnSelection c in query.CustomColumns) CustomColumns.Add(new CustomColumnRowViewModel { Alias = c.Alias ?? string.Empty, RawExpression = c.RawExpression ?? string.Empty, CaseTable = c.CaseColumn?.Table ?? string.Empty, CaseColumn = c.CaseColumn?.Column ?? string.Empty, CaseOperator = c.CaseOperator ?? "=", CaseCompareValue = c.CaseCompareValue ?? string.Empty, CaseThenValue = c.CaseThenValue ?? string.Empty, CaseElseValue = c.CaseElseValue ?? string.Empty });
             foreach (QueryParameterDefinition p in query.Parameters) Parameters.Add(new QueryParameterRowViewModel { Name = p.Name, Description = p.Description ?? string.Empty, DefaultValue = p.DefaultValue ?? string.Empty, Required = p.Required });
         }

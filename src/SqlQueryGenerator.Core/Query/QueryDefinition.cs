@@ -49,6 +49,13 @@ public enum FilterValueKind
     Subquery
 }
 
+public sealed record JoinColumnPair
+{
+    public string FromColumn { get; init; } = string.Empty;
+    public string ToColumn { get; init; } = string.Empty;
+    public bool Enabled { get; init; } = true;
+}
+
 public sealed record JoinDefinition
 {
     public required string FromTable { get; init; }
@@ -57,6 +64,12 @@ public sealed record JoinDefinition
     public required string ToColumn { get; init; }
     public JoinType JoinType { get; init; } = JoinType.Inner;
     public bool AutoInferred { get; init; }
+
+    /// <summary>
+    /// Optional additional column pairs for composite joins. FromColumn/ToColumn remain the primary pair
+    /// for backward compatibility; enabled pairs in this collection are appended with AND.
+    /// </summary>
+    public Collection<JoinColumnPair> AdditionalColumnPairs { get; init; } = [];
 }
 
 public sealed record FilterCondition

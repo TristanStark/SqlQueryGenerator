@@ -299,3 +299,13 @@ La v21 ajoute :
 - analyse heuristique de performance basée sur les index, les vues, les filtres, les tris et les jointures.
 
 Voir `docs/V21_SUBQUERIES_SAVED_QUERIES_PERFORMANCE.md`.
+
+## V24 — nouveautés
+
+- Jointures composites multi-colonnes avec conditions activables/désactivables une par une.
+- Drag & drop de colonnes dans les couples supplémentaires de jointure.
+- Auto-jointures composites : le planner ajoute les autres couples de colonnes fiables entre les mêmes tables.
+- Optimisation du calcul de chemin de jointure via adjacency map.
+- Import de documentation table/colonne depuis CSV/TSV/TXT exporté d'un tableau.
+
+Voir `docs/V24_COMPOSITE_JOINS_AND_DOCUMENTATION.md`.

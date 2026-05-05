@@ -88,6 +88,7 @@
 
                 <WrapPanel Grid.Column="0" VerticalAlignment="Center">
                     <Button Content="Charger schéma SQL/TXT" Click="OpenSchema_Click" ToolTip="Charge un fichier .sql ou .txt contenant des CREATE TABLE et/ou COMMENT ON COLUMN." />
+                    <Button Content="Importer doc CSV/TSV" Click="OpenDocumentation_Click" ToolTip="Importe une documentation table/colonne depuis un fichier CSV, TSV ou TXT exporté d'un tableau." />
                     <Button Content="Coller schéma" Click="PasteSchema_Click" ToolTip="Colle un schéma depuis le presse-papier." />
                     <Button Content="Copier SQL" Click="CopySql_Click" ToolTip="Copie la requête générée dans le presse-papier." />
                     <Button Content="Vider requête" Command="{Binding ClearQueryCommand}" />
@@ -379,6 +380,7 @@
                                                                 <Grid.RowDefinitions>
                                                                     <RowDefinition Height="Auto" />
                                                                     <RowDefinition Height="Auto" />
+                                                                    <RowDefinition Height="Auto" />
                                                                 </Grid.RowDefinitions>
 
                                                                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Type" FontWeight="SemiBold" Margin="4,0" />
@@ -395,7 +397,31 @@
 
                                                                 <ComboBox Grid.Row="1" Grid.Column="4" IsEditable="True" ItemsSource="{Binding DataContext.TableNames, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding ToTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Text="{Binding ToTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Choisis la table droite." />
                                                                 <TextBox Grid.Row="1" Grid.Column="5" Text="{Binding ToColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinRightColumn_Drop" ToolTip="Glisse ici la colonne droite. La table droite sera remplie automatiquement." />
-                                                                <Button Grid.Row="1" Grid.Column="6" Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveJoinCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                <StackPanel Grid.Row="1" Grid.Column="6" Orientation="Vertical">
+                                                                    <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveJoinCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                    <Button Content="+ Colonne" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.AddJoinPairCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute une condition supplémentaire à la jointure composite." />
+                                                                </StackPanel>
+
+                                                                <ItemsControl Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="5" ItemsSource="{Binding AdditionalPairs}" Margin="4,8,4,0">
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <Grid Margin="0,2">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="80" />
+                                                                                    <ColumnDefinition Width="210" />
+                                                                                    <ColumnDefinition Width="36" />
+                                                                                    <ColumnDefinition Width="210" />
+                                                                                    <ColumnDefinition Width="120" />
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <CheckBox Grid.Column="0" Content="Actif" IsChecked="{Binding Enabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Active/désactive cette colonne de jointure." />
+                                                                                <TextBox Grid.Column="1" Text="{Binding FromColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinPairLeftColumn_Drop" ToolTip="Glisse ici une colonne supplémentaire côté gauche." />
+                                                                                <TextBlock Grid.Column="2" Text="=" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" />
+                                                                                <TextBox Grid.Column="3" Text="{Binding ToColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinPairRightColumn_Drop" ToolTip="Glisse ici une colonne supplémentaire côté droit." />
+                                                                                <Button Grid.Column="4" Content="Retirer" MinWidth="105" Command="{Binding DataContext.RemoveJoinPairCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                            </Grid>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
                                                             </Grid>
                                                         </Border>
                                                     </DataTemplate>

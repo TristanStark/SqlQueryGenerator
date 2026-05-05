@@ -12,13 +12,13 @@ public sealed class QueryPurposeDescriber
         ArgumentNullException.ThrowIfNull(schema);
 
         string subject = HumanizeTable(query.BaseTable ?? FirstUsedTable(query) ?? "les données");
-        string[] groupings = query.GroupBy.Select(DescribeGrouping).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        string[] aggregates = query.Aggregates.Select(a => DescribeAggregate(a, query, subject)).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
-        string[] selected = query.SelectedColumns.Select(DescribeSelectedColumn).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        string[] filters = query.Filters.Select(DescribeFilter).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
-        string[] orders = query.OrderBy.Select(o => $"trié par {DescribeOrderField(o)} {(o.Direction == SortDirection.Descending ? "décroissant" : "croissant")}").ToArray();
+        string[] groupings = [.. query.GroupBy.Select(DescribeGrouping).Distinct(StringComparer.OrdinalIgnoreCase)];
+        string[] aggregates = [.. query.Aggregates.Select(a => DescribeAggregate(a, query, subject)).Where(s => !string.IsNullOrWhiteSpace(s))];
+        string[] selected = [.. query.SelectedColumns.Select(DescribeSelectedColumn).Distinct(StringComparer.OrdinalIgnoreCase)];
+        string[] filters = [.. query.Filters.Select(DescribeFilter).Where(s => !string.IsNullOrWhiteSpace(s))];
+        string[] orders = [.. query.OrderBy.Select(o => $"trié par {DescribeOrderField(o)} {(o.Direction == SortDirection.Descending ? "décroissant" : "croissant")}")];
 
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new();
         sb.Append("Cette requête ");
 
         if (aggregates.Length > 0 && groupings.Length > 0)

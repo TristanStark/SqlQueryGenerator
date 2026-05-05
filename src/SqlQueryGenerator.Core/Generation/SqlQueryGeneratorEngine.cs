@@ -30,7 +30,7 @@ public sealed class SqlQueryGeneratorEngine
             warnings.Add("Aucune colonne sélectionnée: SELECT * généré par défaut.");
         }
 
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new();
         if (options.EmitOptimizationComments)
         {
             sb.AppendLine("/* Requête générée sans sous-requête, avec jointures explicites lorsque possible. */");
@@ -49,9 +49,7 @@ public sealed class SqlQueryGeneratorEngine
             sb.Append(join.JoinType == JoinType.Left ? "LEFT JOIN " : "INNER JOIN ");
             sb.Append(Q(join.ToTable, options));
             sb.Append(" ON ");
-            sb.Append(Q(join.FromTable, options)).Append('.').Append(Q(join.FromColumn, options));
-            sb.Append(" = ");
-            sb.Append(Q(join.ToTable, options)).Append('.').Append(Q(join.ToColumn, options));
+            sb.Append(BuildJoinOnClause(join, options));
             if (join.AutoInferred && options.EmitOptimizationComments)
             {
                 sb.Append(" /* jointure inférée */");
@@ -87,7 +85,7 @@ public sealed class SqlQueryGeneratorEngine
 
         if (query.OrderBy.Count > 0)
         {
-            string[] orderItems = query.OrderBy
+            string[] orderItems = [.. query.OrderBy
                 .Select(o =>
                 {
                     string expression = BuildOrderExpression(query, o, options, warnings);
@@ -95,8 +93,7 @@ public sealed class SqlQueryGeneratorEngine
                         ? string.Empty
                         : $"{expression} {(o.Direction == SortDirection.Descending ? "DESC" : "ASC")}";
                 })
-                .Where(o => !string.IsNullOrWhiteSpace(o))
-                .ToArray();
+                .Where(o => !string.IsNullOrWhiteSpace(o))];
             if (orderItems.Length > 0)
             {
                 sb.Append("ORDER BY ").AppendLine(string.Join(", ", orderItems));
@@ -120,6 +117,27 @@ public sealed class SqlQueryGeneratorEngine
             Sql = sb.ToString().TrimEnd() + Environment.NewLine,
             Warnings = warnings
         };
+    }
+
+    private static string BuildJoinOnClause(JoinDefinition join, SqlGeneratorOptions options)
+    {
+        List<string> predicates =
+        [
+            $"{Q(join.FromTable, options)}.{Q(join.FromColumn, options)} = {Q(join.ToTable, options)}.{Q(join.ToColumn, options)}"
+        ];
+
+        foreach (JoinColumnPair? pair in join.AdditionalColumnPairs.Where(p => p.Enabled
+                     && !string.IsNullOrWhiteSpace(p.FromColumn)
+                     && !string.IsNullOrWhiteSpace(p.ToColumn)))
+        {
+            string predicate = $"{Q(join.FromTable, options)}.{Q(pair.FromColumn, options)} = {Q(join.ToTable, options)}.{Q(pair.ToColumn, options)}";
+            if (!predicates.Contains(predicate, StringComparer.OrdinalIgnoreCase))
+            {
+                predicates.Add(predicate);
+            }
+        }
+
+        return string.Join(" AND ", predicates);
     }
 
     private static string? ResolveBaseTable(QueryDefinition query, List<string> warnings)
@@ -147,7 +165,7 @@ public sealed class SqlQueryGeneratorEngine
 
     private static HashSet<string> CollectUsedTables(QueryDefinition query)
     {
-        HashSet<string> result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> result = new(StringComparer.OrdinalIgnoreCase);
         foreach (ColumnReference c in query.SelectedColumns) result.Add(c.Table);
         foreach (FilterCondition? f in query.Filters.Where(f => f.Column is not null)) result.Add(f.Column!.Table);
         foreach (ColumnReference g in query.GroupBy) result.Add(g.Table);
@@ -161,8 +179,8 @@ public sealed class SqlQueryGeneratorEngine
     private static IReadOnlyList<JoinDefinition> BuildJoinPlan(QueryDefinition query, DatabaseSchema schema, string baseTable, HashSet<string> usedTables, List<string> warnings)
     {
         List<JoinDefinition> joins = [];
-        HashSet<string> connected = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { baseTable };
-        HashSet<string> emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> connected = new(StringComparer.OrdinalIgnoreCase) { baseTable };
+        HashSet<string> emitted = new(StringComparer.OrdinalIgnoreCase);
 
         void AddJoin(JoinDefinition join, bool autoInferred)
         {
@@ -172,7 +190,10 @@ public sealed class SqlQueryGeneratorEngine
                 return;
             }
 
-            joins.Add(join with { AutoInferred = autoInferred });
+            JoinDefinition preparedJoin = autoInferred
+                ? AddCompositePairsFromRelationships(schema, join, query.DisabledAutoJoinKeys)
+                : join;
+            joins.Add(preparedJoin with { AutoInferred = autoInferred });
             connected.Add(join.FromTable);
             connected.Add(join.ToTable);
         }
@@ -205,6 +226,87 @@ public sealed class SqlQueryGeneratorEngine
         }
 
         return joins;
+    }
+
+    private static JoinDefinition AddCompositePairsFromRelationships(DatabaseSchema schema, JoinDefinition join, IEnumerable<string> disabledAutoJoinKeys)
+    {
+        JoinColumnPair[] compatible = schema.Relationships
+            .Where(r => !IsRelationshipDisabled(r, disabledAutoJoinKeys))
+            .Select(r =>
+            {
+                if (SqlNameNormalizer.EqualsName(r.FromTable, join.FromTable)
+                    && SqlNameNormalizer.EqualsName(r.ToTable, join.ToTable))
+                {
+                    return new JoinColumnPair { FromColumn = r.FromColumn, ToColumn = r.ToColumn, Enabled = true };
+                }
+
+                if (SqlNameNormalizer.EqualsName(r.FromTable, join.ToTable)
+                    && SqlNameNormalizer.EqualsName(r.ToTable, join.FromTable))
+                {
+                    return new JoinColumnPair { FromColumn = r.ToColumn, ToColumn = r.FromColumn, Enabled = true };
+                }
+
+                return null;
+            })
+            .Where(p => p is not null)
+            .Cast<JoinColumnPair>()
+            .Where(p => !SqlNameNormalizer.EqualsName(p.FromColumn, join.FromColumn)
+                && !SqlNameNormalizer.EqualsName(p.ToColumn, join.ToColumn)
+                && LooksLikeCompositeCompanion(p.FromColumn, p.ToColumn))
+            .Take(8)
+            .ToArray();
+
+        if (compatible.Length == 0)
+        {
+            return join;
+        }
+
+        JoinDefinition result = join with { AdditionalColumnPairs = [] };
+        foreach (JoinColumnPair pair in join.AdditionalColumnPairs)
+        {
+            result.AdditionalColumnPairs.Add(pair);
+        }
+
+        foreach (JoinColumnPair? pair in compatible)
+        {
+            if (result.AdditionalColumnPairs.Any(p => SqlNameNormalizer.EqualsName(p.FromColumn, pair.FromColumn)
+                    && SqlNameNormalizer.EqualsName(p.ToColumn, pair.ToColumn)))
+            {
+                continue;
+            }
+
+            result.AdditionalColumnPairs.Add(pair);
+        }
+
+        return result;
+    }
+
+    private static bool LooksLikeCompositeCompanion(string fromColumn, string toColumn)
+    {
+        string left = SqlNameNormalizer.Normalize(fromColumn);
+        string right = SqlNameNormalizer.Normalize(toColumn);
+        if (left == right)
+        {
+            return true;
+        }
+
+        static string StripCommonSuffix(string value)
+        {
+            foreach (string? suffix in new[] { "_iden", "_id", "_code", "_date", "_dt" })
+            {
+                if (value.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return value[..^suffix.Length];
+                }
+            }
+            return value;
+        }
+
+        string l = StripCommonSuffix(left);
+        string r = StripCommonSuffix(right);
+        return l == r
+            || left.EndsWith("_date", StringComparison.OrdinalIgnoreCase) && right.EndsWith("_date", StringComparison.OrdinalIgnoreCase)
+            || left.EndsWith("_iden", StringComparison.OrdinalIgnoreCase) && right.EndsWith("_iden", StringComparison.OrdinalIgnoreCase);
     }
 
     private static List<JoinDefinition> FindBestJoinPath(DatabaseSchema schema, HashSet<string> connected, HashSet<string> remaining, IEnumerable<string> disabledAutoJoinKeys)
@@ -552,7 +654,7 @@ public sealed class SqlQueryGeneratorEngine
 
     private static ColumnDefinition? FindBridgeColumnForTable(TableDefinition bridge, TableDefinition table)
     {
-        string[] stems = TableNameStems(table.FullName).Concat(TableNameStems(table.Name)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        string[] stems = [.. TableNameStems(table.FullName).Concat(TableNameStems(table.Name)).Distinct(StringComparer.OrdinalIgnoreCase)];
         foreach (string? stem in stems)
         {
             ColumnDefinition? direct = bridge.Columns.FirstOrDefault(c => IsColumnForTable(c.Name, stem));
@@ -634,8 +736,10 @@ public sealed class SqlQueryGeneratorEngine
     private static IEnumerable<List<JoinDefinition>> FindCandidatePaths(DatabaseSchema schema, string startTable, string targetTable, int maxDepth, IEnumerable<string> disabledAutoJoinKeys)
     {
         List<List<JoinDefinition>> results = [];
-        Queue<(string Table, List<JoinDefinition> Path, HashSet<string> Visited)> queue = new Queue<(string Table, List<JoinDefinition> Path, HashSet<string> Visited)>();
+        Queue<(string Table, List<JoinDefinition> Path, HashSet<string> Visited)> queue = new();
         queue.Enqueue((startTable, new List<JoinDefinition>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase) { startTable }));
+
+        IReadOnlyDictionary<string, InferredRelationship[]> adjacency = BuildRelationshipAdjacency(schema, disabledAutoJoinKeys);
 
         while (queue.Count > 0 && results.Count < 128)
         {
@@ -645,14 +749,12 @@ public sealed class SqlQueryGeneratorEngine
                 continue;
             }
 
-            InferredRelationship[] edges = schema.Relationships
-                .Where(r => !IsRelationshipDisabled(r, disabledAutoJoinKeys))
-                .Where(r => SqlNameNormalizer.EqualsName(r.FromTable, current.Table) || SqlNameNormalizer.EqualsName(r.ToTable, current.Table))
-                .OrderByDescending(r => r.Confidence)
-                .Take(80)
-                .ToArray();
+            if (!adjacency.TryGetValue(SqlNameNormalizer.Normalize(current.Table), out InferredRelationship[]? edges))
+            {
+                continue;
+            }
 
-            foreach (InferredRelationship? edge in edges)
+            foreach (InferredRelationship edge in edges)
             {
                 string nextTable = SqlNameNormalizer.EqualsName(edge.FromTable, current.Table) ? edge.ToTable : edge.FromTable;
                 if (current.Visited.Contains(nextTable) && !SqlNameNormalizer.EqualsName(nextTable, targetTable))
@@ -692,12 +794,49 @@ public sealed class SqlQueryGeneratorEngine
                     continue;
                 }
 
-                HashSet<string> visited = new HashSet<string>(current.Visited, StringComparer.OrdinalIgnoreCase) { nextTable };
+                HashSet<string> visited = new(current.Visited, StringComparer.OrdinalIgnoreCase) { nextTable };
                 queue.Enqueue((nextTable, nextPath, visited));
             }
         }
 
         return results;
+    }
+
+    private static IReadOnlyDictionary<string, InferredRelationship[]> BuildRelationshipAdjacency(DatabaseSchema schema, IEnumerable<string> disabledAutoJoinKeys)
+    {
+        ISet<string> disabled = disabledAutoJoinKeys as ISet<string> ?? disabledAutoJoinKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, List<InferredRelationship>> dict = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (InferredRelationship relationship in schema.Relationships)
+        {
+            if (disabled.Contains(relationship.Key) || disabled.Contains(relationship.ReverseKey))
+            {
+                continue;
+            }
+
+            Add(relationship.FromTable, relationship);
+            Add(relationship.ToTable, relationship);
+        }
+
+        return dict.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value
+                .OrderByDescending(r => r.Confidence)
+                .Take(96)
+                .ToArray(),
+            StringComparer.OrdinalIgnoreCase);
+
+        void Add(string table, InferredRelationship relationship)
+        {
+            string key = SqlNameNormalizer.Normalize(table);
+            if (!dict.TryGetValue(key, out List<InferredRelationship>? list))
+            {
+                list = [];
+                dict[key] = list;
+            }
+
+            list.Add(relationship);
+        }
     }
 
     private static bool IsBadFkToFkHop(DatabaseSchema schema, JoinDefinition join, string finalTargetTable)
@@ -837,7 +976,7 @@ public sealed class SqlQueryGeneratorEngine
         string targetStem = TableStem(targetTable);
         string bridgeNorm = SqlNameNormalizer.Normalize(bridgeTable);
         string bridgeSingular = Singularize(bridgeNorm);
-        string[] tokens = bridgeSingular.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToArray();
+        string[] tokens = [.. bridgeSingular.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
 
         double score = 0.0;
         string exactA = $"{startStem}_{targetStem}";
@@ -1361,13 +1500,13 @@ public sealed class SqlQueryGeneratorEngine
 
     private static string IndentSql(string sql, int spaces)
     {
-        string prefix = new string(' ', spaces);
+        string prefix = new(' ', spaces);
         return string.Join(Environment.NewLine, sql.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None).Select(line => prefix + line));
     }
 
     private static List<string> BuildGroupBy(QueryDefinition query, SqlGeneratorOptions options)
     {
-        return query.GroupBy.Select(c => ColumnSql(c, options, includeAlias: false)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return [.. query.GroupBy.Select(c => ColumnSql(c, options, includeAlias: false)).Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
     private static string NormalizeOperator(string? op)

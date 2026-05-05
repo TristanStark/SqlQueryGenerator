@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using Microsoft.Win32;
 using SqlQueryGenerator.App.ViewModels;
 
@@ -19,7 +20,7 @@ public partial class MainWindow : Window
 
     private void OpenSchema_Click(object sender, RoutedEventArgs e)
     {
-        OpenFileDialog dialog = new OpenFileDialog
+        OpenFileDialog dialog = new()
         {
             Title = "Charger un schéma SQL ou TXT",
             Filter = "Schémas SQL/TXT (*.sql;*.txt)|*.sql;*.txt|Tous les fichiers (*.*)|*.*",
@@ -30,6 +31,22 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) == true)
         {
             ViewModel.LoadSchemaFromFile(dialog.FileName);
+        }
+    }
+
+    private void OpenDocumentation_Click(object sender, RoutedEventArgs e)
+    {
+        OpenFileDialog dialog = new()
+        {
+            Title = "Importer une documentation table/colonne",
+            Filter = "Documentation CSV/TSV/TXT (*.csv;*.tsv;*.txt)|*.csv;*.tsv;*.txt|Tous les fichiers (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) == true)
+        {
+            ViewModel.ImportDocumentationFromFile(dialog.FileName);
         }
     }
 
@@ -123,6 +140,8 @@ public partial class MainWindow : Window
 
     private void JoinLeftColumn_Drop(object sender, DragEventArgs e) => DropJoinColumn(sender, e, isLeftSide: true);
     private void JoinRightColumn_Drop(object sender, DragEventArgs e) => DropJoinColumn(sender, e, isLeftSide: false);
+    private void JoinPairLeftColumn_Drop(object sender, DragEventArgs e) => DropJoinPairColumn(sender, e, isLeftSide: true);
+    private void JoinPairRightColumn_Drop(object sender, DragEventArgs e) => DropJoinPairColumn(sender, e, isLeftSide: false);
 
     private void DropJoinColumn(object sender, DragEventArgs e, bool isLeftSide)
     {
@@ -145,6 +164,51 @@ public partial class MainWindow : Window
         }
 
         e.Handled = true;
+    }
+
+    private void DropJoinPairColumn(object sender, DragEventArgs e, bool isLeftSide)
+    {
+        if (sender is not FrameworkElement element
+            || element.DataContext is not JoinColumnPairRowViewModel pair
+            || e.Data.GetData(typeof(ColumnItemViewModel)) is not ColumnItemViewModel column)
+        {
+            return;
+        }
+
+        JoinRowViewModel? parentJoin = FindAncestorDataContext<JoinRowViewModel>(element);
+        if (isLeftSide)
+        {
+            pair.FromColumn = column.Column;
+            if (parentJoin is not null && string.IsNullOrWhiteSpace(parentJoin.FromTable))
+            {
+                parentJoin.FromTable = column.Table;
+            }
+        }
+        else
+        {
+            pair.ToColumn = column.Column;
+            if (parentJoin is not null && string.IsNullOrWhiteSpace(parentJoin.ToTable))
+            {
+                parentJoin.ToTable = column.Table;
+            }
+        }
+
+        e.Handled = true;
+    }
+
+    private static T? FindAncestorDataContext<T>(DependencyObject? element) where T : class
+    {
+        while (element is not null)
+        {
+            if (element is FrameworkElement frameworkElement && frameworkElement.DataContext is T typed)
+            {
+                return typed;
+            }
+
+            element = VisualTreeHelper.GetParent(element);
+        }
+
+        return null;
     }
 
 

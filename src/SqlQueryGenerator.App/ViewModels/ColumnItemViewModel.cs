@@ -5,6 +5,7 @@ namespace SqlQueryGenerator.App.ViewModels;
 
 public sealed class ColumnItemViewModel : ObservableObject
 {
+    private bool _isExpanded;
     public ColumnItemViewModel(ColumnDefinition column, string? foreignKeySummary = null, string? indexSummary = null, bool isUniqueIndexed = false)
     {
         Table = column.TableName;
@@ -32,6 +33,15 @@ public sealed class ColumnItemViewModel : ObservableObject
     public bool IsIndexed => !string.IsNullOrWhiteSpace(IndexSummary);
     public bool IsUniqueIndexed { get; }
     public string IndexBadge => IsUniqueIndexed ? "UX" : "IX";
+
+    // Required because the TreeView uses a generic TreeViewItem style that binds IsExpanded.
+    // Leaf nodes remain collapsed, but exposing this property prevents noisy WPF binding errors.
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => SetProperty(ref _isExpanded, value);
+    }
+
 
     public string TypeCategory
     {

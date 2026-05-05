@@ -225,6 +225,17 @@ public sealed class AggregateRowViewModel : BuilderRowBase
     }
 }
 
+public sealed class JoinColumnPairRowViewModel : ObservableObject
+{
+    private string _fromColumn = string.Empty;
+    private string _toColumn = string.Empty;
+    private bool _enabled = true;
+
+    public string FromColumn { get => _fromColumn; set => SetProperty(ref _fromColumn, value); }
+    public string ToColumn { get => _toColumn; set => SetProperty(ref _toColumn, value); }
+    public bool Enabled { get => _enabled; set => SetProperty(ref _enabled, value); }
+}
+
 public sealed class JoinRowViewModel : ObservableObject
 {
     private string _fromTable = string.Empty;
@@ -233,11 +244,41 @@ public sealed class JoinRowViewModel : ObservableObject
     private string _toColumn = string.Empty;
     private JoinType _joinType = JoinType.Inner;
 
+    public JoinRowViewModel()
+    {
+        AdditionalPairs.CollectionChanged += (_, e) =>
+        {
+            if (e.OldItems is not null)
+            {
+                foreach (JoinColumnPairRowViewModel item in e.OldItems)
+                {
+                    item.PropertyChanged -= Pair_PropertyChanged;
+                }
+            }
+
+            if (e.NewItems is not null)
+            {
+                foreach (JoinColumnPairRowViewModel item in e.NewItems)
+                {
+                    item.PropertyChanged += Pair_PropertyChanged;
+                }
+            }
+
+            OnPropertyChanged(nameof(AdditionalPairs));
+        };
+    }
+
     public string FromTable { get => _fromTable; set => SetProperty(ref _fromTable, value); }
     public string FromColumn { get => _fromColumn; set => SetProperty(ref _fromColumn, value); }
     public string ToTable { get => _toTable; set => SetProperty(ref _toTable, value); }
     public string ToColumn { get => _toColumn; set => SetProperty(ref _toColumn, value); }
     public JoinType JoinType { get => _joinType; set => SetProperty(ref _joinType, value); }
+    public System.Collections.ObjectModel.ObservableCollection<JoinColumnPairRowViewModel> AdditionalPairs { get; } = [];
+
+    private void Pair_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(AdditionalPairs));
+    }
 }
 
 public sealed class CustomColumnRowViewModel : ObservableObject

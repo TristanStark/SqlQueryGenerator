@@ -1,0 +1,4 @@
+table_name	column_name	display_name	description
+ACTI		Actions	Table des actions métier.
+ACTI	ACTI_IDEN	Identifiant action	Clé technique de l'action.
+ACTI	EMET_IDEN	Émetteur	Identifiant de l'émetteur.
