@@ -1,3 +1,4 @@
+using SqlQueryGenerator.Core.Models;
 using SqlQueryGenerator.Core.Parsing;
 
 namespace SqlQueryGenerator.Tests;
@@ -17,10 +18,10 @@ CREATE TABLE ORD (
 COMMENT ON TABLE ORD IS 'Orders table';
 COMMENT ON COLUMN ORD.CUSTOMER_ID IS 'Customer identifier';
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
 
         Assert.Single(schema.Tables);
-        var table = schema.Tables[0];
+        TableDefinition table = schema.Tables[0];
         Assert.Equal("ORD", table.Name);
         Assert.Equal("Orders table", table.Comment);
         Assert.True(table.FindColumn("ORD_IDEN")!.IsPrimaryKey);
@@ -36,8 +37,8 @@ CREATE TABLE customer (
     name TEXT COMMENT 'display name'
 );
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var table = schema.FindTable("customer")!;
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        TableDefinition table = schema.FindTable("customer")!;
 
         Assert.Equal("technical id", table.FindColumn("id")!.Comment);
         Assert.Equal("display name", table.FindColumn("name")!.Comment);
@@ -52,8 +53,8 @@ CREATE TABLE customer (
     name TEXT -- display name
 );
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var table = schema.FindTable("customer")!;
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        TableDefinition table = schema.FindTable("customer")!;
 
         Assert.Equal("technical id", table.FindColumn("id")!.Comment);
         Assert.Equal("display name", table.FindColumn("name")!.Comment);
@@ -71,7 +72,7 @@ CREATE TABLE pnj (
 CREATE INDEX idx_pnj_job ON pnj(job_id);
 CREATE UNIQUE INDEX ux_pnj_nom ON pnj(nom);
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
 
         Assert.Equal(2, schema.Indexes.Count);
         Assert.True(schema.IsColumnIndexed("pnj", "job_id"));
@@ -94,8 +95,8 @@ FROM pnj
 GROUP BY age;
 ";
 
-        var schema = new SqlSchemaParser().Parse(sql);
-        var view = schema.FindTable("v_pnj_age");
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        TableDefinition? view = schema.FindTable("v_pnj_age");
 
         Assert.NotNull(view);
         Assert.True(view!.IsView);

@@ -1,6 +1,5 @@
-using SqlQueryGenerator.Core.Models;
 using System.Collections.Concurrent;
-using System.Linq;
+using SqlQueryGenerator.Core.Models;
 
 namespace SqlQueryGenerator.Core.Heuristics;
 
@@ -15,7 +14,7 @@ public sealed class ForeignKeyInferer
 
         InferenceContext context = InferenceContext.Build(schema);
         List<InferredRelationship> relationships = [];
-        Dictionary<string, int> relationshipIndexByKey = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, int> relationshipIndexByKey = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         ParallelOptions parallelOptions = CreateParallelOptions(context);
 
         void Add(InferredRelationship relationship)
@@ -64,12 +63,13 @@ public sealed class ForeignKeyInferer
             Add(candidate);
         }
 
-        return [.. relationships
+        return relationships
             .OrderByDescending(r => r.Confidence)
             .ThenBy(r => r.FromTable, StringComparer.OrdinalIgnoreCase)
             .ThenBy(r => r.FromColumn, StringComparer.OrdinalIgnoreCase)
             .ThenBy(r => r.ToTable, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(r => r.ToColumn, StringComparer.OrdinalIgnoreCase)];
+            .ThenBy(r => r.ToColumn, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static ParallelOptions CreateParallelOptions(InferenceContext context)
@@ -128,7 +128,7 @@ public sealed class ForeignKeyInferer
 
             // Strong case: specific same column name where target is PK/unique.
             // This is now O(group^2) for small same-name groups instead of O(total_columns^2).
-            ColumnInfo[] strongTargets = [.. group.Where(c => c.TargetUnique)];
+            ColumnInfo[] strongTargets = group.Where(c => c.TargetUnique).ToArray();
             if (strongTargets.Length > 0)
             {
                 foreach (ColumnInfo? source in group.Where(c => !c.Column.IsPrimaryKey))
@@ -161,7 +161,9 @@ public sealed class ForeignKeyInferer
                 return;
             }
 
-            ColumnInfo[] weakCandidates = [.. group.Where(c => !c.Column.IsPrimaryKey && c.LooksLikeIdentifier)];
+            ColumnInfo[] weakCandidates = group
+                .Where(c => !c.Column.IsPrimaryKey && c.LooksLikeIdentifier)
+                .ToArray();
 
             for (int i = 0; i < weakCandidates.Length; i++)
             {
@@ -253,15 +255,21 @@ public sealed class ForeignKeyInferer
             foreach (TableInfo targetTable in candidateTables)
             {
                 if (ReferenceEquals(source.Table, targetTable))
+                {
                     continue;
+                }
 
                 if (!targetTable.HasAnyNameVariant(source.Table.NameVariants)
                     && !targetTable.HasAnyToken(source.Table.NameVariants))
+                {
                     continue;
+                }
 
                 if (!targetTable.HasAnyNameVariant(source.StemVariants)
                     && !targetTable.HasAnyToken(source.StemVariants))
+                {
                     continue;
+                }
 
                 foreach (ColumnInfo targetColumn in targetTable.ReferenceTargetColumns)
                 {
@@ -412,9 +420,12 @@ public sealed class ForeignKeyInferer
             return Math.Min(0.99, baseScore * variant.Weight);
         }
 
-        return source.NormalizedName == targetColumn.NormalizedName && !IsGenericIdentifier(source.NormalizedName)
-            ? targetColumn.Column.IsPrimaryKey ? 0.84 : 0.60
-            : 0.0;
+        if (source.NormalizedName == targetColumn.NormalizedName && !IsGenericIdentifier(source.NormalizedName))
+        {
+            return targetColumn.Column.IsPrimaryKey ? 0.84 : 0.60;
+        }
+
+        return 0.0;
     }
 
     private static double CompositeTablePatternScoreFast(ColumnInfo source, TableInfo targetTable, ColumnInfo targetColumn)
@@ -490,15 +501,16 @@ public sealed class ForeignKeyInferer
             return true;
         }
 
-        foreach (var _ in from (string Name, double Weight) variant in GetTableNameVariants(normalizedTargetTable)
-                          let v = variant.Name
-                          where normalizedTargetColumn == $"{v}_ID"
-                        || normalizedTargetColumn == $"{v}_IDEN"
-                        || normalizedTargetColumn == $"{v}_IDENT"
-                        || normalizedTargetColumn == $"{v}_CODE"
-                          select new { })
+        foreach ((string Name, double Weight) variant in GetTableNameVariants(normalizedTargetTable))
         {
-            return true;
+            string v = variant.Name;
+            if (normalizedTargetColumn == $"{v}_ID"
+                || normalizedTargetColumn == $"{v}_IDEN"
+                || normalizedTargetColumn == $"{v}_IDENT"
+                || normalizedTargetColumn == $"{v}_CODE")
+            {
+                return true;
+            }
         }
 
         return false;
@@ -506,7 +518,7 @@ public sealed class ForeignKeyInferer
 
     private static IEnumerable<(string Name, double Weight)> GetTableNameVariants(string normalizedTableName)
     {
-        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         void Add(List<(string Name, double Weight)> list, string? value, double weight)
         {
@@ -552,7 +564,7 @@ public sealed class ForeignKeyInferer
 
     private static IEnumerable<string> RemoveCommonTablePrefixes(string normalizedTableName)
     {
-        string[] prefixes = ["T_", "TB_", "TBL_", "REF_", "DIM_", "D_", "R_"];
+        string[] prefixes = new[] { "T_", "TB_", "TBL_", "REF_", "DIM_", "D_", "R_" };
         foreach (string? prefix in prefixes)
         {
             if (normalizedTableName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && normalizedTableName.Length > prefix.Length)
@@ -572,12 +584,21 @@ public sealed class ForeignKeyInferer
     private static string SingularizeToken(string token)
     {
         if (token.Length <= 3)
+        {
             return token;
+        }
 
         if (token.EndsWith("IES", StringComparison.Ordinal) && token.Length > 4)
+        {
             return token[..^3] + "Y";
+        }
 
-        return (token.EndsWith('S') || token.EndsWith('X')) && token.Length > 3 ? token[..^1] : token;
+        if ((token.EndsWith("S", StringComparison.Ordinal) || token.EndsWith("X", StringComparison.Ordinal)) && token.Length > 3)
+        {
+            return token[..^1];
+        }
+
+        return token;
     }
 
     private static string ExtractIdentifierStem(string columnName)
@@ -588,20 +609,24 @@ public sealed class ForeignKeyInferer
             return string.Empty;
         }
 
-        foreach (var prefix in from string? prefix in (string[])["FK_", "ID_", "IDEN_", "IDENT_"]
-                               where normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && normalized.Length > prefix.Length
-                               select prefix)
+        string[] prefixes = new[] { "FK_", "ID_", "IDEN_", "IDENT_" };
+        foreach (string? prefix in prefixes)
         {
-            normalized = normalized[prefix.Length..];
-            break;
+            if (normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && normalized.Length > prefix.Length)
+            {
+                normalized = normalized[prefix.Length..];
+                break;
+            }
         }
 
-        foreach (var suffix in from string? suffix in (string[])["_IDEN", "_IDENT", "_ID", "_CODE"]
-                               where normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) && normalized.Length > suffix.Length
-                               select suffix)
+        string[] suffixes = new[] { "_IDEN", "_IDENT", "_ID", "_CODE" };
+        foreach (string? suffix in suffixes)
         {
-            normalized = normalized[..^suffix.Length];
-            break;
+            if (normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) && normalized.Length > suffix.Length)
+            {
+                normalized = normalized[..^suffix.Length];
+                break;
+            }
         }
 
         return Singularize(normalized.Trim('_'));
@@ -635,8 +660,8 @@ public sealed class ForeignKeyInferer
 
         public static InferenceContext Build(DatabaseSchema schema)
         {
-            HashSet<string> indexedColumns = new(StringComparer.OrdinalIgnoreCase);
-            HashSet<string> uniqueColumns = new(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> indexedColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> uniqueColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (IndexDefinition index in schema.Indexes)
             {
@@ -651,13 +676,13 @@ public sealed class ForeignKeyInferer
                 }
             }
 
-            List<TableInfo> tables = new(schema.Tables.Count);
+            List<TableInfo> tables = new List<TableInfo>(schema.Tables.Count);
             foreach (TableDefinition table in schema.Tables)
             {
                 tables.Add(new TableInfo(table));
             }
 
-            Dictionary<string, TableInfo> tableByAnyName = new(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, TableInfo> tableByAnyName = new Dictionary<string, TableInfo>(StringComparer.OrdinalIgnoreCase);
             foreach (TableInfo table in tables)
             {
                 tableByAnyName[SqlNameNormalizer.Normalize(table.Table.Name)] = table;
@@ -666,8 +691,8 @@ public sealed class ForeignKeyInferer
 
             // Index DDL often references the unqualified table name while columns use FullName.
             // Normalize the index flags onto the resolved TableInfo before building ColumnInfo.
-            HashSet<string> resolvedIndexedColumns = new(StringComparer.OrdinalIgnoreCase);
-            HashSet<string> resolvedUniqueColumns = new(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> resolvedIndexedColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> resolvedUniqueColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (string key in indexedColumns)
             {
                 int separator = key.IndexOf('|', StringComparison.Ordinal);
@@ -702,8 +727,8 @@ public sealed class ForeignKeyInferer
                 }
             }
 
-            Dictionary<string, List<ColumnInfo>> columnsByNormalizedName = new(StringComparer.OrdinalIgnoreCase);
-            Dictionary<string, ColumnInfo> columnsByQualifiedName = new(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, List<ColumnInfo>> columnsByNormalizedName = new Dictionary<string, List<ColumnInfo>>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, ColumnInfo> columnsByQualifiedName = new Dictionary<string, ColumnInfo>(StringComparer.OrdinalIgnoreCase);
             List<ColumnInfo> identifierColumns = [];
 
             foreach (TableInfo table in tables)
@@ -761,11 +786,12 @@ public sealed class ForeignKeyInferer
 
         public IEnumerable<TableInfo> FindTablesByTokenOrVariant(string stem)
         {
-            string[] variants = [.. GetTableNameVariants(stem)
+            string[] variants = GetTableNameVariants(stem)
                 .Select(v => v.Name)
                 .Append(stem)
                 .Append(Singularize(stem))
-                .Distinct(StringComparer.OrdinalIgnoreCase)];
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 
             return variants
                 .SelectMany(v => (_tablesByToken.TryGetValue(v, out IReadOnlyList<TableInfo>? tokenTables) ? tokenTables : Array.Empty<TableInfo>())
@@ -775,17 +801,18 @@ public sealed class ForeignKeyInferer
 
         private static Dictionary<string, IReadOnlyList<TableInfo>> BuildTableLookup(IEnumerable<TableInfo> tables, Func<TableInfo, IEnumerable<string>> keySelector)
         {
-            Dictionary<string, List<TableInfo>> lookup = new(StringComparer.OrdinalIgnoreCase);
-            foreach ((TableInfo? table, string? key) in from TableInfo table in tables
-                                         from string? key in keySelector(table).Where(static k => !string.IsNullOrWhiteSpace(k)).Distinct(StringComparer.OrdinalIgnoreCase)
-                                         select (table, key))
+            Dictionary<string, List<TableInfo>> lookup = new Dictionary<string, List<TableInfo>>(StringComparer.OrdinalIgnoreCase);
+            foreach (TableInfo table in tables)
             {
-                if (!lookup.TryGetValue(key, out List<TableInfo>? list))
+                foreach (string? key in keySelector(table).Where(k => !string.IsNullOrWhiteSpace(k)).Distinct(StringComparer.OrdinalIgnoreCase))
                 {
-                    list = [];
-                    lookup[key] = list;
+                    if (!lookup.TryGetValue(key, out List<TableInfo>? list))
+                    {
+                        list = [];
+                        lookup[key] = list;
+                    }
+                    list.Add(table);
                 }
-                list.Add(table);
             }
 
             return lookup.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<TableInfo>)pair.Value, StringComparer.OrdinalIgnoreCase);
@@ -801,10 +828,12 @@ public sealed class ForeignKeyInferer
             NormalizedName = SqlNameNormalizer.Normalize(table.Name);
             SingularNormalizedName = Singularize(NormalizedName);
             StrippedName = SqlNameNormalizer.StripDecorations(table.Name);
-            NameVariantsWithWeight = [.. GetTableNameVariants(NormalizedName).Select(v => new NameVariant(v.Name, v.Weight, v.Name.Replace("_", string.Empty, StringComparison.Ordinal)))];
-            NameVariants = [.. NameVariantsWithWeight.Select(v => v.Name).Distinct(StringComparer.OrdinalIgnoreCase)];
-            Tokens = [.. NormalizedName.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase)];
-            SingularTokens = [.. Tokens.Select(SingularizeToken).Distinct(StringComparer.OrdinalIgnoreCase)];
+            NameVariantsWithWeight = GetTableNameVariants(NormalizedName)
+                .Select(v => new NameVariant(v.Name, v.Weight, v.Name.Replace("_", string.Empty, StringComparison.Ordinal)))
+                .ToArray();
+            NameVariants = NameVariantsWithWeight.Select(v => v.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            Tokens = NormalizedName.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            SingularTokens = Tokens.Select(SingularizeToken).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
             TokenSet = Tokens.Concat(SingularTokens).ToHashSet(StringComparer.OrdinalIgnoreCase);
             NameVariantSet = NameVariants.ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
@@ -820,16 +849,17 @@ public sealed class ForeignKeyInferer
         public IReadOnlyList<string> SingularTokens { get; }
         public HashSet<string> TokenSet { get; }
         public HashSet<string> NameVariantSet { get; }
-        public IReadOnlyList<ColumnInfo> Columns { get; private set; } = [];
-        public IReadOnlyList<ColumnInfo> ReferenceTargetColumns { get; private set; } = [];
+        public IReadOnlyList<ColumnInfo> Columns { get; private set; } = Array.Empty<ColumnInfo>();
+        public IReadOnlyList<ColumnInfo> ReferenceTargetColumns { get; private set; } = Array.Empty<ColumnInfo>();
 
         public void BuildColumns(HashSet<string> indexedColumns, HashSet<string> uniqueColumns)
         {
-            ColumnInfo[] columns = [.. Table.Columns.Select(c => new ColumnInfo(this, c, indexedColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || indexedColumns.Contains(QualifiedColumnKey(Table.Name, c.Name)), 
-                uniqueColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || uniqueColumns.Contains(QualifiedColumnKey(Table.Name, c.Name))))];
+            ColumnInfo[] columns = Table.Columns
+                .Select(c => new ColumnInfo(this, c, indexedColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || indexedColumns.Contains(QualifiedColumnKey(Table.Name, c.Name)), uniqueColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || uniqueColumns.Contains(QualifiedColumnKey(Table.Name, c.Name))))
+                .ToArray();
 
             Columns = columns;
-            ReferenceTargetColumns = [.. columns.Where(c => c.IsReferenceTargetColumn)];
+            ReferenceTargetColumns = columns.Where(c => c.IsReferenceTargetColumn).ToArray();
         }
 
         public bool HasAnyNameVariant(IEnumerable<string> variants) => variants.Any(v => NameVariantSet.Contains(v));
@@ -848,12 +878,13 @@ public sealed class ForeignKeyInferer
             NormalizedName = SqlNameNormalizer.Normalize(column.Name);
             LooksLikeIdentifier = ForeignKeyInferer.LooksLikeIdentifier(column.Name);
             IdentifierStem = ExtractIdentifierStem(column.Name);
-            StemVariants = [.. GetTableNameVariants(IdentifierStem)
+            StemVariants = GetTableNameVariants(IdentifierStem)
                 .Select(v => v.Name)
                 .Append(IdentifierStem)
                 .Append(Singularize(IdentifierStem))
                 .Where(v => !string.IsNullOrWhiteSpace(v))
-                .Distinct(StringComparer.OrdinalIgnoreCase)];
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
             IdentifierCandidates = BuildIdentifierCandidates(NormalizedName);
             CompactIdentifierCandidates = IdentifierCandidates.Select(c => c.Replace("_", string.Empty, StringComparison.Ordinal)).ToHashSet(StringComparer.OrdinalIgnoreCase);
             IsReferenceTargetColumn = ForeignKeyInferer.IsReferenceTargetColumn(NormalizedName, table.NormalizedName, column.IsPrimaryKey || uniqueIndexed);
@@ -874,12 +905,13 @@ public sealed class ForeignKeyInferer
 
         private static HashSet<string> BuildIdentifierCandidates(string sourceColumn)
         {
-            HashSet<string> result = new(StringComparer.OrdinalIgnoreCase);
-            foreach (var suffix in from string? suffix in new[] { "_ID", "_IDEN", "_IDENT", "_CODE" }
-                                   where sourceColumn.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) && sourceColumn.Length > suffix.Length
-                                   select suffix)
+            HashSet<string> result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string? suffix in new[] { "_ID", "_IDEN", "_IDENT", "_CODE" })
             {
-                result.Add(sourceColumn[..^suffix.Length]);
+                if (sourceColumn.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) && sourceColumn.Length > suffix.Length)
+                {
+                    result.Add(sourceColumn[..^suffix.Length]);
+                }
             }
 
             foreach (string? prefix in new[] { "ID_", "IDEN_", "FK_" })

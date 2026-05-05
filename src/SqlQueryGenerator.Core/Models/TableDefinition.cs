@@ -28,7 +28,7 @@ public sealed class TableDefinition
         return Columns.FirstOrDefault(c => c.NormalizedName == normalized);
     }
 
-    public IReadOnlyList<ColumnDefinition> PrimaryKeys => [.. Columns.Where(c => c.IsPrimaryKey)];
+    public IReadOnlyList<ColumnDefinition> PrimaryKeys => Columns.Where(c => c.IsPrimaryKey).ToArray();
 
     public override string ToString() => FullName;
 }

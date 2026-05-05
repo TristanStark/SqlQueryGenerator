@@ -1,5 +1,5 @@
-using SqlQueryGenerator.Core.Query;
 using System.Text.RegularExpressions;
+using SqlQueryGenerator.Core.Query;
 
 namespace SqlQueryGenerator.Core.Generation;
 
@@ -24,9 +24,12 @@ public static partial class SqlIdentifierQuoter
             throw new InvalidOperationException($"Identifiant SQL dangereux ou invalide: {identifier}");
         }
 
-        return !quoteIdentifiers
-            ? clean
-            : dialect == SqlDialect.SQLite ? $"\"{clean.Replace("\"", "\"\"", StringComparison.Ordinal)}\"" : $"\"{clean.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+        if (!quoteIdentifiers)
+        {
+            return clean;
+        }
+
+        return dialect == SqlDialect.SQLite ? $"\"{clean.Replace("\"", "\"\"", StringComparison.Ordinal)}\"" : $"\"{clean.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
     }
 
     [GeneratedRegex(@"^[A-Za-z_][A-Za-z0-9_$#]*$")]

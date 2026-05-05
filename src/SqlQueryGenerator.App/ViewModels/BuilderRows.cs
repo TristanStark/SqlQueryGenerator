@@ -147,7 +147,7 @@ public sealed class AggregateRowViewModel : BuilderRowBase
         get => _function;
         set
         {
-            var previousFunction = _function;
+            AggregateFunction previousFunction = _function;
             if (SetProperty(ref _function, value) && ShouldRefreshAlias(previousFunction))
             {
                 Alias = BuildDefaultAlias(_function, Column);
@@ -163,7 +163,7 @@ public sealed class AggregateRowViewModel : BuilderRowBase
 
     public static string BuildDefaultAlias(AggregateFunction function, string column)
     {
-        var prefix = function switch
+        string prefix = function switch
         {
             AggregateFunction.Count => "count",
             AggregateFunction.Sum => "sum",
@@ -173,7 +173,7 @@ public sealed class AggregateRowViewModel : BuilderRowBase
             _ => function.ToString().ToLowerInvariant()
         };
 
-        var cleanColumn = string.IsNullOrWhiteSpace(column) ? "colonne" : column.Trim();
+        string cleanColumn = string.IsNullOrWhiteSpace(column) ? "colonne" : column.Trim();
         return $"{prefix}_{cleanColumn}";
     }
 

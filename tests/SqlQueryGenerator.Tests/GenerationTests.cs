@@ -14,15 +14,15 @@ public sealed class GenerationTests
 CREATE TABLE CUSTOMER (CUSTOMER_ID INTEGER PRIMARY KEY, NAME TEXT);
 CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT NUMBER, STATUS TEXT);
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var query = new QueryDefinition { BaseTable = "ORDERS" };
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "ORDERS" };
         query.SelectedColumns.Add(new ColumnReference { Table = "CUSTOMER", Column = "NAME", Alias = "client" });
         query.Filters.Add(new FilterCondition { Column = new ColumnReference { Table = "ORDERS", Column = "STATUS" }, Operator = "=", Value = "PAID" });
         query.GroupBy.Add(new ColumnReference { Table = "CUSTOMER", Column = "NAME" });
         query.Aggregates.Add(new AggregateSelection { Function = AggregateFunction.Sum, Column = new ColumnReference { Table = "ORDERS", Column = "AMOUNT" }, Alias = "total" });
         query.OrderBy.Add(new OrderByItem { Column = new ColumnReference { Table = "CUSTOMER", Column = "NAME" }, Direction = SortDirection.Ascending });
 
-        var result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { Dialect = SqlDialect.SQLite });
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { Dialect = SqlDialect.SQLite });
 
         Assert.Contains("SELECT CUSTOMER.NAME AS client", result.Sql);
         Assert.Contains("INNER JOIN CUSTOMER ON ORDERS.CUSTOMER_ID = CUSTOMER.CUSTOMER_ID", result.Sql);
@@ -36,8 +36,8 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
     public void Generate_CustomCaseColumn_ProducesCaseWhen()
     {
         const string sql = @"CREATE TABLE T (A TEXT, B INTEGER);";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var query = new QueryDefinition { BaseTable = "T" };
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "T" };
         query.CustomColumns.Add(new CustomColumnSelection
         {
             Alias = "label",
@@ -48,7 +48,7 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
             CaseElseValue = "Y"
         });
 
-        var result = new SqlQueryGeneratorEngine().Generate(query, schema);
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
 
         Assert.Contains("CASE WHEN T.A = 'X' THEN 'Z' ELSE 'Y' END AS label", result.Sql);
     }
@@ -58,11 +58,11 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
     public void Generate_QueryDistinct_EmitsSelectDistinct()
     {
         const string sql = @"CREATE TABLE T (A TEXT, B INTEGER);";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var query = new QueryDefinition { BaseTable = "T", Distinct = true };
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "T", Distinct = true };
         query.SelectedColumns.Add(new ColumnReference { Table = "T", Column = "A" });
 
-        var result = new SqlQueryGeneratorEngine().Generate(query, schema);
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
 
         Assert.StartsWith("SELECT DISTINCT T.A", result.Sql);
     }
@@ -71,8 +71,8 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
     public void Generate_AggregateDistinct_EmitsDistinctInsideAggregate()
     {
         const string sql = @"CREATE TABLE T (A TEXT, B INTEGER);";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var query = new QueryDefinition { BaseTable = "T" };
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "T" };
         query.Aggregates.Add(new AggregateSelection
         {
             Function = AggregateFunction.Count,
@@ -81,7 +81,7 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
             Alias = "nb_a"
         });
 
-        var result = new SqlQueryGeneratorEngine().Generate(query, schema);
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
 
         Assert.Contains("COUNT(DISTINCT T.A) AS nb_a", result.Sql);
     }
@@ -90,8 +90,8 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
     public void Generate_ConditionalCount_EmitsCaseWhenCountWithoutSubquery()
     {
         const string sql = @"CREATE TABLE PAYMENTS (PAYMENT_ID INTEGER PRIMARY KEY, PERSON_ID INTEGER, MODE_REGLEMENT TEXT, AMOUNT NUMBER);";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var query = new QueryDefinition { BaseTable = "PAYMENTS" };
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "PAYMENTS" };
         query.GroupBy.Add(new ColumnReference { Table = "PAYMENTS", Column = "PERSON_ID" });
         query.Aggregates.Add(new AggregateSelection
         {
@@ -103,7 +103,7 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
             ConditionValue = "CB"
         });
 
-        var result = new SqlQueryGeneratorEngine().Generate(query, schema);
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
 
         Assert.Contains("COUNT(CASE WHEN PAYMENTS.MODE_REGLEMENT = 'CB' THEN PAYMENTS.PAYMENT_ID END) AS nb_paiements_cb", result.Sql);
         Assert.Contains("GROUP BY PAYMENTS.PERSON_ID", result.Sql);
@@ -114,8 +114,8 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
     public void Generate_ConditionalSum_EmitsCaseWhenSumWithoutSubquery()
     {
         const string sql = @"CREATE TABLE PAYMENTS (PAYMENT_ID INTEGER PRIMARY KEY, PERSON_ID INTEGER, STATUS TEXT, AMOUNT NUMBER);";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var query = new QueryDefinition { BaseTable = "PAYMENTS" };
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "PAYMENTS" };
         query.SelectedColumns.Add(new ColumnReference { Table = "PAYMENTS", Column = "PERSON_ID" });
         query.Aggregates.Add(new AggregateSelection
         {
@@ -127,7 +127,7 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
             ConditionValue = "PAID"
         });
 
-        var result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
 
         Assert.Contains("SUM(CASE WHEN PAYMENTS.STATUS = 'PAID' THEN PAYMENTS.AMOUNT ELSE 0 END) AS total_paye", result.Sql);
         Assert.Contains("GROUP BY PAYMENTS.PERSON_ID", result.Sql);
@@ -150,8 +150,8 @@ CREATE TABLE jobs (
     name TEXT
 );
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var query = new QueryDefinition { BaseTable = "pnj" };
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "pnj" };
         query.SelectedColumns.Add(new ColumnReference { Table = "jobs", Column = "name" });
         query.Aggregates.Add(new AggregateSelection
         {
@@ -160,7 +160,7 @@ CREATE TABLE jobs (
             Alias = "id_agg"
         });
 
-        var result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
 
         Assert.Contains("INNER JOIN jobs ON pnj.job_id = jobs.id", result.Sql);
         Assert.DoesNotContain("pnj.id = jobs.id", result.Sql);
@@ -184,11 +184,11 @@ CREATE TABLE pnj_item (
     item_id INTEGER
 );
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var query = new QueryDefinition { BaseTable = "pnj" };
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "pnj" };
         query.SelectedColumns.Add(new ColumnReference { Table = "items", Column = "name" });
 
-        var result = new SqlQueryGeneratorEngine().Generate(query, schema);
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
 
         Assert.Contains("INNER JOIN pnj_item ON pnj.id = pnj_item.pnj_id", result.Sql);
         Assert.Contains("INNER JOIN items ON pnj_item.item_id = items.id", result.Sql);
@@ -219,8 +219,8 @@ CREATE TABLE pnj_jobs_items_focus (
     focus_score REAL
 );
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var query = new QueryDefinition { BaseTable = "pnj" };
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "pnj" };
         query.SelectedColumns.Add(new ColumnReference { Table = "items", Column = "name" });
         query.GroupBy.Add(new ColumnReference { Table = "items", Column = "name" });
         query.Aggregates.Add(new AggregateSelection
@@ -230,7 +230,7 @@ CREATE TABLE pnj_jobs_items_focus (
             Alias = "count_genre"
         });
 
-        var result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
 
         Assert.Contains("INNER JOIN pnj_item ON pnj.id = pnj_item.pnj_id", result.Sql);
         Assert.Contains("INNER JOIN items ON pnj_item.item_id = items.id", result.Sql);
@@ -271,8 +271,8 @@ CREATE TABLE pnj_jobs_items_focus (
     base_item_code INTEGER
 );
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var query = new QueryDefinition { BaseTable = "pnj" };
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "pnj" };
         query.SelectedColumns.Add(new ColumnReference { Table = "items", Column = "name" });
         query.GroupBy.Add(new ColumnReference { Table = "items", Column = "name" });
         query.Aggregates.Add(new AggregateSelection
@@ -282,7 +282,7 @@ CREATE TABLE pnj_jobs_items_focus (
             Alias = "count_genre"
         });
 
-        var result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
 
         Assert.Contains("INNER JOIN pnj_item ON pnj.id = pnj_item.pnj_id", result.Sql);
         Assert.Contains("INNER JOIN items ON pnj_item.item_id = items.id", result.Sql);
@@ -300,13 +300,13 @@ CREATE TABLE pnj (id INTEGER);
 CREATE TABLE items (id INTEGER, name TEXT);
 CREATE TABLE pnj_item (pnj_id INTEGER, item_id INTEGER);
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var query = new QueryDefinition { BaseTable = "pnj" };
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "pnj" };
         query.SelectedColumns.Add(new ColumnReference { Table = "items", Column = "name" });
         query.DisabledAutoJoinKeys.Add(RelationshipKey.For("pnj", "id", "pnj_item", "pnj_id"));
         query.DisabledAutoJoinKeys.Add(RelationshipKey.ReverseFor("pnj", "id", "pnj_item", "pnj_id"));
 
-        var result = new SqlQueryGeneratorEngine().Generate(query, schema);
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
 
         Assert.DoesNotContain("JOIN pnj_item", result.Sql);
         Assert.Contains("Aucune jointure fiable", string.Join("\n", result.Warnings));
@@ -316,8 +316,8 @@ CREATE TABLE pnj_item (pnj_id INTEGER, item_id INTEGER);
     public void Generate_FilterOnAggregate_EmitsHavingWithoutSubquery()
     {
         const string sql = @"CREATE TABLE pnj (id INTEGER, race_id INTEGER);";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var query = new QueryDefinition { BaseTable = "pnj" };
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "pnj" };
         query.SelectedColumns.Add(new ColumnReference { Table = "pnj", Column = "race_id" });
         query.GroupBy.Add(new ColumnReference { Table = "pnj", Column = "race_id" });
         query.Aggregates.Add(new AggregateSelection
@@ -334,7 +334,7 @@ CREATE TABLE pnj_item (pnj_id INTEGER, item_id INTEGER);
             Value = "10"
         });
 
-        var result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
 
         Assert.Contains("COUNT(pnj.id) AS count_id", result.Sql);
         Assert.Contains("GROUP BY pnj.race_id", result.Sql);
@@ -347,8 +347,8 @@ CREATE TABLE pnj_item (pnj_id INTEGER, item_id INTEGER);
     public void Generate_OrderByAggregateAlias_UsesAlias()
     {
         const string sql = @"CREATE TABLE pnj (id INTEGER, race_id INTEGER);";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var query = new QueryDefinition { BaseTable = "pnj" };
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "pnj" };
         query.SelectedColumns.Add(new ColumnReference { Table = "pnj", Column = "race_id" });
         query.Aggregates.Add(new AggregateSelection
         {
@@ -363,7 +363,7 @@ CREATE TABLE pnj_item (pnj_id INTEGER, item_id INTEGER);
             Direction = SortDirection.Descending
         });
 
-        var result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { AutoGroupSelectedColumnsWhenAggregating = true });
 
         Assert.Contains("ORDER BY count_id DESC", result.Sql);
     }
@@ -372,8 +372,8 @@ CREATE TABLE pnj_item (pnj_id INTEGER, item_id INTEGER);
     public void Generate_FilterAndOrderOnCustomColumn_UsesExpressionForWhereAndAliasForOrder()
     {
         const string sql = @"CREATE TABLE pnj (id INTEGER, race_id INTEGER);";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var query = new QueryDefinition { BaseTable = "pnj" };
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "pnj" };
         query.CustomColumns.Add(new CustomColumnSelection
         {
             Alias = "race_label",
@@ -397,11 +397,86 @@ CREATE TABLE pnj_item (pnj_id INTEGER, item_id INTEGER);
             Direction = SortDirection.Ascending
         });
 
-        var result = new SqlQueryGeneratorEngine().Generate(query, schema);
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
 
         Assert.Contains("CASE WHEN pnj.race_id = 1 THEN 'Humain' ELSE 'Autre' END AS race_label", result.Sql);
         Assert.Contains("WHERE CASE WHEN pnj.race_id = 1 THEN 'Humain' ELSE 'Autre' END = 'Humain'", result.Sql);
         Assert.Contains("ORDER BY race_label ASC", result.Sql);
+    }
+
+
+    [Fact]
+    public void Generate_AutoJoin_PrefersDirectDetectedLookupOverBridgeDetour()
+    {
+        const string sql = @"
+CREATE TABLE pnj (
+    id INTEGER PRIMARY KEY,
+    age INTEGER,
+    nom TEXT,
+    prenom TEXT,
+    race_id INTEGER
+);
+CREATE TABLE pnj_race_descriptions (
+    id INTEGER PRIMARY KEY,
+    legal_majority INTEGER,
+    name TEXT
+);
+CREATE TABLE seances_pnjs (
+    id INTEGER PRIMARY KEY,
+    pnj_id INTEGER,
+    seance_id INTEGER
+);
+";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "pnj" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "pnj", Column = "age" });
+        query.SelectedColumns.Add(new ColumnReference { Table = "pnj", Column = "id" });
+        query.SelectedColumns.Add(new ColumnReference { Table = "pnj", Column = "nom" });
+        query.SelectedColumns.Add(new ColumnReference { Table = "pnj", Column = "prenom" });
+        query.SelectedColumns.Add(new ColumnReference { Table = "pnj_race_descriptions", Column = "legal_majority" });
+        query.Filters.Add(new FilterCondition
+        {
+            Column = new ColumnReference { Table = "pnj", Column = "age" },
+            Operator = ">",
+            ValueKind = FilterValueKind.RawSql,
+            Value = "pnj_race_descriptions.legal_majority"
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
+
+        Assert.Contains("INNER JOIN pnj_race_descriptions ON pnj.race_id = pnj_race_descriptions.id", result.Sql);
+        Assert.DoesNotContain("seances_pnjs", result.Sql);
+        Assert.DoesNotContain("Aucune jointure fiable", string.Join("\n", result.Warnings));
+    }
+
+    [Fact]
+    public void Generate_AutoJoin_StillUsesDirectLookupWhenUnrelatedBridgeIsDisabled()
+    {
+        const string sql = @"
+CREATE TABLE pnj (
+    id INTEGER PRIMARY KEY,
+    race_id INTEGER
+);
+CREATE TABLE pnj_race_descriptions (
+    id INTEGER PRIMARY KEY,
+    legal_majority INTEGER
+);
+CREATE TABLE seances_pnjs (
+    id INTEGER PRIMARY KEY,
+    pnj_id INTEGER
+);
+";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new QueryDefinition { BaseTable = "pnj" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "pnj_race_descriptions", Column = "legal_majority" });
+        query.DisabledAutoJoinKeys.Add(RelationshipKey.For("pnj", "id", "seances_pnjs", "pnj_id"));
+        query.DisabledAutoJoinKeys.Add(RelationshipKey.ReverseFor("pnj", "id", "seances_pnjs", "pnj_id"));
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
+
+        Assert.Contains("INNER JOIN pnj_race_descriptions ON pnj.race_id = pnj_race_descriptions.id", result.Sql);
+        Assert.DoesNotContain("seances_pnjs", result.Sql);
+        Assert.DoesNotContain("Aucune jointure fiable", string.Join("\n", result.Warnings));
     }
 
 }
@@ -416,8 +491,8 @@ public sealed class GenerationV21Tests
 CREATE TABLE ACTIONS (ACTI_IDEN INTEGER PRIMARY KEY, LABEL TEXT);
 CREATE TABLE PAYMENTS (ID INTEGER PRIMARY KEY, ACTI_IDEN INTEGER, AMOUNT NUMBER);
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
-        var sub = new QueryDefinition { Name = "actions_by_label", BaseTable = "ACTIONS" };
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition sub = new QueryDefinition { Name = "actions_by_label", BaseTable = "ACTIONS" };
         sub.SelectedColumns.Add(new ColumnReference { Table = "ACTIONS", Column = "ACTI_IDEN" });
         sub.Filters.Add(new FilterCondition
         {
@@ -427,7 +502,7 @@ CREATE TABLE PAYMENTS (ID INTEGER PRIMARY KEY, ACTI_IDEN INTEGER, AMOUNT NUMBER)
             Value = "label"
         });
 
-        var main = new QueryDefinition { BaseTable = "PAYMENTS" };
+        QueryDefinition main = new QueryDefinition { BaseTable = "PAYMENTS" };
         main.SelectedColumns.Add(new ColumnReference { Table = "PAYMENTS", Column = "ID" });
         main.Filters.Add(new FilterCondition
         {
@@ -438,7 +513,7 @@ CREATE TABLE PAYMENTS (ID INTEGER PRIMARY KEY, ACTI_IDEN INTEGER, AMOUNT NUMBER)
             Subquery = sub
         });
 
-        var result = new SqlQueryGeneratorEngine().Generate(main, schema);
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(main, schema);
 
         Assert.Contains("PAYMENTS.ACTI_IDEN IN (", result.Sql);
         Assert.Contains("SELECT ACTIONS.ACTI_IDEN", result.Sql);

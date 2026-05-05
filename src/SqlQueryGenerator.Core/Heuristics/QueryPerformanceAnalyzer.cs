@@ -10,7 +10,7 @@ public sealed class QueryPerformanceAnalyzer
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(schema);
 
-        QueryPerformanceReport report = new();
+        QueryPerformanceReport report = new QueryPerformanceReport();
         HashSet<string> usedTables = CollectUsedTables(query);
         if (!string.IsNullOrWhiteSpace(query.BaseTable))
         {
@@ -122,7 +122,7 @@ public sealed class QueryPerformanceAnalyzer
 
     private static HashSet<string> CollectUsedTables(QueryDefinition query)
     {
-        HashSet<string> result = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (ColumnReference c in query.SelectedColumns) result.Add(c.Table);
         foreach (FilterCondition? f in query.Filters.Where(f => f.Column is not null)) result.Add(f.Column!.Table);
         foreach (ColumnReference g in query.GroupBy) result.Add(g.Table);

@@ -37,7 +37,7 @@ public sealed class ColumnItemViewModel : ObservableObject
     {
         get
         {
-            var type = DataType.ToUpperInvariant();
+            string type = DataType.ToUpperInvariant();
             if (type.Contains("CHAR") || type.Contains("TEXT") || type.Contains("CLOB") || type.Contains("STRING")) return "TEXT";
             if (type.Contains("INT") || type.Contains("NUMBER") || type.Contains("NUMERIC") || type.Contains("DECIMAL")) return "INTEGER";
             if (type.Contains("REAL") || type.Contains("FLOAT") || type.Contains("DOUBLE") || type.Contains("BINARY_FLOAT") || type.Contains("BINARY_DOUBLE")) return "REAL";

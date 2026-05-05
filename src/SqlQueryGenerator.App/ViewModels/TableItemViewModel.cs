@@ -17,7 +17,7 @@ public sealed class TableItemViewModel : ObservableObject
     {
         Name = table.FullName;
         Comment = table.Comment ?? string.Empty;
-        var sourceColumns = visibleColumns ?? table.Columns;
+        IEnumerable<ColumnDefinition> sourceColumns = visibleColumns ?? table.Columns;
         Columns = new ObservableCollection<ColumnItemViewModel>(sourceColumns
             .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
             .Select(c => new ColumnItemViewModel(
@@ -51,7 +51,7 @@ public sealed class TableItemViewModel : ObservableObject
         }
 
         string key = $"{column.TableName}.{column.Name}";
-        return summaries.TryGetValue(key, out var summary) ? summary : string.Empty;
+        return summaries.TryGetValue(key, out string? summary) ? summary : string.Empty;
     }
 
     private static bool IsInSet(ColumnDefinition column, IReadOnlySet<string>? values)

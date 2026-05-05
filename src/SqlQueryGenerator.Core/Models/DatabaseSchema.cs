@@ -35,9 +35,10 @@ public sealed class DatabaseSchema
 
     public IReadOnlyList<IndexDefinition> FindIndexesForColumn(string tableName, string columnName)
     {
-        return [.. Indexes
+        return Indexes
             .Where(index => SqlNameNormalizer.EqualsName(index.Table, tableName) && index.ContainsColumn(columnName))
             .OrderByDescending(index => index.IsUnique)
-            .ThenBy(index => index.Name, StringComparer.OrdinalIgnoreCase)];
+            .ThenBy(index => index.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 }

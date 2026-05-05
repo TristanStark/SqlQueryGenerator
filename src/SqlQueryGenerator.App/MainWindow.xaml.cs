@@ -19,7 +19,7 @@ public partial class MainWindow : Window
 
     private void OpenSchema_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog
+        OpenFileDialog dialog = new OpenFileDialog
         {
             Title = "Charger un schéma SQL ou TXT",
             Filter = "Schémas SQL/TXT (*.sql;*.txt)|*.sql;*.txt|Tous les fichiers (*.*)|*.*",
@@ -71,7 +71,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var current = e.GetPosition(null);
+        Point current = e.GetPosition(null);
         if (Math.Abs(current.X - _dragStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance
             && Math.Abs(current.Y - _dragStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
         {
@@ -103,7 +103,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var column = element.DataContext as ColumnItemViewModel;
+        ColumnItemViewModel? column = element.DataContext as ColumnItemViewModel;
         if (column is null && element.Parent is ContextMenu contextMenu)
         {
             column = contextMenu.DataContext as ColumnItemViewModel;

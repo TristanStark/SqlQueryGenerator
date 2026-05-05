@@ -1,5 +1,5 @@
-using SqlQueryGenerator.Core.Query;
 using System.Text.Json.Serialization;
+using SqlQueryGenerator.Core.Query;
 
 namespace SqlQueryGenerator.Core.Persistence;
 
@@ -13,5 +13,5 @@ public sealed class SavedQueryDefinition
     public string? LastGeneratedSql { get; set; }
 
     [JsonIgnore]
-    public IReadOnlyList<QueryParameterDefinition> Parameters => [.. Query.Parameters];
+    public IReadOnlyList<QueryParameterDefinition> Parameters => Query.Parameters.ToArray();
 }

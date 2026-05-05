@@ -1,3 +1,4 @@
+using SqlQueryGenerator.Core.Models;
 using SqlQueryGenerator.Core.Parsing;
 
 namespace SqlQueryGenerator.Tests;
@@ -18,7 +19,7 @@ CREATE TABLE ORDERS (
     AMOUNT NUMBER
 );
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
 
         Assert.Contains(schema.Relationships, r => r.FromTable == "ORDERS" && r.FromColumn == "CUSTOMER_ID" && r.ToTable == "CUSTOMER" && r.ToColumn == "CUSTOMER_ID");
     }
@@ -35,7 +36,7 @@ CREATE TABLE MVTO (
     ORD_IDEN NUMBER
 );
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
 
         Assert.Contains(schema.Relationships, r => r.FromTable == "MVTO" && r.FromColumn == "ORD_IDEN" && r.ToTable == "ORD" && r.ToColumn == "ORD_IDEN");
     }
@@ -54,7 +55,7 @@ CREATE TABLE jobs (
     name TEXT
 );
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
 
         Assert.Contains(schema.Relationships, r => r.FromTable == "pnj" && r.FromColumn == "job_id" && r.ToTable == "jobs" && r.ToColumn == "id");
         Assert.DoesNotContain(schema.Relationships, r => r.FromTable == "pnj" && r.FromColumn == "id" && r.ToTable == "jobs" && r.ToColumn == "id");
@@ -74,7 +75,7 @@ CREATE TABLE jobs_groups (
     name TEXT
 );
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
 
         Assert.Contains(schema.Relationships, r => r.FromTable == "jobs" && r.FromColumn == "group_id" && r.ToTable == "jobs_groups" && r.ToColumn == "id");
     }
@@ -94,7 +95,7 @@ CREATE TABLE pnj_jobs (
     name TEXT
 );
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
 
         Assert.Contains(schema.Relationships, r => r.FromTable == "pnj" && r.FromColumn == "job_id" && r.ToTable == "pnj_jobs" && r.ToColumn == "id");
         Assert.DoesNotContain(schema.Relationships, r => r.FromTable == "pnj" && r.FromColumn == "id" && r.ToTable == "pnj_jobs" && r.ToColumn == "id");
@@ -118,10 +119,10 @@ CREATE TABLE pnj_jobs (
     name TEXT
 );
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
 
-        var pnjJobs = schema.Relationships.Single(r => r.FromTable == "pnj" && r.FromColumn == "job_id" && r.ToTable == "pnj_jobs" && r.ToColumn == "id");
-        var jobs = schema.Relationships.Single(r => r.FromTable == "pnj" && r.FromColumn == "job_id" && r.ToTable == "jobs" && r.ToColumn == "id");
+        InferredRelationship pnjJobs = schema.Relationships.Single(r => r.FromTable == "pnj" && r.FromColumn == "job_id" && r.ToTable == "pnj_jobs" && r.ToColumn == "id");
+        InferredRelationship jobs = schema.Relationships.Single(r => r.FromTable == "pnj" && r.FromColumn == "job_id" && r.ToTable == "jobs" && r.ToColumn == "id");
         Assert.True(pnjJobs.Confidence > jobs.Confidence);
     }
 
@@ -143,7 +144,7 @@ CREATE TABLE pnj_item (
     item_id INTEGER
 );
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
 
         Assert.Contains(schema.Relationships, r => r.FromTable == "pnj_item" && r.FromColumn == "pnj_id" && r.ToTable == "pnj" && r.ToColumn == "id");
         Assert.Contains(schema.Relationships, r => r.FromTable == "pnj_item" && r.FromColumn == "item_id" && r.ToTable == "items" && r.ToColumn == "id");
@@ -166,9 +167,9 @@ CREATE TABLE items (
 CREATE INDEX idx_pnj_item_id ON pnj(item_id);
 CREATE UNIQUE INDEX ux_items_id ON items(id);
 ";
-        var schema = new SqlSchemaParser().Parse(sql);
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
 
-        var indexed = schema.Relationships.Single(r => r.FromTable == "pnj" && r.FromColumn == "item_id" && r.ToTable == "items" && r.ToColumn == "id");
+        InferredRelationship indexed = schema.Relationships.Single(r => r.FromTable == "pnj" && r.FromColumn == "item_id" && r.ToTable == "items" && r.ToColumn == "id");
         Assert.Contains("Signal index", indexed.Reason);
         Assert.True(indexed.Confidence >= 0.98);
     }

@@ -30,7 +30,12 @@ public static partial class SqlLiteralFormatter
             return value;
         }
 
-        return value.StartsWith('(') && value.EndsWith(')') ? value : $"'{value.Replace("'", "''", StringComparison.Ordinal)}'";
+        if (value.StartsWith('(') && value.EndsWith(')'))
+        {
+            return value;
+        }
+
+        return $"'{value.Replace("'", "''", StringComparison.Ordinal)}'";
     }
 
     public static string FormatRawList(string raw)

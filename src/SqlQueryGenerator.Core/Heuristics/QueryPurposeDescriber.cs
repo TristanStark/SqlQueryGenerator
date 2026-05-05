@@ -1,6 +1,6 @@
+using System.Text;
 using SqlQueryGenerator.Core.Models;
 using SqlQueryGenerator.Core.Query;
-using System.Text;
 
 namespace SqlQueryGenerator.Core.Heuristics;
 
@@ -12,13 +12,13 @@ public sealed class QueryPurposeDescriber
         ArgumentNullException.ThrowIfNull(schema);
 
         string subject = HumanizeTable(query.BaseTable ?? FirstUsedTable(query) ?? "les données");
-        string[] groupings = [.. query.GroupBy.Select(DescribeGrouping).Distinct(StringComparer.OrdinalIgnoreCase)];
-        string[] aggregates = [.. query.Aggregates.Select(a => DescribeAggregate(a, query, subject)).Where(s => !string.IsNullOrWhiteSpace(s))];
-        string[] selected = [.. query.SelectedColumns.Select(DescribeSelectedColumn).Distinct(StringComparer.OrdinalIgnoreCase)];
-        string[] filters = [.. query.Filters.Select(DescribeFilter).Where(s => !string.IsNullOrWhiteSpace(s))];
-        string[] orders = [.. query.OrderBy.Select(o => $"trié par {DescribeOrderField(o)} {(o.Direction == SortDirection.Descending ? "décroissant" : "croissant")}")];
+        string[] groupings = query.GroupBy.Select(DescribeGrouping).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        string[] aggregates = query.Aggregates.Select(a => DescribeAggregate(a, query, subject)).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+        string[] selected = query.SelectedColumns.Select(DescribeSelectedColumn).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        string[] filters = query.Filters.Select(DescribeFilter).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+        string[] orders = query.OrderBy.Select(o => $"trié par {DescribeOrderField(o)} {(o.Direction == SortDirection.Descending ? "décroissant" : "croissant")}").ToArray();
 
-        StringBuilder sb = new();
+        StringBuilder sb = new StringBuilder();
         sb.Append("Cette requête ");
 
         if (aggregates.Length > 0 && groupings.Length > 0)
@@ -106,9 +106,12 @@ public sealed class QueryPurposeDescriber
             return $"le nombre de {subject}";
         }
 
-        return IsIdentifierColumn(aggregate.Column.Column)
-            ? $"le nombre de {HumanizeTable(aggregate.Column.Table)}"
-            : $"le nombre de {distinctPrefix}{DescribeSelectedColumn(aggregate.Column)} renseigné";
+        if (IsIdentifierColumn(aggregate.Column.Column))
+        {
+            return $"le nombre de {HumanizeTable(aggregate.Column.Table)}";
+        }
+
+        return $"le nombre de {distinctPrefix}{DescribeSelectedColumn(aggregate.Column)} renseigné";
     }
 
     private static string DescribeColumnForAggregate(ColumnReference? column)
@@ -121,9 +124,12 @@ public sealed class QueryPurposeDescriber
         string columnName = SqlNameNormalizer.Normalize(column.Column);
         string tableName = HumanizeTable(column.Table);
 
-        return columnName is "NAME" or "NOM" or "LABEL" or "LIBELLE" or "TITLE" or "TITRE"
-            ? SingularizeHuman(tableName)
-            : $"{HumanizeColumn(column.Column)} de {tableName}";
+        if (columnName is "NAME" or "NOM" or "LABEL" or "LIBELLE" or "TITLE" or "TITRE")
+        {
+            return SingularizeHuman(tableName);
+        }
+
+        return $"{HumanizeColumn(column.Column)} de {tableName}";
     }
 
     private static string DescribeSelectedColumn(ColumnReference column)
@@ -216,15 +222,19 @@ public sealed class QueryPurposeDescriber
             return token[..^3] + "y";
         }
 
-        return (token.EndsWith("s", StringComparison.OrdinalIgnoreCase) || token.EndsWith("x", StringComparison.OrdinalIgnoreCase)) && token.Length > 3
-            ? token[..^1]
-            : token;
+        if ((token.EndsWith("s", StringComparison.OrdinalIgnoreCase) || token.EndsWith("x", StringComparison.OrdinalIgnoreCase)) && token.Length > 3)
+        {
+            return token[..^1];
+        }
+
+        return token;
     }
 
     private static string JoinFrench(IReadOnlyList<string> values)
     {
         if (values.Count == 0) return string.Empty;
         if (values.Count == 1) return values[0];
-        return values.Count == 2 ? values[0] + " et " + values[1] : string.Join(", ", values.Take(values.Count - 1)) + " et " + values[^1];
+        if (values.Count == 2) return values[0] + " et " + values[1];
+        return string.Join(", ", values.Take(values.Count - 1)) + " et " + values[^1];
     }
 }

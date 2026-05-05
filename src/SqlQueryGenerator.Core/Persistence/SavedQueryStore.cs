@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using SqlQueryGenerator.Core.Query;
 
 namespace SqlQueryGenerator.Core.Persistence;
 
@@ -29,7 +30,7 @@ public sealed class SavedQueryStore
         {
             try
             {
-                var item = Load(file);
+                SavedQueryDefinition item = Load(file);
                 item.Name = string.IsNullOrWhiteSpace(item.Name) ? Path.GetFileNameWithoutExtension(file).Replace(".sqlqg", string.Empty) : item.Name;
                 result.Add(item);
             }
@@ -39,13 +40,13 @@ public sealed class SavedQueryStore
             }
         }
 
-        return [.. result.OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)];
+        return result.OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     public SavedQueryDefinition Load(string filePath)
     {
-        using var stream = File.OpenRead(filePath);
-        var saved = JsonSerializer.Deserialize<SavedQueryDefinition>(stream, Options)
+        using FileStream stream = File.OpenRead(filePath);
+        SavedQueryDefinition saved = JsonSerializer.Deserialize<SavedQueryDefinition>(stream, Options)
             ?? throw new InvalidOperationException("Le fichier de requête sauvegardée est vide ou invalide.");
         return saved;
     }
@@ -65,16 +66,16 @@ public sealed class SavedQueryStore
         }
 
         string file = Path.Combine(RootDirectory, MakeSafeFileName(saved.Name) + ".sqlqg.json");
-        using var stream = File.Create(file);
+        using FileStream stream = File.Create(file);
         JsonSerializer.Serialize(stream, saved, Options);
         return file;
     }
 
     public static string MakeSafeFileName(string name)
     {
-        var invalid = Path.GetInvalidFileNameChars().ToHashSet();
-        char[] chars = [.. name.Trim().Select(c => invalid.Contains(c) ? '_' : c)];
-        string cleaned = new(chars);
+        HashSet<char> invalid = Path.GetInvalidFileNameChars().ToHashSet();
+        char[] chars = name.Trim().Select(c => invalid.Contains(c) ? '_' : c).ToArray();
+        string cleaned = new string(chars);
         return string.IsNullOrWhiteSpace(cleaned) ? "query" : cleaned;
     }
 }

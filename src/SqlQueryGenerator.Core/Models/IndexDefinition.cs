@@ -9,7 +9,7 @@ public sealed class IndexDefinition
         Name = name.Trim();
         Table = table.Trim();
         IsUnique = isUnique;
-        Columns = new Collection<string>([.. columns.Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c.Trim())]);
+        Columns = new Collection<string>(columns.Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c.Trim()).ToList());
     }
 
     public string Name { get; }
