@@ -1,6 +1,6 @@
-using System.Text;
 using SqlQueryGenerator.Core.Models;
 using SqlQueryGenerator.Core.Query;
+using System.Text;
 
 namespace SqlQueryGenerator.Core.Heuristics;
 

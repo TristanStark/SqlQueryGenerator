@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using SqlQueryGenerator.Core.Models;
+using System.Collections.Concurrent;
 
 namespace SqlQueryGenerator.Core.Heuristics;
 
@@ -128,7 +128,7 @@ public sealed class ForeignKeyInferer
 
             // Strong case: specific same column name where target is PK/unique.
             // This is now O(group^2) for small same-name groups instead of O(total_columns^2).
-            ColumnInfo[] strongTargets = group.Where(c => c.TargetUnique).ToArray();
+            ColumnInfo[] strongTargets = [.. group.Where(c => c.TargetUnique)];
             if (strongTargets.Length > 0)
             {
                 foreach (ColumnInfo? source in group.Where(c => !c.Column.IsPrimaryKey))
@@ -161,9 +161,7 @@ public sealed class ForeignKeyInferer
                 return;
             }
 
-            ColumnInfo[] weakCandidates = group
-                .Where(c => !c.Column.IsPrimaryKey && c.LooksLikeIdentifier)
-                .ToArray();
+            ColumnInfo[] weakCandidates = [.. group.Where(c => !c.Column.IsPrimaryKey && c.LooksLikeIdentifier)];
 
             for (int i = 0; i < weakCandidates.Length; i++)
             {
@@ -853,9 +851,7 @@ public sealed class ForeignKeyInferer
 
         public void BuildColumns(HashSet<string> indexedColumns, HashSet<string> uniqueColumns)
         {
-            ColumnInfo[] columns = Table.Columns
-                .Select(c => new ColumnInfo(this, c, indexedColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || indexedColumns.Contains(QualifiedColumnKey(Table.Name, c.Name)), uniqueColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || uniqueColumns.Contains(QualifiedColumnKey(Table.Name, c.Name))))
-                .ToArray();
+            ColumnInfo[] columns = [.. Table.Columns.Select(c => new ColumnInfo(this, c, indexedColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || indexedColumns.Contains(QualifiedColumnKey(Table.Name, c.Name)), uniqueColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || uniqueColumns.Contains(QualifiedColumnKey(Table.Name, c.Name))))];
 
             Columns = columns;
             ReferenceTargetColumns = columns.Where(c => c.IsReferenceTargetColumn).ToArray();

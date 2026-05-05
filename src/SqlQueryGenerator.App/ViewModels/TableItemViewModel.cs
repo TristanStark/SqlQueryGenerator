@@ -1,6 +1,6 @@
-using System.Collections.ObjectModel;
 using SqlQueryGenerator.App.Infrastructure;
 using SqlQueryGenerator.Core.Models;
+using System.Collections.ObjectModel;
 
 namespace SqlQueryGenerator.App.ViewModels;
 

@@ -1,9 +1,9 @@
+using Microsoft.Win32;
+using SqlQueryGenerator.App.ViewModels;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using Microsoft.Win32;
-using SqlQueryGenerator.App.ViewModels;
 
 namespace SqlQueryGenerator.App;
 

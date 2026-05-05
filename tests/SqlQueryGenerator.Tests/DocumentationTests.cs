@@ -1,6 +1,6 @@
-using SqlQueryGenerator.Core.Persistence;
-using SqlQueryGenerator.Core.Parsing;
 using SqlQueryGenerator.Core.Models;
+using SqlQueryGenerator.Core.Parsing;
+using SqlQueryGenerator.Core.Persistence;
 
 namespace SqlQueryGenerator.Tests;
 

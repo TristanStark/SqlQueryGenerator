@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using SqlQueryGenerator.Core.Query;
 
 namespace SqlQueryGenerator.Core.Persistence;
 
@@ -73,7 +72,7 @@ public sealed class SavedQueryStore
 
     public static string MakeSafeFileName(string name)
     {
-        HashSet<char> invalid = Path.GetInvalidFileNameChars().ToHashSet();
+        HashSet<char> invalid = [.. Path.GetInvalidFileNameChars()];
         char[] chars = [.. name.Trim().Select(c => invalid.Contains(c) ? '_' : c)];
         string cleaned = new(chars);
         return string.IsNullOrWhiteSpace(cleaned) ? "query" : cleaned;

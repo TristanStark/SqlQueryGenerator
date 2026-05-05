@@ -1,16 +1,15 @@
-using System.Collections.ObjectModel;
-using System.Collections.Specialized;
-using System.ComponentModel;
-using System.IO;
-using System.Windows;
 using SqlQueryGenerator.App.Infrastructure;
 using SqlQueryGenerator.Core.Generation;
 using SqlQueryGenerator.Core.Heuristics;
-using SqlQueryGenerator.Core.Persistence;
 using SqlQueryGenerator.Core.Models;
 using SqlQueryGenerator.Core.Parsing;
+using SqlQueryGenerator.Core.Persistence;
 using SqlQueryGenerator.Core.Query;
 using SqlQueryGenerator.Core.Validation;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.IO;
+using System.Windows;
 
 namespace SqlQueryGenerator.App.ViewModels;
 
@@ -599,7 +598,7 @@ public sealed class MainViewModel : ObservableObject
                         || (c.Comment?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false));
             }
 
-            List<ColumnDefinition> visibleList = visibleColumns.ToList();
+            List<ColumnDefinition> visibleList = [.. visibleColumns];
             if (visibleList.Count == 0)
             {
                 continue;

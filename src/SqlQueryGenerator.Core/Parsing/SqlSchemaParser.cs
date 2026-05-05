@@ -1,7 +1,7 @@
-using System.Text;
-using System.Text.RegularExpressions;
 using SqlQueryGenerator.Core.Heuristics;
 using SqlQueryGenerator.Core.Models;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace SqlQueryGenerator.Core.Parsing;
 

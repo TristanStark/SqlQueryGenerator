@@ -1,6 +1,6 @@
-using System.Text;
 using SqlQueryGenerator.Core.Models;
 using SqlQueryGenerator.Core.Query;
+using System.Text;
 
 namespace SqlQueryGenerator.Core.Generation;
 
@@ -57,7 +57,7 @@ public sealed class SqlQueryGeneratorEngine
             sb.AppendLine();
         }
 
-        List<FilterCondition> whereFilters = query.Filters.Where(f => f.FieldKind != QueryFieldKind.Aggregate).ToList();
+        List<FilterCondition> whereFilters = [.. query.Filters.Where(f => f.FieldKind != QueryFieldKind.Aggregate)];
         List<(string Predicate, LogicalConnector Connector)> where = BuildFilterPredicates(query, whereFilters, schema, options, warnings);
         AppendPredicateBlock(sb, "WHERE", where);
 
@@ -79,7 +79,7 @@ public sealed class SqlQueryGeneratorEngine
             sb.Append("GROUP BY ").AppendLine(string.Join(", ", groupBy));
         }
 
-        List<FilterCondition> havingFilters = query.Filters.Where(f => f.FieldKind == QueryFieldKind.Aggregate).ToList();
+        List<FilterCondition> havingFilters = [.. query.Filters.Where(f => f.FieldKind == QueryFieldKind.Aggregate)];
         List<(string Predicate, LogicalConnector Connector)> having = BuildFilterPredicates(query, havingFilters, schema, options, warnings);
         AppendPredicateBlock(sb, "HAVING", having);
 
@@ -230,7 +230,7 @@ public sealed class SqlQueryGeneratorEngine
 
     private static JoinDefinition AddCompositePairsFromRelationships(DatabaseSchema schema, JoinDefinition join, IEnumerable<string> disabledAutoJoinKeys)
     {
-        JoinColumnPair[] compatible = schema.Relationships
+        JoinColumnPair[] compatible = [.. schema.Relationships
             .Where(r => !IsRelationshipDisabled(r, disabledAutoJoinKeys))
             .Select(r =>
             {
@@ -253,8 +253,7 @@ public sealed class SqlQueryGeneratorEngine
             .Where(p => !SqlNameNormalizer.EqualsName(p.FromColumn, join.FromColumn)
                 && !SqlNameNormalizer.EqualsName(p.ToColumn, join.ToColumn)
                 && LooksLikeCompositeCompanion(p.FromColumn, p.ToColumn))
-            .Take(8)
-            .ToArray();
+            .Take(8)];
 
         if (compatible.Length == 0)
         {
@@ -787,7 +786,7 @@ public sealed class SqlQueryGeneratorEngine
                     continue;
                 }
 
-                List<JoinDefinition> nextPath = current.Path.Concat(new[] { oriented }).ToList();
+                List<JoinDefinition> nextPath = [.. current.Path, .. new[] { oriented }];
                 if (SqlNameNormalizer.EqualsName(nextTable, targetTable))
                 {
                     results.Add(nextPath);
@@ -1498,10 +1497,12 @@ public sealed class SqlQueryGeneratorEngine
         return IndentSql(result.Sql.Trim().TrimEnd(';'), 4);
     }
 
+    private static readonly string[] separator = new[] { "\r\n", "\n" };
+
     private static string IndentSql(string sql, int spaces)
     {
         string prefix = new(' ', spaces);
-        return string.Join(Environment.NewLine, sql.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None).Select(line => prefix + line));
+        return string.Join(Environment.NewLine, sql.Split(separator, StringSplitOptions.None).Select(line => prefix + line));
     }
 
     private static List<string> BuildGroupBy(QueryDefinition query, SqlGeneratorOptions options)

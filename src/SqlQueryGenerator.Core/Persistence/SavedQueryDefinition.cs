@@ -1,5 +1,5 @@
-using System.Text.Json.Serialization;
 using SqlQueryGenerator.Core.Query;
+using System.Text.Json.Serialization;
 
 namespace SqlQueryGenerator.Core.Persistence;
 

@@ -1,5 +1,5 @@
-using System.Text;
 using SqlQueryGenerator.Core.Models;
+using System.Text;
 
 namespace SqlQueryGenerator.Core.Persistence;
 

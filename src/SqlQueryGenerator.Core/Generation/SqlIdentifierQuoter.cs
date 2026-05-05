@@ -1,5 +1,5 @@
-using System.Text.RegularExpressions;
 using SqlQueryGenerator.Core.Query;
+using System.Text.RegularExpressions;
 
 namespace SqlQueryGenerator.Core.Generation;
 
