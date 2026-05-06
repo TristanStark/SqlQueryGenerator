@@ -3,8 +3,14 @@ using SqlQueryGenerator.Core.Parsing;
 
 namespace SqlQueryGenerator.Tests;
 
+/// <summary>
+/// Représente ParserTests dans SQL Query Generator.
+/// </summary>
 public sealed class ParserTests
 {
+    /// <summary>
+    /// Exécute le traitement Parse OracleCommentsAndPrimaryKeys ExtractsTablesColumnsAndComments.
+    /// </summary>
     [Fact]
     public void Parse_OracleCommentsAndPrimaryKeys_ExtractsTablesColumnsAndComments()
     {
@@ -28,6 +34,9 @@ COMMENT ON COLUMN ORD.CUSTOMER_ID IS 'Customer identifier';
         Assert.Equal("Customer identifier", table.FindColumn("CUSTOMER_ID")!.Comment);
     }
 
+    /// <summary>
+    /// Exécute le traitement Parse InlineComments ExtractsColumnComments.
+    /// </summary>
     [Fact]
     public void Parse_InlineComments_ExtractsColumnComments()
     {
@@ -44,6 +53,9 @@ CREATE TABLE customer (
         Assert.Equal("display name", table.FindColumn("name")!.Comment);
     }
 
+    /// <summary>
+    /// Exécute le traitement Parse InlineCommentAfterComma DoesNotAssignCommentToNextColumn.
+    /// </summary>
     [Fact]
     public void Parse_InlineCommentAfterComma_DoesNotAssignCommentToNextColumn()
     {
@@ -60,6 +72,9 @@ CREATE TABLE customer (
         Assert.Equal("display name", table.FindColumn("name")!.Comment);
     }
 
+    /// <summary>
+    /// Exécute le traitement Parse CreateIndex ExtractsIndexedColumns.
+    /// </summary>
     [Fact]
     public void Parse_CreateIndex_ExtractsIndexedColumns()
     {
@@ -82,8 +97,14 @@ CREATE UNIQUE INDEX ux_pnj_nom ON pnj(nom);
 
 }
 
+/// <summary>
+/// Représente ParserV21Tests dans SQL Query Generator.
+/// </summary>
 public sealed class ParserV21Tests
 {
+    /// <summary>
+    /// Exécute le traitement Parse CreateView AddsViewAsQueryableTable.
+    /// </summary>
     [Fact]
     public void Parse_CreateView_AddsViewAsQueryableTable()
     {

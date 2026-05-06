@@ -7,42 +7,192 @@ using SqlQueryGenerator.Core.Persistence;
 using SqlQueryGenerator.Core.Query;
 using SqlQueryGenerator.Core.Validation;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
 using System.Windows;
 
 namespace SqlQueryGenerator.App.ViewModels;
 
+/// <summary>
+/// Représente MainViewModel dans SQL Query Generator.
+/// </summary>
 public sealed class MainViewModel : ObservableObject
 {
+    /// <summary>
+    /// Exécute le traitement new.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     private readonly SqlSchemaParser _parser = new();
+    /// <summary>
+    /// Exécute le traitement new.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     private readonly SqlQueryGeneratorEngine _generator = new();
+    /// <summary>
+    /// Exécute le traitement new.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     private readonly QueryValidator _validator = new();
+    /// <summary>
+    /// Exécute le traitement new.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     private readonly QueryPurposeDescriber _purposeDescriber = new();
+    /// <summary>
+    /// Exécute le traitement new.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     private readonly QueryPerformanceAnalyzer _performanceAnalyzer = new();
+    /// <summary>
+    /// Exécute le traitement new.
+    /// </summary>
+    /// <param name="CurrentDirectory">Paramètre CurrentDirectory.</param>
+    /// <param name="saved_queries">Paramètre saved_queries.</param>
+    /// <returns>Résultat du traitement.</returns>
     private readonly SavedQueryStore _savedQueryStore = new(Path.Combine(Environment.CurrentDirectory, "saved_queries"));
+    /// <summary>
+    /// Exécute le traitement new.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     private readonly SchemaDocumentationImporter _documentationImporter = new();
+    /// <summary>
+    /// Exécute le traitement new.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     private DatabaseSchema _schema = new();
+    /// <summary>
+    /// Stocke la valeur interne  loadedFile.
+    /// </summary>
+    /// <value>Valeur de _loadedFile.</value>
     private string _loadedFile = string.Empty;
+    /// <summary>
+    /// Stocke la valeur interne  status.
+    /// </summary>
+    /// <value>Valeur de _status.</value>
     private string _status = "Charge un schéma SQL/TXT pour commencer.";
+    /// <summary>
+    /// Stocke la valeur interne  generatedSql.
+    /// </summary>
+    /// <value>Valeur de _generatedSql.</value>
     private string _generatedSql = "-- La requête générée apparaîtra ici.";
+    /// <summary>
+    /// Stocke la valeur interne  warnings.
+    /// </summary>
+    /// <value>Valeur de _warnings.</value>
     private string _warnings = string.Empty;
+    /// <summary>
+    /// Stocke la valeur interne  queryPurpose.
+    /// </summary>
+    /// <value>Valeur de _queryPurpose.</value>
     private string _queryPurpose = "Charge un schéma et construis une requête pour obtenir une explication en français.";
+    /// <summary>
+    /// Stocke la valeur interne  performanceReport.
+    /// </summary>
+    /// <value>Valeur de _performanceReport.</value>
     private string _performanceReport = "L'analyse de performance apparaîtra ici.";
+    /// <summary>
+    /// Stocke la valeur interne  queryName.
+    /// </summary>
+    /// <value>Valeur de _queryName.</value>
     private string _queryName = "nouvelle_requete";
+    /// <summary>
+    /// Stocke la valeur interne  queryDescription.
+    /// </summary>
+    /// <value>Valeur de _queryDescription.</value>
     private string _queryDescription = string.Empty;
+    /// <summary>
+    /// Stocke la valeur interne  selectedSavedQuery.
+    /// </summary>
+    /// <value>Valeur de _selectedSavedQuery.</value>
     private SavedQueryItemViewModel? _selectedSavedQuery;
+    /// <summary>
+    /// Stocke la valeur interne  baseTable.
+    /// </summary>
+    /// <value>Valeur de _baseTable.</value>
     private string _baseTable = string.Empty;
+    /// <summary>
+    /// Stocke la valeur interne  dialect.
+    /// </summary>
+    /// <value>Valeur de _dialect.</value>
     private SqlDialect _dialect = SqlDialect.SQLite;
+    /// <summary>
+    /// Stocke la valeur interne  quoteIdentifiers.
+    /// </summary>
+    /// <value>Valeur de _quoteIdentifiers.</value>
     private bool _quoteIdentifiers;
+    /// <summary>
+    /// Stocke la valeur interne  distinct.
+    /// </summary>
+    /// <value>Valeur de _distinct.</value>
     private bool _distinct;
+    /// <summary>
+    /// Stocke la valeur interne  autoGroupSelectedColumns.
+    /// </summary>
+    /// <value>Valeur de _autoGroupSelectedColumns.</value>
     private bool _autoGroupSelectedColumns = true;
+    /// <summary>
+    /// Stocke la valeur interne  limitRows.
+    /// </summary>
+    /// <value>Valeur de _limitRows.</value>
     private int? _limitRows;
+    /// <summary>
+    /// Stocke la valeur interne  selectedAvailableColumn.
+    /// </summary>
+    /// <value>Valeur de _selectedAvailableColumn.</value>
     private ColumnItemViewModel? _selectedAvailableColumn;
+    /// <summary>
+    /// Stocke la valeur interne  selectedRelationship.
+    /// </summary>
+    /// <value>Valeur de _selectedRelationship.</value>
     private RelationshipItemViewModel? _selectedRelationship;
+    /// <summary>
+    /// Stocke la valeur interne  suppressAutoGenerate.
+    /// </summary>
+    /// <value>Valeur de _suppressAutoGenerate.</value>
     private bool _suppressAutoGenerate;
+    /// <summary>
+    /// Stocke la valeur interne  columnSearchText.
+    /// </summary>
+    /// <value>Valeur de _columnSearchText.</value>
     private string _columnSearchText = string.Empty;
+    /// <summary>
+    /// Stocke la valeur interne  lastAppliedColumnSearchText.
+    /// </summary>
+    /// <value>Valeur de _lastAppliedColumnSearchText.</value>
+    private string _lastAppliedColumnSearchText = "__not_applied__";
+    /// <summary>
+    /// Exécute le traitement Dictionary.
+    /// </summary>
+    /// <param name="OrdinalIgnoreCase">Paramètre OrdinalIgnoreCase.</param>
+    /// <returns>Résultat du traitement.</returns>
+    private IReadOnlyDictionary<string, string> _cachedForeignKeySummaries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Exécute le traitement Dictionary.
+    /// </summary>
+    /// <param name="OrdinalIgnoreCase">Paramètre OrdinalIgnoreCase.</param>
+    /// <returns>Résultat du traitement.</returns>
+    private IReadOnlyDictionary<string, string> _cachedIndexSummaries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Exécute le traitement HashSet.
+    /// </summary>
+    /// <param name="OrdinalIgnoreCase">Paramètre OrdinalIgnoreCase.</param>
+    /// <returns>Résultat du traitement.</returns>
+    private IReadOnlySet<string> _cachedUniqueIndexColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Exécute le traitement Empty.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
+    private IReadOnlyList<TableDefinition> _sortedSchemaTables = Array.Empty<TableDefinition>();
+    /// <summary>
+    /// Stocke la valeur interne  columnNamesByTable.
+    /// </summary>
+    /// <value>Valeur de _columnNamesByTable.</value>
+    private IReadOnlyDictionary<string, IReadOnlyList<string>> _columnNamesByTable = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Initialise une nouvelle instance de MainViewModel.
+    /// </summary>
     public MainViewModel()
     {
         GenerateCommand = new RelayCommand(GenerateSql);
@@ -77,6 +227,8 @@ public sealed class MainViewModel : ObservableObject
         ClearColumnSearchCommand = new RelayCommand(() => ColumnSearchText = string.Empty);
         ReloadSavedQueries();
 
+        Joins.CollectionChanged += Joins_CollectionChanged;
+
         WireAutoGenerate(SelectedColumns);
         WireAutoGenerate(Filters);
         WireAutoGenerate(GroupBy);
@@ -87,68 +239,313 @@ public sealed class MainViewModel : ObservableObject
         WireAutoGenerate(Parameters);
     }
 
+    /// <summary>
+    /// Stocke la valeur interne Tables.
+    /// </summary>
+    /// <value>Valeur de Tables.</value>
     public ObservableCollection<TableItemViewModel> Tables { get; } = [];
+    /// <summary>
+    /// Stocke la valeur interne AllColumns.
+    /// </summary>
+    /// <value>Valeur de AllColumns.</value>
     public ObservableCollection<ColumnItemViewModel> AllColumns { get; } = [];
+    /// <summary>
+    /// Stocke la valeur interne Relationships.
+    /// </summary>
+    /// <value>Valeur de Relationships.</value>
     public ObservableCollection<RelationshipItemViewModel> Relationships { get; } = [];
+    /// <summary>
+    /// Stocke la valeur interne RelationshipGroups.
+    /// </summary>
+    /// <value>Valeur de RelationshipGroups.</value>
     public ObservableCollection<RelationshipGroupViewModel> RelationshipGroups { get; } = [];
+    /// <summary>
+    /// Stocke la valeur interne SelectedColumns.
+    /// </summary>
+    /// <value>Valeur de SelectedColumns.</value>
     public ObservableCollection<SelectColumnRowViewModel> SelectedColumns { get; } = [];
+    /// <summary>
+    /// Stocke la valeur interne Filters.
+    /// </summary>
+    /// <value>Valeur de Filters.</value>
     public ObservableCollection<FilterRowViewModel> Filters { get; } = [];
+    /// <summary>
+    /// Stocke la valeur interne GroupBy.
+    /// </summary>
+    /// <value>Valeur de GroupBy.</value>
     public ObservableCollection<GroupByRowViewModel> GroupBy { get; } = [];
+    /// <summary>
+    /// Stocke la valeur interne OrderBy.
+    /// </summary>
+    /// <value>Valeur de OrderBy.</value>
     public ObservableCollection<OrderByRowViewModel> OrderBy { get; } = [];
+    /// <summary>
+    /// Stocke la valeur interne Aggregates.
+    /// </summary>
+    /// <value>Valeur de Aggregates.</value>
     public ObservableCollection<AggregateRowViewModel> Aggregates { get; } = [];
+    /// <summary>
+    /// Stocke la valeur interne Joins.
+    /// </summary>
+    /// <value>Valeur de Joins.</value>
     public ObservableCollection<JoinRowViewModel> Joins { get; } = [];
+    /// <summary>
+    /// Stocke la valeur interne CustomColumns.
+    /// </summary>
+    /// <value>Valeur de CustomColumns.</value>
     public ObservableCollection<CustomColumnRowViewModel> CustomColumns { get; } = [];
+    /// <summary>
+    /// Stocke la valeur interne Parameters.
+    /// </summary>
+    /// <value>Valeur de Parameters.</value>
     public ObservableCollection<QueryParameterRowViewModel> Parameters { get; } = [];
+    /// <summary>
+    /// Stocke la valeur interne SavedQueries.
+    /// </summary>
+    /// <value>Valeur de SavedQueries.</value>
     public ObservableCollection<SavedQueryItemViewModel> SavedQueries { get; } = [];
+    /// <summary>
+    /// Stocke la valeur interne TableNames.
+    /// </summary>
+    /// <value>Valeur de TableNames.</value>
     public ObservableCollection<string> TableNames { get; } = [];
+    /// <summary>
+    /// Obtient ou définit ColumnNamesByTable.
+    /// </summary>
+    /// <value>Valeur de ColumnNamesByTable.</value>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> ColumnNamesByTable { get => _columnNamesByTable; private set => SetProperty(ref _columnNamesByTable, value); }
+    /// <summary>
+    /// Stocke la valeur interne Operators.
+    /// </summary>
+    /// <value>Valeur de Operators.</value>
     public IReadOnlyList<string> Operators { get; } = new[] { "=", "<>", ">", ">=", "<", "<=", "LIKE", "NOT LIKE", "IN", "NOT IN", "BETWEEN", "IS NULL", "IS NOT NULL", "EXISTS", "NOT EXISTS" };
+    /// <summary>
+    /// Obtient ou définit FilterValueKinds.
+    /// </summary>
+    /// <value>Valeur de FilterValueKinds.</value>
     public Array FilterValueKinds => Enum.GetValues(typeof(FilterValueKind));
+    /// <summary>
+    /// Obtient ou définit Dialects.
+    /// </summary>
+    /// <value>Valeur de Dialects.</value>
     public Array Dialects => Enum.GetValues(typeof(SqlDialect));
+    /// <summary>
+    /// Obtient ou définit JoinTypes.
+    /// </summary>
+    /// <value>Valeur de JoinTypes.</value>
     public Array JoinTypes => Enum.GetValues(typeof(JoinType));
+    /// <summary>
+    /// Obtient ou définit AggregateFunctions.
+    /// </summary>
+    /// <value>Valeur de AggregateFunctions.</value>
     public Array AggregateFunctions => Enum.GetValues(typeof(AggregateFunction));
+    /// <summary>
+    /// Obtient ou définit SortDirections.
+    /// </summary>
+    /// <value>Valeur de SortDirections.</value>
     public Array SortDirections => Enum.GetValues(typeof(SortDirection));
+    /// <summary>
+    /// Obtient ou définit LogicalConnectors.
+    /// </summary>
+    /// <value>Valeur de LogicalConnectors.</value>
     public Array LogicalConnectors => Enum.GetValues(typeof(LogicalConnector));
 
+    /// <summary>
+    /// Stocke la valeur interne GenerateCommand.
+    /// </summary>
+    /// <value>Valeur de GenerateCommand.</value>
     public RelayCommand GenerateCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne ClearQueryCommand.
+    /// </summary>
+    /// <value>Valeur de ClearQueryCommand.</value>
     public RelayCommand ClearQueryCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne RemoveSelectedColumnCommand.
+    /// </summary>
+    /// <value>Valeur de RemoveSelectedColumnCommand.</value>
     public RelayCommand RemoveSelectedColumnCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne RemoveFilterCommand.
+    /// </summary>
+    /// <value>Valeur de RemoveFilterCommand.</value>
     public RelayCommand RemoveFilterCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne RemoveGroupByCommand.
+    /// </summary>
+    /// <value>Valeur de RemoveGroupByCommand.</value>
     public RelayCommand RemoveGroupByCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne RemoveOrderByCommand.
+    /// </summary>
+    /// <value>Valeur de RemoveOrderByCommand.</value>
     public RelayCommand RemoveOrderByCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne RemoveAggregateCommand.
+    /// </summary>
+    /// <value>Valeur de RemoveAggregateCommand.</value>
     public RelayCommand RemoveAggregateCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne RemoveJoinCommand.
+    /// </summary>
+    /// <value>Valeur de RemoveJoinCommand.</value>
     public RelayCommand RemoveJoinCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne RemoveCustomColumnCommand.
+    /// </summary>
+    /// <value>Valeur de RemoveCustomColumnCommand.</value>
     public RelayCommand RemoveCustomColumnCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne AddSelectedColumnCommand.
+    /// </summary>
+    /// <value>Valeur de AddSelectedColumnCommand.</value>
     public RelayCommand AddSelectedColumnCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne AddSelectedFilterCommand.
+    /// </summary>
+    /// <value>Valeur de AddSelectedFilterCommand.</value>
     public RelayCommand AddSelectedFilterCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne AddSelectedGroupByCommand.
+    /// </summary>
+    /// <value>Valeur de AddSelectedGroupByCommand.</value>
     public RelayCommand AddSelectedGroupByCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne AddSelectedOrderByCommand.
+    /// </summary>
+    /// <value>Valeur de AddSelectedOrderByCommand.</value>
     public RelayCommand AddSelectedOrderByCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne AddSelectedAggregateCommand.
+    /// </summary>
+    /// <value>Valeur de AddSelectedAggregateCommand.</value>
     public RelayCommand AddSelectedAggregateCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne AddJoinFromRelationshipCommand.
+    /// </summary>
+    /// <value>Valeur de AddJoinFromRelationshipCommand.</value>
     public RelayCommand AddJoinFromRelationshipCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne AddManualJoinCommand.
+    /// </summary>
+    /// <value>Valeur de AddManualJoinCommand.</value>
     public RelayCommand AddManualJoinCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne AddJoinPairCommand.
+    /// </summary>
+    /// <value>Valeur de AddJoinPairCommand.</value>
     public RelayCommand AddJoinPairCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne RemoveJoinPairCommand.
+    /// </summary>
+    /// <value>Valeur de RemoveJoinPairCommand.</value>
     public RelayCommand RemoveJoinPairCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne AddEmptyCustomColumnCommand.
+    /// </summary>
+    /// <value>Valeur de AddEmptyCustomColumnCommand.</value>
     public RelayCommand AddEmptyCustomColumnCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne AddAggregateFilterCommand.
+    /// </summary>
+    /// <value>Valeur de AddAggregateFilterCommand.</value>
     public RelayCommand AddAggregateFilterCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne AddAggregateOrderByCommand.
+    /// </summary>
+    /// <value>Valeur de AddAggregateOrderByCommand.</value>
     public RelayCommand AddAggregateOrderByCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne AddCustomFilterCommand.
+    /// </summary>
+    /// <value>Valeur de AddCustomFilterCommand.</value>
     public RelayCommand AddCustomFilterCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne AddCustomOrderByCommand.
+    /// </summary>
+    /// <value>Valeur de AddCustomOrderByCommand.</value>
     public RelayCommand AddCustomOrderByCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne AddParameterCommand.
+    /// </summary>
+    /// <value>Valeur de AddParameterCommand.</value>
     public RelayCommand AddParameterCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne RemoveParameterCommand.
+    /// </summary>
+    /// <value>Valeur de RemoveParameterCommand.</value>
     public RelayCommand RemoveParameterCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne SaveCurrentQueryCommand.
+    /// </summary>
+    /// <value>Valeur de SaveCurrentQueryCommand.</value>
     public RelayCommand SaveCurrentQueryCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne ReloadSavedQueriesCommand.
+    /// </summary>
+    /// <value>Valeur de ReloadSavedQueriesCommand.</value>
     public RelayCommand ReloadSavedQueriesCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne LoadSelectedQueryCommand.
+    /// </summary>
+    /// <value>Valeur de LoadSelectedQueryCommand.</value>
     public RelayCommand LoadSelectedQueryCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne AddSelectedSavedQueryAsSubqueryFilterCommand.
+    /// </summary>
+    /// <value>Valeur de AddSelectedSavedQueryAsSubqueryFilterCommand.</value>
     public RelayCommand AddSelectedSavedQueryAsSubqueryFilterCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne ClearColumnSearchCommand.
+    /// </summary>
+    /// <value>Valeur de ClearColumnSearchCommand.</value>
     public RelayCommand ClearColumnSearchCommand { get; }
 
+    /// <summary>
+    /// Obtient ou définit LoadedFile.
+    /// </summary>
+    /// <value>Valeur de LoadedFile.</value>
     public string LoadedFile { get => _loadedFile; set => SetProperty(ref _loadedFile, value); }
+    /// <summary>
+    /// Obtient ou définit Status.
+    /// </summary>
+    /// <value>Valeur de Status.</value>
     public string Status { get => _status; set => SetProperty(ref _status, value); }
+    /// <summary>
+    /// Obtient ou définit GeneratedSql.
+    /// </summary>
+    /// <value>Valeur de GeneratedSql.</value>
     public string GeneratedSql { get => _generatedSql; set => SetProperty(ref _generatedSql, value); }
+    /// <summary>
+    /// Obtient ou définit Warnings.
+    /// </summary>
+    /// <value>Valeur de Warnings.</value>
     public string Warnings { get => _warnings; set => SetProperty(ref _warnings, value); }
+    /// <summary>
+    /// Obtient ou définit QueryPurpose.
+    /// </summary>
+    /// <value>Valeur de QueryPurpose.</value>
     public string QueryPurpose { get => _queryPurpose; set => SetProperty(ref _queryPurpose, value); }
+    /// <summary>
+    /// Obtient ou définit PerformanceReport.
+    /// </summary>
+    /// <value>Valeur de PerformanceReport.</value>
     public string PerformanceReport { get => _performanceReport; set => SetProperty(ref _performanceReport, value); }
+    /// <summary>
+    /// Obtient ou définit QueryName.
+    /// </summary>
+    /// <value>Valeur de QueryName.</value>
     public string QueryName { get => _queryName; set => SetProperty(ref _queryName, value); }
+    /// <summary>
+    /// Obtient ou définit QueryDescription.
+    /// </summary>
+    /// <value>Valeur de QueryDescription.</value>
     public string QueryDescription { get => _queryDescription; set => SetProperty(ref _queryDescription, value); }
 
+    /// <summary>
+    /// Stocke la valeur interne SelectedSavedQuery.
+    /// </summary>
+    /// <value>Valeur de SelectedSavedQuery.</value>
     public SavedQueryItemViewModel? SelectedSavedQuery
     {
         get => _selectedSavedQuery;
@@ -162,6 +559,10 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Stocke la valeur interne BaseTable.
+    /// </summary>
+    /// <value>Valeur de BaseTable.</value>
     public string BaseTable
     {
         get => _baseTable;
@@ -174,6 +575,10 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Stocke la valeur interne Dialect.
+    /// </summary>
+    /// <value>Valeur de Dialect.</value>
     public SqlDialect Dialect
     {
         get => _dialect;
@@ -186,6 +591,10 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Stocke la valeur interne QuoteIdentifiers.
+    /// </summary>
+    /// <value>Valeur de QuoteIdentifiers.</value>
     public bool QuoteIdentifiers
     {
         get => _quoteIdentifiers;
@@ -198,6 +607,10 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Stocke la valeur interne Distinct.
+    /// </summary>
+    /// <value>Valeur de Distinct.</value>
     public bool Distinct
     {
         get => _distinct;
@@ -210,6 +623,10 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Stocke la valeur interne AutoGroupSelectedColumns.
+    /// </summary>
+    /// <value>Valeur de AutoGroupSelectedColumns.</value>
     public bool AutoGroupSelectedColumns
     {
         get => _autoGroupSelectedColumns;
@@ -222,6 +639,10 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Stocke la valeur interne LimitRows.
+    /// </summary>
+    /// <value>Valeur de LimitRows.</value>
     public int? LimitRows
     {
         get => _limitRows;
@@ -235,6 +656,10 @@ public sealed class MainViewModel : ObservableObject
     }
 
 
+    /// <summary>
+    /// Stocke la valeur interne ColumnSearchText.
+    /// </summary>
+    /// <value>Valeur de ColumnSearchText.</value>
     public string ColumnSearchText
     {
         get => _columnSearchText;
@@ -248,10 +673,18 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Obtient ou définit SchemaSummary.
+    /// </summary>
+    /// <value>Valeur de SchemaSummary.</value>
     public string SchemaSummary => _schema.Tables.Count == 0
         ? "Aucun schéma chargé"
         : $"{_schema.PhysicalTables.Count()} tables · {_schema.Views.Count()} vues · {_schema.Tables.Sum(t => t.Columns.Count)} colonnes · {_schema.Indexes.Count} index · {_schema.Relationships.Count} relations probables";
 
+    /// <summary>
+    /// Stocke la valeur interne SelectedAvailableColumn.
+    /// </summary>
+    /// <value>Valeur de SelectedAvailableColumn.</value>
     public ColumnItemViewModel? SelectedAvailableColumn
     {
         get => _selectedAvailableColumn;
@@ -268,6 +701,10 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Stocke la valeur interne SelectedRelationship.
+    /// </summary>
+    /// <value>Valeur de SelectedRelationship.</value>
     public RelationshipItemViewModel? SelectedRelationship
     {
         get => _selectedRelationship;
@@ -280,6 +717,10 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement LoadSchemaFromFile.
+    /// </summary>
+    /// <param name="filePath">Paramètre filePath.</param>
     public void LoadSchemaFromFile(string filePath)
     {
         if (!File.Exists(filePath))
@@ -299,6 +740,10 @@ public sealed class MainViewModel : ObservableObject
         LoadSchemaFromText(text, filePath);
     }
 
+    /// <summary>
+    /// Exécute le traitement ImportDocumentationFromFile.
+    /// </summary>
+    /// <param name="filePath">Paramètre filePath.</param>
     public void ImportDocumentationFromFile(string filePath)
     {
         if (_schema.Tables.Count == 0)
@@ -323,6 +768,11 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement LoadSchemaFromText.
+    /// </summary>
+    /// <param name="text">Paramètre text.</param>
+    /// <param name="sourceName">Paramètre sourceName.</param>
     public void LoadSchemaFromText(string text, string? sourceName = null)
     {
         try
@@ -346,6 +796,11 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement AddColumnToTarget.
+    /// </summary>
+    /// <param name="column">Paramètre column.</param>
+    /// <param name="target">Paramètre target.</param>
     public void AddColumnToTarget(ColumnItemViewModel column, string target)
     {
         switch (target)
@@ -382,6 +837,10 @@ public sealed class MainViewModel : ObservableObject
         GenerateSql();
     }
 
+    /// <summary>
+    /// Exécute le traitement EnsureSelectedColumn.
+    /// </summary>
+    /// <param name="column">Paramètre column.</param>
     private void EnsureSelectedColumn(ColumnItemViewModel column)
     {
         if (!SelectedColumns.Any(c => SameColumn(c.Table, c.Column, column.Table, column.Column)))
@@ -390,6 +849,14 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement SameColumn.
+    /// </summary>
+    /// <param name="leftTable">Paramètre leftTable.</param>
+    /// <param name="leftColumn">Paramètre leftColumn.</param>
+    /// <param name="rightTable">Paramètre rightTable.</param>
+    /// <param name="rightColumn">Paramètre rightColumn.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool SameColumn(string leftTable, string leftColumn, string rightTable, string rightColumn)
     {
         return string.Equals(leftTable, rightTable, StringComparison.OrdinalIgnoreCase)
@@ -397,6 +864,10 @@ public sealed class MainViewModel : ObservableObject
     }
 
 
+    /// <summary>
+    /// Exécute le traitement AddAggregateToFilter.
+    /// </summary>
+    /// <param name="aggregate">Paramètre aggregate.</param>
     private void AddAggregateToFilter(AggregateRowViewModel? aggregate)
     {
         if (aggregate is null)
@@ -416,6 +887,10 @@ public sealed class MainViewModel : ObservableObject
         GenerateSql();
     }
 
+    /// <summary>
+    /// Exécute le traitement AddAggregateToOrderBy.
+    /// </summary>
+    /// <param name="aggregate">Paramètre aggregate.</param>
     private void AddAggregateToOrderBy(AggregateRowViewModel? aggregate)
     {
         if (aggregate is null)
@@ -435,6 +910,10 @@ public sealed class MainViewModel : ObservableObject
         GenerateSql();
     }
 
+    /// <summary>
+    /// Exécute le traitement AddCustomColumnToFilter.
+    /// </summary>
+    /// <param name="custom">Paramètre custom.</param>
     private void AddCustomColumnToFilter(CustomColumnRowViewModel? custom)
     {
         if (custom is null)
@@ -454,6 +933,10 @@ public sealed class MainViewModel : ObservableObject
         GenerateSql();
     }
 
+    /// <summary>
+    /// Exécute le traitement AddCustomColumnToOrderBy.
+    /// </summary>
+    /// <param name="custom">Paramètre custom.</param>
     private void AddCustomColumnToOrderBy(CustomColumnRowViewModel? custom)
     {
         if (custom is null)
@@ -473,6 +956,11 @@ public sealed class MainViewModel : ObservableObject
         GenerateSql();
     }
 
+    /// <summary>
+    /// Exécute le traitement EnsureAggregateAlias.
+    /// </summary>
+    /// <param name="aggregate">Paramètre aggregate.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string EnsureAggregateAlias(AggregateRowViewModel aggregate)
     {
         if (string.IsNullOrWhiteSpace(aggregate.Alias))
@@ -483,6 +971,11 @@ public sealed class MainViewModel : ObservableObject
         return aggregate.Alias.Trim();
     }
 
+    /// <summary>
+    /// Exécute le traitement EnsureCustomAlias.
+    /// </summary>
+    /// <param name="custom">Paramètre custom.</param>
+    /// <returns>Résultat du traitement.</returns>
     private string EnsureCustomAlias(CustomColumnRowViewModel custom)
     {
         if (string.IsNullOrWhiteSpace(custom.Alias))
@@ -493,6 +986,10 @@ public sealed class MainViewModel : ObservableObject
         return custom.Alias.Trim();
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildDefaultCustomAlias.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     private string BuildDefaultCustomAlias()
     {
         int index = CustomColumns.Count + 1;
@@ -505,6 +1002,10 @@ public sealed class MainViewModel : ObservableObject
 
         return alias;
     }
+    /// <summary>
+    /// Exécute le traitement AddSelectedColumnTo.
+    /// </summary>
+    /// <param name="target">Paramètre target.</param>
     private void AddSelectedColumnTo(string target)
     {
         if (SelectedAvailableColumn is not null)
@@ -513,6 +1014,9 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement AddSelectedRelationshipAsJoin.
+    /// </summary>
     private void AddSelectedRelationshipAsJoin()
     {
         if (SelectedRelationship is null)
@@ -531,6 +1035,45 @@ public sealed class MainViewModel : ObservableObject
         GenerateSql();
     }
 
+
+    /// <summary>
+    /// Exécute le traitement Joins CollectionChanged.
+    /// </summary>
+    /// <param name="sender">Paramètre sender.</param>
+    /// <param name="e">Paramètre e.</param>
+    private void Joins_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems is null)
+        {
+            return;
+        }
+
+        foreach (JoinRowViewModel join in e.NewItems)
+        {
+            join.ColumnNamesProvider = GetColumnNamesForTable;
+        }
+    }
+
+    /// <summary>
+    /// Exécute le traitement GetColumnNamesForTable.
+    /// </summary>
+    /// <param name="tableName">Paramètre tableName.</param>
+    /// <returns>Résultat du traitement.</returns>
+    private IReadOnlyList<string> GetColumnNamesForTable(string tableName)
+    {
+        if (string.IsNullOrWhiteSpace(tableName))
+        {
+            return Array.Empty<string>();
+        }
+
+        return ColumnNamesByTable.TryGetValue(tableName, out IReadOnlyList<string>? columns)
+            ? columns
+            : Array.Empty<string>();
+    }
+
+    /// <summary>
+    /// Exécute le traitement ReloadSchemaViewModels.
+    /// </summary>
     private void ReloadSchemaViewModels()
     {
         Tables.Clear();
@@ -538,21 +1081,29 @@ public sealed class MainViewModel : ObservableObject
         Relationships.Clear();
         RelationshipGroups.Clear();
         TableNames.Clear();
-        IReadOnlyDictionary<string, string> foreignKeySummaries = BuildForeignKeySummaries();
-        IReadOnlyDictionary<string, string> indexSummaries = BuildIndexSummaries();
-        IReadOnlySet<string> uniqueIndexColumns = BuildUniqueIndexColumnSet();
-        foreach (TableDefinition? table in _schema.Tables.OrderBy(t => t.FullName, StringComparer.OrdinalIgnoreCase))
+        _cachedForeignKeySummaries = BuildForeignKeySummaries();
+        _cachedIndexSummaries = BuildIndexSummaries();
+        _cachedUniqueIndexColumns = BuildUniqueIndexColumnSet();
+        _sortedSchemaTables = _schema.Tables.OrderBy(t => t.FullName, StringComparer.OrdinalIgnoreCase).ToArray();
+
+        Dictionary<string, IReadOnlyList<string>> columnNamesByTable = new(StringComparer.OrdinalIgnoreCase);
+        foreach (TableDefinition table in _sortedSchemaTables)
         {
             TableNames.Add(table.FullName);
-            foreach (ColumnDefinition? col in table.Columns.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase))
+            ColumnDefinition[] sortedColumns = table.Columns.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+            columnNamesByTable[table.FullName] = sortedColumns.Select(c => c.Name).ToArray();
+            columnNamesByTable[SqlObjectDisplayName.Table(table.FullName)] = sortedColumns.Select(c => c.Name).ToArray();
+            foreach (ColumnDefinition? col in sortedColumns)
             {
                 AllColumns.Add(new ColumnItemViewModel(
                     col,
-                    LookupSummary(col, foreignKeySummaries),
-                    LookupSummary(col, indexSummaries),
-                    uniqueIndexColumns.Contains($"{col.TableName}.{col.Name}")));
+                    LookupSummary(col, _cachedForeignKeySummaries),
+                    LookupSummary(col, _cachedIndexSummaries),
+                    _cachedUniqueIndexColumns.Contains($"{col.TableName}.{col.Name}")));
             }
         }
+        ColumnNamesByTable = columnNamesByTable;
+        _lastAppliedColumnSearchText = "__schema_reloaded__";
         foreach (InferredRelationship? rel in _schema.Relationships.OrderByDescending(r => r.Confidence).Take(500))
         {
             RelationshipItemViewModel vm = new(rel);
@@ -564,7 +1115,7 @@ public sealed class MainViewModel : ObservableObject
                      .GroupBy(r => r.FromTable, StringComparer.OrdinalIgnoreCase)
                      .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
         {
-            RelationshipGroups.Add(new RelationshipGroupViewModel($"{group.Key} ({group.Count()})", group.OrderByDescending(r => r.Confidence))
+            RelationshipGroups.Add(new RelationshipGroupViewModel($"{SqlObjectDisplayName.Table(group.Key)} ({group.Count()})", group.OrderByDescending(r => r.Confidence))
             {
                 IsExpanded = false
             });
@@ -573,44 +1124,58 @@ public sealed class MainViewModel : ObservableObject
         ApplyColumnTreeFilter();
     }
 
+    /// <summary>
+    /// Exécute le traitement ApplyColumnTreeFilter.
+    /// </summary>
     private void ApplyColumnTreeFilter()
     {
+        string needle = ColumnSearchText?.Trim() ?? string.Empty;
+        if (string.Equals(needle, _lastAppliedColumnSearchText, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastAppliedColumnSearchText = needle;
         Tables.Clear();
         SelectedAvailableColumn = null;
 
-        string? needle = ColumnSearchText?.Trim();
-        IReadOnlyDictionary<string, string> foreignKeySummaries = BuildForeignKeySummaries();
-        IReadOnlyDictionary<string, string> indexSummaries = BuildIndexSummaries();
-        IReadOnlySet<string> uniqueIndexColumns = BuildUniqueIndexColumnSet();
-        foreach (TableDefinition? table in _schema.Tables.OrderBy(t => t.FullName, StringComparer.OrdinalIgnoreCase))
+        foreach (TableDefinition table in _sortedSchemaTables)
         {
             IEnumerable<ColumnDefinition> visibleColumns = table.Columns;
 
             if (!string.IsNullOrWhiteSpace(needle))
             {
+                string tableDisplayName = SqlObjectDisplayName.Table(table.FullName);
                 bool tableMatches = table.FullName.Contains(needle, StringComparison.OrdinalIgnoreCase)
+                    || tableDisplayName.Contains(needle, StringComparison.OrdinalIgnoreCase)
                     || (!string.IsNullOrWhiteSpace(table.Comment) && table.Comment.Contains(needle, StringComparison.OrdinalIgnoreCase));
 
                 visibleColumns = tableMatches
                     ? table.Columns
                     : table.Columns.Where(c => c.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)
                         || (c.DataType?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
-                        || (c.Comment?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false));
+                        || (c.Comment?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
+                        || (LookupSummary(c, _cachedForeignKeySummaries).Contains(needle, StringComparison.OrdinalIgnoreCase))
+                        || (LookupSummary(c, _cachedIndexSummaries).Contains(needle, StringComparison.OrdinalIgnoreCase)));
             }
 
-            List<ColumnDefinition> visibleList = [.. visibleColumns];
+            List<ColumnDefinition> visibleList = visibleColumns.ToList();
             if (visibleList.Count == 0)
             {
                 continue;
             }
 
-            Tables.Add(new TableItemViewModel(table, visibleList, foreignKeySummaries, indexSummaries, uniqueIndexColumns)
+            Tables.Add(new TableItemViewModel(table, visibleList, _cachedForeignKeySummaries, _cachedIndexSummaries, _cachedUniqueIndexColumns)
             {
                 IsExpanded = !string.IsNullOrWhiteSpace(needle)
             });
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildForeignKeySummaries.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     private IReadOnlyDictionary<string, string> BuildForeignKeySummaries()
     {
         return _schema.Relationships
@@ -621,6 +1186,10 @@ public sealed class MainViewModel : ObservableObject
                 StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildIndexSummaries.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     private IReadOnlyDictionary<string, string> BuildIndexSummaries()
     {
         return _schema.Tables
@@ -636,6 +1205,10 @@ public sealed class MainViewModel : ObservableObject
             .ToDictionary(x => x.Key, x => x.Summary, StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildUniqueIndexColumnSet.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     private IReadOnlySet<string> BuildUniqueIndexColumnSet()
     {
         return _schema.Tables
@@ -645,12 +1218,23 @@ public sealed class MainViewModel : ObservableObject
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Exécute le traitement LookupSummary.
+    /// </summary>
+    /// <param name="column">Paramètre column.</param>
+    /// <param name="summaries">Paramètre summaries.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string LookupSummary(ColumnDefinition column, IReadOnlyDictionary<string, string> summaries)
     {
         string key = $"{column.TableName}.{column.Name}";
         return summaries.TryGetValue(key, out string? summary) ? summary : string.Empty;
     }
 
+    /// <summary>
+    /// Exécute le traitement Relationship PropertyChanged.
+    /// </summary>
+    /// <param name="sender">Paramètre sender.</param>
+    /// <param name="e">Paramètre e.</param>
     private void Relationship_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(RelationshipItemViewModel.IsEnabled))
@@ -659,6 +1243,9 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement AddManualJoin.
+    /// </summary>
     private void AddManualJoin()
     {
         Joins.Add(new JoinRowViewModel
@@ -672,6 +1259,10 @@ public sealed class MainViewModel : ObservableObject
         GenerateSql();
     }
 
+    /// <summary>
+    /// Exécute le traitement AddJoinPair.
+    /// </summary>
+    /// <param name="join">Paramètre join.</param>
     private void AddJoinPair(JoinRowViewModel? join)
     {
         if (join is null)
@@ -683,6 +1274,10 @@ public sealed class MainViewModel : ObservableObject
         GenerateSql();
     }
 
+    /// <summary>
+    /// Exécute le traitement RemoveJoinPair.
+    /// </summary>
+    /// <param name="pair">Paramètre pair.</param>
     private void RemoveJoinPair(JoinColumnPairRowViewModel? pair)
     {
         if (pair is null)
@@ -700,6 +1295,9 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement GenerateSql.
+    /// </summary>
     private void GenerateSql()
     {
         try
@@ -717,7 +1315,7 @@ public sealed class MainViewModel : ObservableObject
             GeneratedSql = result.Sql;
             QueryPurpose = _purposeDescriber.Describe(query, _schema);
             PerformanceReport = _performanceAnalyzer.Analyze(query, _schema).ToString();
-            string[] messages = [.. validationErrors.Concat(result.Warnings).Concat(_schema.Warnings).Distinct()];
+            string[] messages = validationErrors.Concat(result.Warnings).Concat(_schema.Warnings).Distinct().ToArray();
             Warnings = messages.Length == 0 ? "Aucun avertissement." : string.Join(Environment.NewLine, messages);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
@@ -729,6 +1327,10 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildQueryDefinition.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     private QueryDefinition BuildQueryDefinition()
     {
         QueryDefinition query = new()
@@ -900,6 +1502,10 @@ public sealed class MainViewModel : ObservableObject
         return query;
     }
 
+    /// <summary>
+    /// Exécute le traitement AddImplicitParametersFromFilters.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
     private static void AddImplicitParametersFromFilters(QueryDefinition query)
     {
         HashSet<string> existing = query.Parameters.Select(p => p.Placeholder).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -934,6 +1540,12 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement NormalizeParameterPlaceholder.
+    /// </summary>
+    /// <param name="raw">Paramètre raw.</param>
+    /// <param name="kind">Paramètre kind.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string? NormalizeParameterPlaceholder(string? raw, FilterValueKind kind)
     {
         if (string.IsNullOrWhiteSpace(raw))
@@ -950,6 +1562,9 @@ public sealed class MainViewModel : ObservableObject
         return value.StartsWith(':') || value.StartsWith('@') || value.StartsWith('?') ? value : null;
     }
 
+    /// <summary>
+    /// Exécute le traitement ClearQuery.
+    /// </summary>
     private void ClearQuery()
     {
         _suppressAutoGenerate = true;
@@ -975,6 +1590,9 @@ public sealed class MainViewModel : ObservableObject
         Warnings = "Aucun avertissement.";
     }
 
+    /// <summary>
+    /// Exécute le traitement SaveCurrentQuery.
+    /// </summary>
     private void SaveCurrentQuery()
     {
         try
@@ -1000,6 +1618,9 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement ReloadSavedQueries.
+    /// </summary>
     private void ReloadSavedQueries()
     {
         SavedQueries.Clear();
@@ -1009,6 +1630,9 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement LoadSelectedSavedQuery.
+    /// </summary>
     private void LoadSelectedSavedQuery()
     {
         if (SelectedSavedQuery is null)
@@ -1019,6 +1643,9 @@ public sealed class MainViewModel : ObservableObject
         LoadQueryDefinition(SelectedSavedQuery.Saved.Query, SelectedSavedQuery.Saved.Name, SelectedSavedQuery.Saved.Description);
     }
 
+    /// <summary>
+    /// Exécute le traitement AddSelectedSavedQueryAsSubqueryFilter.
+    /// </summary>
     private void AddSelectedSavedQueryAsSubqueryFilter()
     {
         if (SelectedSavedQuery is null)
@@ -1044,6 +1671,12 @@ public sealed class MainViewModel : ObservableObject
         GenerateSql();
     }
 
+    /// <summary>
+    /// Exécute le traitement LoadQueryDefinition.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="name">Paramètre name.</param>
+    /// <param name="description">Paramètre description.</param>
     private void LoadQueryDefinition(QueryDefinition query, string? name, string? description)
     {
         _suppressAutoGenerate = true;
@@ -1110,6 +1743,10 @@ public sealed class MainViewModel : ObservableObject
         GenerateSql();
     }
 
+    /// <summary>
+    /// Exécute le traitement WireAutoGenerate.
+    /// </summary>
+    /// <param name="collection">Paramètre collection.</param>
     private void WireAutoGenerate<T>(ObservableCollection<T> collection) where T : INotifyPropertyChanged
     {
         collection.CollectionChanged += (_, e) =>
@@ -1134,8 +1771,16 @@ public sealed class MainViewModel : ObservableObject
         };
     }
 
+    /// <summary>
+    /// Exécute le traitement Row PropertyChanged.
+    /// </summary>
+    /// <param name="sender">Paramètre sender.</param>
+    /// <param name="e">Paramètre e.</param>
     private void Row_PropertyChanged(object? sender, PropertyChangedEventArgs e) => AutoGenerateSql();
 
+    /// <summary>
+    /// Exécute le traitement AutoGenerateSql.
+    /// </summary>
     private void AutoGenerateSql()
     {
         if (_suppressAutoGenerate)
@@ -1146,8 +1791,18 @@ public sealed class MainViewModel : ObservableObject
         GenerateSql();
     }
 
+    /// <summary>
+    /// Exécute le traitement BlankToNull.
+    /// </summary>
+    /// <param name="value">Paramètre value.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string? BlankToNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+    /// <summary>
+    /// Exécute le traitement RemoveFromCollection.
+    /// </summary>
+    /// <param name="collection">Paramètre collection.</param>
+    /// <param name="obj">Paramètre obj.</param>
     private static void RemoveFromCollection<T>(ObservableCollection<T> collection, object? obj)
     {
         if (obj is T item)

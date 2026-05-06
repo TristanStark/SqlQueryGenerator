@@ -3,11 +3,27 @@ using System.Collections.Concurrent;
 
 namespace SqlQueryGenerator.Core.Heuristics;
 
+/// <summary>
+/// Représente ForeignKeyInferer dans SQL Query Generator.
+/// </summary>
 public sealed class ForeignKeyInferer
 {
+    /// <summary>
+    /// Stocke la valeur interne SameColumnWeakGroupLimit.
+    /// </summary>
+    /// <value>Valeur de SameColumnWeakGroupLimit.</value>
     private const int SameColumnWeakGroupLimit = 48;
+    /// <summary>
+    /// Stocke la valeur interne ParallelInferenceThreshold.
+    /// </summary>
+    /// <value>Valeur de ParallelInferenceThreshold.</value>
     private const int ParallelInferenceThreshold = 512;
 
+    /// <summary>
+    /// Exécute le traitement Infer.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <returns>Résultat du traitement.</returns>
     public IReadOnlyList<InferredRelationship> Infer(DatabaseSchema schema)
     {
         ArgumentNullException.ThrowIfNull(schema);
@@ -72,6 +88,11 @@ public sealed class ForeignKeyInferer
             .ToArray();
     }
 
+    /// <summary>
+    /// Exécute le traitement CreateParallelOptions.
+    /// </summary>
+    /// <param name="context">Paramètre context.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static ParallelOptions CreateParallelOptions(InferenceContext context)
     {
         int estimatedWorkItems = context.IdentifierColumns.Count + context.ColumnsByNormalizedName.Count;
@@ -85,6 +106,12 @@ public sealed class ForeignKeyInferer
         };
     }
 
+    /// <summary>
+    /// Exécute le traitement IsDeterministicallyPreferred.
+    /// </summary>
+    /// <param name="candidate">Paramètre candidate.</param>
+    /// <param name="existing">Paramètre existing.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool IsDeterministicallyPreferred(InferredRelationship candidate, InferredRelationship existing)
     {
         (string, string ToTable, string ToColumn, string Reason) candidateTuple = (candidate.Source.ToString(), candidate.ToTable, candidate.ToColumn, candidate.Reason);
@@ -92,6 +119,11 @@ public sealed class ForeignKeyInferer
         return StringComparer.OrdinalIgnoreCase.Compare(candidateTuple.ToString(), existingTuple.ToString()) < 0;
     }
 
+    /// <summary>
+    /// Exécute le traitement AddDeclaredForeignKeys.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="add">Paramètre add.</param>
     private static void AddDeclaredForeignKeys(DatabaseSchema schema, Action<InferredRelationship> add)
     {
         foreach (DeclaredForeignKey fk in schema.DeclaredForeignKeys)
@@ -111,6 +143,12 @@ public sealed class ForeignKeyInferer
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement AddSameColumnRelationships.
+    /// </summary>
+    /// <param name="context">Paramètre context.</param>
+    /// <param name="add">Paramètre add.</param>
+    /// <param name="parallelOptions">Paramètre parallelOptions.</param>
     private static void AddSameColumnRelationships(InferenceContext context, Action<InferredRelationship> add, ParallelOptions parallelOptions)
     {
         Parallel.ForEach(context.ColumnsByNormalizedName.Values, parallelOptions, group =>
@@ -128,7 +166,7 @@ public sealed class ForeignKeyInferer
 
             // Strong case: specific same column name where target is PK/unique.
             // This is now O(group^2) for small same-name groups instead of O(total_columns^2).
-            ColumnInfo[] strongTargets = [.. group.Where(c => c.TargetUnique)];
+            ColumnInfo[] strongTargets = group.Where(c => c.TargetUnique).ToArray();
             if (strongTargets.Length > 0)
             {
                 foreach (ColumnInfo? source in group.Where(c => !c.Column.IsPrimaryKey))
@@ -161,7 +199,9 @@ public sealed class ForeignKeyInferer
                 return;
             }
 
-            ColumnInfo[] weakCandidates = [.. group.Where(c => !c.Column.IsPrimaryKey && c.LooksLikeIdentifier)];
+            ColumnInfo[] weakCandidates = group
+                .Where(c => !c.Column.IsPrimaryKey && c.LooksLikeIdentifier)
+                .ToArray();
 
             for (int i = 0; i < weakCandidates.Length; i++)
             {
@@ -199,6 +239,12 @@ public sealed class ForeignKeyInferer
         });
     }
 
+    /// <summary>
+    /// Exécute le traitement AddTableNameColumnPatternRelationships.
+    /// </summary>
+    /// <param name="context">Paramètre context.</param>
+    /// <param name="add">Paramètre add.</param>
+    /// <param name="parallelOptions">Paramètre parallelOptions.</param>
     private static void AddTableNameColumnPatternRelationships(InferenceContext context, Action<InferredRelationship> add, ParallelOptions parallelOptions)
     {
         Parallel.ForEach(context.IdentifierColumns, parallelOptions, source =>
@@ -239,6 +285,12 @@ public sealed class ForeignKeyInferer
         });
     }
 
+    /// <summary>
+    /// Exécute le traitement AddCompositeTablePatternRelationships.
+    /// </summary>
+    /// <param name="context">Paramètre context.</param>
+    /// <param name="add">Paramètre add.</param>
+    /// <param name="parallelOptions">Paramètre parallelOptions.</param>
     private static void AddCompositeTablePatternRelationships(InferenceContext context, Action<InferredRelationship> add, ParallelOptions parallelOptions)
     {
         Parallel.ForEach(context.IdentifierColumns, parallelOptions, source =>
@@ -292,6 +344,12 @@ public sealed class ForeignKeyInferer
         });
     }
 
+    /// <summary>
+    /// Exécute le traitement AddCommentRelationships.
+    /// </summary>
+    /// <param name="context">Paramètre context.</param>
+    /// <param name="add">Paramètre add.</param>
+    /// <param name="parallelOptions">Paramètre parallelOptions.</param>
     private static void AddCommentRelationships(InferenceContext context, Action<InferredRelationship> add, ParallelOptions parallelOptions)
     {
         Parallel.ForEach(context.IdentifierColumns.Where(c => !string.IsNullOrWhiteSpace(c.Column.Comment)), parallelOptions, source =>
@@ -339,6 +397,12 @@ public sealed class ForeignKeyInferer
         });
     }
 
+    /// <summary>
+    /// Exécute le traitement ApplyIndexBias.
+    /// </summary>
+    /// <param name="context">Paramètre context.</param>
+    /// <param name="relationship">Paramètre relationship.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static InferredRelationship ApplyIndexBias(InferenceContext context, InferredRelationship relationship)
     {
         if (relationship.Source == RelationshipSource.DeclaredForeignKey)
@@ -400,6 +464,13 @@ public sealed class ForeignKeyInferer
         };
     }
 
+    /// <summary>
+    /// Exécute le traitement TableColumnPatternScoreFast.
+    /// </summary>
+    /// <param name="source">Paramètre source.</param>
+    /// <param name="targetTable">Paramètre targetTable.</param>
+    /// <param name="targetColumn">Paramètre targetColumn.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static double TableColumnPatternScoreFast(ColumnInfo source, TableInfo targetTable, ColumnInfo targetColumn)
     {
         if (!source.LooksLikeIdentifier || !targetColumn.IsReferenceTargetColumn)
@@ -426,6 +497,13 @@ public sealed class ForeignKeyInferer
         return 0.0;
     }
 
+    /// <summary>
+    /// Exécute le traitement CompositeTablePatternScoreFast.
+    /// </summary>
+    /// <param name="source">Paramètre source.</param>
+    /// <param name="targetTable">Paramètre targetTable.</param>
+    /// <param name="targetColumn">Paramètre targetColumn.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static double CompositeTablePatternScoreFast(ColumnInfo source, TableInfo targetTable, ColumnInfo targetColumn)
     {
         if (string.IsNullOrWhiteSpace(source.IdentifierStem)
@@ -456,6 +534,13 @@ public sealed class ForeignKeyInferer
         return startsWithSource ? baseScore : baseScore - 0.03;
     }
 
+    /// <summary>
+    /// Exécute le traitement CommentSimilarityFromNormalized.
+    /// </summary>
+    /// <param name="normalizedComment">Paramètre normalizedComment.</param>
+    /// <param name="targetTable">Paramètre targetTable.</param>
+    /// <param name="targetColumn">Paramètre targetColumn.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static double CommentSimilarityFromNormalized(string normalizedComment, TableInfo targetTable, ColumnInfo targetColumn)
     {
         double score = 0.0;
@@ -469,6 +554,11 @@ public sealed class ForeignKeyInferer
         return Math.Min(score, 1.0);
     }
 
+    /// <summary>
+    /// Exécute le traitement LooksLikeIdentifier.
+    /// </summary>
+    /// <param name="columnName">Paramètre columnName.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool LooksLikeIdentifier(string columnName)
     {
         string n = SqlNameNormalizer.Normalize(columnName);
@@ -482,11 +572,23 @@ public sealed class ForeignKeyInferer
             || n.StartsWith("FK_", StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Exécute le traitement IsGenericIdentifier.
+    /// </summary>
+    /// <param name="normalizedColumnName">Paramètre normalizedColumnName.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool IsGenericIdentifier(string normalizedColumnName)
     {
         return normalizedColumnName is "ID" or "IDEN" or "IDENT";
     }
 
+    /// <summary>
+    /// Exécute le traitement IsReferenceTargetColumn.
+    /// </summary>
+    /// <param name="normalizedTargetColumn">Paramètre normalizedTargetColumn.</param>
+    /// <param name="normalizedTargetTable">Paramètre normalizedTargetTable.</param>
+    /// <param name="targetIsPk">Paramètre targetIsPk.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool IsReferenceTargetColumn(string normalizedTargetColumn, string normalizedTargetTable, bool targetIsPk)
     {
         if (targetIsPk)
@@ -514,6 +616,12 @@ public sealed class ForeignKeyInferer
         return false;
     }
 
+    /// <summary>
+    /// Exécute le traitement GetTableNameVariants.
+    /// </summary>
+    /// <param name="Name">Paramètre Name.</param>
+    /// <param name="normalizedTableName">Paramètre normalizedTableName.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static IEnumerable<(string Name, double Weight)> GetTableNameVariants(string normalizedTableName)
     {
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
@@ -560,6 +668,11 @@ public sealed class ForeignKeyInferer
         return result;
     }
 
+    /// <summary>
+    /// Exécute le traitement RemoveCommonTablePrefixes.
+    /// </summary>
+    /// <param name="normalizedTableName">Paramètre normalizedTableName.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static IEnumerable<string> RemoveCommonTablePrefixes(string normalizedTableName)
     {
         string[] prefixes = new[] { "T_", "TB_", "TBL_", "REF_", "DIM_", "D_", "R_" };
@@ -572,6 +685,11 @@ public sealed class ForeignKeyInferer
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement Singularize.
+    /// </summary>
+    /// <param name="normalizedName">Paramètre normalizedName.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string Singularize(string normalizedName)
     {
         IEnumerable<string> parts = normalizedName.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -579,6 +697,11 @@ public sealed class ForeignKeyInferer
         return string.Join('_', parts);
     }
 
+    /// <summary>
+    /// Exécute le traitement SingularizeToken.
+    /// </summary>
+    /// <param name="token">Paramètre token.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string SingularizeToken(string token)
     {
         if (token.Length <= 3)
@@ -599,6 +722,11 @@ public sealed class ForeignKeyInferer
         return token;
     }
 
+    /// <summary>
+    /// Exécute le traitement ExtractIdentifierStem.
+    /// </summary>
+    /// <param name="columnName">Paramètre columnName.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string ExtractIdentifierStem(string columnName)
     {
         string normalized = SqlNameNormalizer.Normalize(columnName).Trim('_');
@@ -630,12 +758,30 @@ public sealed class ForeignKeyInferer
         return Singularize(normalized.Trim('_'));
     }
 
+    /// <summary>
+    /// Représente InferenceContext dans SQL Query Generator.
+    /// </summary>
     private sealed class InferenceContext
     {
+        /// <summary>
+        /// Stocke la valeur interne  columnsByQualifiedName.
+        /// </summary>
+        /// <value>Valeur de _columnsByQualifiedName.</value>
         private readonly Dictionary<string, ColumnInfo> _columnsByQualifiedName;
+        /// <summary>
+        /// Stocke la valeur interne  tablesByNameVariant.
+        /// </summary>
+        /// <value>Valeur de _tablesByNameVariant.</value>
         private readonly Dictionary<string, IReadOnlyList<TableInfo>> _tablesByNameVariant;
+        /// <summary>
+        /// Stocke la valeur interne  tablesByToken.
+        /// </summary>
+        /// <value>Valeur de _tablesByToken.</value>
         private readonly Dictionary<string, IReadOnlyList<TableInfo>> _tablesByToken;
 
+        /// <summary>
+        /// Initialise une nouvelle instance de InferenceContext.
+        /// </summary>
         private InferenceContext(
             IReadOnlyList<TableInfo> tables,
             IReadOnlyList<ColumnInfo> identifierColumns,
@@ -652,10 +798,27 @@ public sealed class ForeignKeyInferer
             _tablesByToken = tablesByToken;
         }
 
+        /// <summary>
+        /// Stocke la valeur interne Tables.
+        /// </summary>
+        /// <value>Valeur de Tables.</value>
         public IReadOnlyList<TableInfo> Tables { get; }
+        /// <summary>
+        /// Stocke la valeur interne IdentifierColumns.
+        /// </summary>
+        /// <value>Valeur de IdentifierColumns.</value>
         public IReadOnlyList<ColumnInfo> IdentifierColumns { get; }
+        /// <summary>
+        /// Stocke la valeur interne ColumnsByNormalizedName.
+        /// </summary>
+        /// <value>Valeur de ColumnsByNormalizedName.</value>
         public Dictionary<string, List<ColumnInfo>> ColumnsByNormalizedName { get; }
 
+        /// <summary>
+        /// Exécute le traitement Build.
+        /// </summary>
+        /// <param name="schema">Paramètre schema.</param>
+        /// <returns>Résultat du traitement.</returns>
         public static InferenceContext Build(DatabaseSchema schema)
         {
             HashSet<string> indexedColumns = new(StringComparer.OrdinalIgnoreCase);
@@ -763,6 +926,12 @@ public sealed class ForeignKeyInferer
                 tablesByToken);
         }
 
+        /// <summary>
+        /// Exécute le traitement FindColumn.
+        /// </summary>
+        /// <param name="table">Paramètre table.</param>
+        /// <param name="column">Paramètre column.</param>
+        /// <returns>Résultat du traitement.</returns>
         public ColumnInfo? FindColumn(string table, string column)
         {
             return _columnsByQualifiedName.TryGetValue(QualifiedColumnKey(table, column), out ColumnInfo? found)
@@ -770,6 +939,11 @@ public sealed class ForeignKeyInferer
                 : null;
         }
 
+        /// <summary>
+        /// Exécute le traitement FindTablesByNameVariant.
+        /// </summary>
+        /// <param name="stem">Paramètre stem.</param>
+        /// <returns>Résultat du traitement.</returns>
         public IEnumerable<TableInfo> FindTablesByNameVariant(string stem)
         {
             IEnumerable<string> variants = GetTableNameVariants(stem)
@@ -782,13 +956,19 @@ public sealed class ForeignKeyInferer
                 .Distinct();
         }
 
+        /// <summary>
+        /// Exécute le traitement FindTablesByTokenOrVariant.
+        /// </summary>
+        /// <param name="stem">Paramètre stem.</param>
+        /// <returns>Résultat du traitement.</returns>
         public IEnumerable<TableInfo> FindTablesByTokenOrVariant(string stem)
         {
-            string[] variants = [.. GetTableNameVariants(stem)
+            string[] variants = GetTableNameVariants(stem)
                 .Select(v => v.Name)
                 .Append(stem)
                 .Append(Singularize(stem))
-                .Distinct(StringComparer.OrdinalIgnoreCase)];
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 
             return variants
                 .SelectMany(v => (_tablesByToken.TryGetValue(v, out IReadOnlyList<TableInfo>? tokenTables) ? tokenTables : Array.Empty<TableInfo>())
@@ -796,6 +976,12 @@ public sealed class ForeignKeyInferer
                 .Distinct();
         }
 
+        /// <summary>
+        /// Exécute le traitement BuildTableLookup.
+        /// </summary>
+        /// <param name="tables">Paramètre tables.</param>
+        /// <param name="keySelector">Paramètre keySelector.</param>
+        /// <returns>Résultat du traitement.</returns>
         private static Dictionary<string, IReadOnlyList<TableInfo>> BuildTableLookup(IEnumerable<TableInfo> tables, Func<TableInfo, IEnumerable<string>> keySelector)
         {
             Dictionary<string, List<TableInfo>> lookup = new(StringComparer.OrdinalIgnoreCase);
@@ -816,8 +1002,15 @@ public sealed class ForeignKeyInferer
         }
     }
 
+    /// <summary>
+    /// Représente TableInfo dans SQL Query Generator.
+    /// </summary>
     private sealed class TableInfo
     {
+        /// <summary>
+        /// Initialise une nouvelle instance de TableInfo.
+        /// </summary>
+        /// <param name="table">Paramètre table.</param>
         public TableInfo(TableDefinition table)
         {
             Table = table;
@@ -835,34 +1028,113 @@ public sealed class ForeignKeyInferer
             NameVariantSet = NameVariants.ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
+        /// <summary>
+        /// Stocke la valeur interne Table.
+        /// </summary>
+        /// <value>Valeur de Table.</value>
         public TableDefinition Table { get; }
+        /// <summary>
+        /// Stocke la valeur interne FullName.
+        /// </summary>
+        /// <value>Valeur de FullName.</value>
         public string FullName { get; }
+        /// <summary>
+        /// Stocke la valeur interne NormalizedName.
+        /// </summary>
+        /// <value>Valeur de NormalizedName.</value>
         public string NormalizedName { get; }
+        /// <summary>
+        /// Stocke la valeur interne SingularNormalizedName.
+        /// </summary>
+        /// <value>Valeur de SingularNormalizedName.</value>
         public string SingularNormalizedName { get; }
+        /// <summary>
+        /// Stocke la valeur interne StrippedName.
+        /// </summary>
+        /// <value>Valeur de StrippedName.</value>
         public string StrippedName { get; }
+        /// <summary>
+        /// Stocke la valeur interne NameVariantsWithWeight.
+        /// </summary>
+        /// <value>Valeur de NameVariantsWithWeight.</value>
         public IReadOnlyList<NameVariant> NameVariantsWithWeight { get; }
+        /// <summary>
+        /// Stocke la valeur interne NameVariants.
+        /// </summary>
+        /// <value>Valeur de NameVariants.</value>
         public IReadOnlyList<string> NameVariants { get; }
+        /// <summary>
+        /// Stocke la valeur interne Tokens.
+        /// </summary>
+        /// <value>Valeur de Tokens.</value>
         public IReadOnlyList<string> Tokens { get; }
+        /// <summary>
+        /// Stocke la valeur interne SingularTokens.
+        /// </summary>
+        /// <value>Valeur de SingularTokens.</value>
         public IReadOnlyList<string> SingularTokens { get; }
+        /// <summary>
+        /// Stocke la valeur interne TokenSet.
+        /// </summary>
+        /// <value>Valeur de TokenSet.</value>
         public HashSet<string> TokenSet { get; }
+        /// <summary>
+        /// Stocke la valeur interne NameVariantSet.
+        /// </summary>
+        /// <value>Valeur de NameVariantSet.</value>
         public HashSet<string> NameVariantSet { get; }
+        /// <summary>
+        /// Stocke la valeur interne Columns.
+        /// </summary>
+        /// <value>Valeur de Columns.</value>
         public IReadOnlyList<ColumnInfo> Columns { get; private set; } = Array.Empty<ColumnInfo>();
+        /// <summary>
+        /// Stocke la valeur interne ReferenceTargetColumns.
+        /// </summary>
+        /// <value>Valeur de ReferenceTargetColumns.</value>
         public IReadOnlyList<ColumnInfo> ReferenceTargetColumns { get; private set; } = Array.Empty<ColumnInfo>();
 
+        /// <summary>
+        /// Exécute le traitement BuildColumns.
+        /// </summary>
+        /// <param name="indexedColumns">Paramètre indexedColumns.</param>
+        /// <param name="uniqueColumns">Paramètre uniqueColumns.</param>
         public void BuildColumns(HashSet<string> indexedColumns, HashSet<string> uniqueColumns)
         {
-            ColumnInfo[] columns = [.. Table.Columns.Select(c => new ColumnInfo(this, c, indexedColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || indexedColumns.Contains(QualifiedColumnKey(Table.Name, c.Name)), uniqueColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || uniqueColumns.Contains(QualifiedColumnKey(Table.Name, c.Name))))];
+            ColumnInfo[] columns = Table.Columns
+                .Select(c => new ColumnInfo(this, c, indexedColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || indexedColumns.Contains(QualifiedColumnKey(Table.Name, c.Name)), uniqueColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || uniqueColumns.Contains(QualifiedColumnKey(Table.Name, c.Name))))
+                .ToArray();
 
             Columns = columns;
             ReferenceTargetColumns = columns.Where(c => c.IsReferenceTargetColumn).ToArray();
         }
 
+        /// <summary>
+        /// Exécute le traitement HasAnyNameVariant.
+        /// </summary>
+        /// <param name="variants">Paramètre variants.</param>
+        /// <returns>Résultat du traitement.</returns>
         public bool HasAnyNameVariant(IEnumerable<string> variants) => variants.Any(v => NameVariantSet.Contains(v));
+        /// <summary>
+        /// Exécute le traitement HasAnyToken.
+        /// </summary>
+        /// <param name="variants">Paramètre variants.</param>
+        /// <returns>Résultat du traitement.</returns>
         public bool HasAnyToken(IEnumerable<string> variants) => variants.Any(v => TokenSet.Contains(v));
     }
 
+    /// <summary>
+    /// Représente ColumnInfo dans SQL Query Generator.
+    /// </summary>
     private sealed class ColumnInfo
     {
+        /// <summary>
+        /// Initialise une nouvelle instance de ColumnInfo.
+        /// </summary>
+        /// <param name="table">Paramètre table.</param>
+        /// <param name="column">Paramètre column.</param>
+        /// <param name="indexed">Paramètre indexed.</param>
+        /// <param name="uniqueIndexed">Paramètre uniqueIndexed.</param>
         public ColumnInfo(TableInfo table, ColumnDefinition column, bool indexed, bool uniqueIndexed)
         {
             Table = table;
@@ -885,19 +1157,72 @@ public sealed class ForeignKeyInferer
             IsReferenceTargetColumn = ForeignKeyInferer.IsReferenceTargetColumn(NormalizedName, table.NormalizedName, column.IsPrimaryKey || uniqueIndexed);
         }
 
+        /// <summary>
+        /// Stocke la valeur interne Table.
+        /// </summary>
+        /// <value>Valeur de Table.</value>
         public TableInfo Table { get; }
+        /// <summary>
+        /// Stocke la valeur interne Column.
+        /// </summary>
+        /// <value>Valeur de Column.</value>
         public ColumnDefinition Column { get; }
+        /// <summary>
+        /// Stocke la valeur interne NormalizedName.
+        /// </summary>
+        /// <value>Valeur de NormalizedName.</value>
         public string NormalizedName { get; }
+        /// <summary>
+        /// Stocke la valeur interne Indexed.
+        /// </summary>
+        /// <value>Valeur de Indexed.</value>
         public bool Indexed { get; }
+        /// <summary>
+        /// Stocke la valeur interne UniqueIndexed.
+        /// </summary>
+        /// <value>Valeur de UniqueIndexed.</value>
         public bool UniqueIndexed { get; }
+        /// <summary>
+        /// Stocke la valeur interne TargetUnique.
+        /// </summary>
+        /// <value>Valeur de TargetUnique.</value>
         public bool TargetUnique { get; }
+        /// <summary>
+        /// Stocke la valeur interne LooksLikeIdentifier.
+        /// </summary>
+        /// <value>Valeur de LooksLikeIdentifier.</value>
         public bool LooksLikeIdentifier { get; }
+        /// <summary>
+        /// Stocke la valeur interne IdentifierStem.
+        /// </summary>
+        /// <value>Valeur de IdentifierStem.</value>
         public string IdentifierStem { get; }
+        /// <summary>
+        /// Stocke la valeur interne StemVariants.
+        /// </summary>
+        /// <value>Valeur de StemVariants.</value>
         public IReadOnlyList<string> StemVariants { get; }
+        /// <summary>
+        /// Stocke la valeur interne IdentifierCandidates.
+        /// </summary>
+        /// <value>Valeur de IdentifierCandidates.</value>
         public HashSet<string> IdentifierCandidates { get; }
+        /// <summary>
+        /// Stocke la valeur interne CompactIdentifierCandidates.
+        /// </summary>
+        /// <value>Valeur de CompactIdentifierCandidates.</value>
         public HashSet<string> CompactIdentifierCandidates { get; }
+        /// <summary>
+        /// Stocke la valeur interne IsReferenceTargetColumn.
+        /// </summary>
+        /// <value>Valeur de IsReferenceTargetColumn.</value>
         public bool IsReferenceTargetColumn { get; }
 
+        /// <summary>
+        /// Exécute le traitement BuildIdentifierCandidates.
+        /// </summary>
+        /// <param name="sourceColumn">Paramètre sourceColumn.</param>
+        /// <returns>Résultat du traitement.</returns>
         private static HashSet<string> BuildIdentifierCandidates(string sourceColumn)
         {
             HashSet<string> result = new(StringComparer.OrdinalIgnoreCase);
@@ -933,8 +1258,17 @@ public sealed class ForeignKeyInferer
         }
     }
 
+    /// <summary>
+    /// Représente NameVariant dans SQL Query Generator.
+    /// </summary>
     private sealed record NameVariant(string Name, double Weight, string CompactName);
 
+    /// <summary>
+    /// Exécute le traitement QualifiedColumnKey.
+    /// </summary>
+    /// <param name="table">Paramètre table.</param>
+    /// <param name="column">Paramètre column.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string QualifiedColumnKey(string table, string column)
     {
         return SqlNameNormalizer.Normalize(table) + "|" + SqlNameNormalizer.Normalize(column);

@@ -3,8 +3,14 @@ using SqlQueryGenerator.Core.Parsing;
 
 namespace SqlQueryGenerator.Tests;
 
+/// <summary>
+/// Représente InferenceTests dans SQL Query Generator.
+/// </summary>
 public sealed class InferenceTests
 {
+    /// <summary>
+    /// Exécute le traitement Infer SameColumnAsPrimaryKey FindsRelationship.
+    /// </summary>
     [Fact]
     public void Infer_SameColumnAsPrimaryKey_FindsRelationship()
     {
@@ -24,6 +30,9 @@ CREATE TABLE ORDERS (
         Assert.Contains(schema.Relationships, r => r.FromTable == "ORDERS" && r.FromColumn == "CUSTOMER_ID" && r.ToTable == "CUSTOMER" && r.ToColumn == "CUSTOMER_ID");
     }
 
+    /// <summary>
+    /// Exécute le traitement Infer TableNamePattern FindsOrdIdenRelationship.
+    /// </summary>
     [Fact]
     public void Infer_TableNamePattern_FindsOrdIdenRelationship()
     {
@@ -41,6 +50,9 @@ CREATE TABLE MVTO (
         Assert.Contains(schema.Relationships, r => r.FromTable == "MVTO" && r.FromColumn == "ORD_IDEN" && r.ToTable == "ORD" && r.ToColumn == "ORD_IDEN");
     }
 
+    /// <summary>
+    /// Exécute le traitement Infer SingularForeignKeyColumn ToPluralTableId WinsOverGenericId.
+    /// </summary>
     [Fact]
     public void Infer_SingularForeignKeyColumn_ToPluralTableId_WinsOverGenericId()
     {
@@ -61,6 +73,9 @@ CREATE TABLE jobs (
         Assert.DoesNotContain(schema.Relationships, r => r.FromTable == "pnj" && r.FromColumn == "id" && r.ToTable == "jobs" && r.ToColumn == "id");
     }
 
+    /// <summary>
+    /// Exécute le traitement Infer GroupId ToCompoundPluralTableId.
+    /// </summary>
     [Fact]
     public void Infer_GroupId_ToCompoundPluralTableId()
     {
@@ -81,6 +96,9 @@ CREATE TABLE jobs_groups (
     }
 
 
+    /// <summary>
+    /// Exécute le traitement Infer SourceColumnStem ToSourcePrefixedPluralLookupTable.
+    /// </summary>
     [Fact]
     public void Infer_SourceColumnStem_ToSourcePrefixedPluralLookupTable()
     {
@@ -102,6 +120,9 @@ CREATE TABLE pnj_jobs (
     }
 
 
+    /// <summary>
+    /// Exécute le traitement Infer SourcePrefixedLookup Outranks GenericPluralLookup WhenBothExist.
+    /// </summary>
     [Fact]
     public void Infer_SourcePrefixedLookup_Outranks_GenericPluralLookup_WhenBothExist()
     {
@@ -127,6 +148,9 @@ CREATE TABLE pnj_jobs (
     }
 
 
+    /// <summary>
+    /// Exécute le traitement Infer JunctionTable FindsBothSides.
+    /// </summary>
     [Fact]
     public void Infer_JunctionTable_FindsBothSides()
     {
@@ -151,6 +175,9 @@ CREATE TABLE pnj_item (
         Assert.DoesNotContain(schema.Relationships, r => r.FromTable == "pnj" && r.FromColumn == "id" && r.ToTable == "items" && r.ToColumn == "id");
     }
 
+    /// <summary>
+    /// Exécute le traitement Infer IndexedForeignKey GetsHigherConfidenceThanUnindexedAlternative.
+    /// </summary>
     [Fact]
     public void Infer_IndexedForeignKey_GetsHigherConfidenceThanUnindexedAlternative()
     {

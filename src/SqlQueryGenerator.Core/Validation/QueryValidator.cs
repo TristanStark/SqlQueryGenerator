@@ -3,8 +3,17 @@ using SqlQueryGenerator.Core.Query;
 
 namespace SqlQueryGenerator.Core.Validation;
 
+/// <summary>
+/// Représente QueryValidator dans SQL Query Generator.
+/// </summary>
 public sealed class QueryValidator
 {
+    /// <summary>
+    /// Exécute le traitement Validate.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <returns>Résultat du traitement.</returns>
     public IReadOnlyList<string> Validate(QueryDefinition query, DatabaseSchema schema)
     {
         List<string> errors = [];
@@ -60,6 +69,11 @@ public sealed class QueryValidator
         return errors;
     }
 
+    /// <summary>
+    /// Exécute le traitement EnumerateColumns.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static IEnumerable<ColumnReference> EnumerateColumns(QueryDefinition query)
     {
         foreach (ColumnReference item in query.SelectedColumns) yield return item;

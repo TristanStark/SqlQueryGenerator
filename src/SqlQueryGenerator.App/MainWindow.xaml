@@ -13,6 +13,7 @@
         WindowState="Maximized">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <vm:TableNameDisplayConverter x:Key="TableNameDisplayConverter" />
         <Style TargetType="{x:Type Button}">
             <Setter Property="Margin" Value="4" />
             <Setter Property="Padding" Value="12,6" />
@@ -164,7 +165,7 @@
                                     <HierarchicalDataTemplate DataType="{x:Type vm:TableItemViewModel}" ItemsSource="{Binding Columns}">
                                         <StackPanel Orientation="Horizontal" ToolTip="{Binding Comment}">
                                             <TextBlock Text="🗂 " Margin="0,0,4,0" />
-                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
                                             <TextBlock Text=" (" Foreground="#64748B" />
                                             <TextBlock Text="{Binding ColumnCount}" Foreground="#64748B" />
                                             <TextBlock Text=")" Foreground="#64748B" />
@@ -226,7 +227,13 @@
                         <Border Grid.Row="0" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6" Background="#FFFFFF" Padding="8" Margin="4,2,4,8">
                             <WrapPanel VerticalAlignment="Center">
                                 <TextBlock Text="Table de départ" VerticalAlignment="Center" Margin="4" FontWeight="SemiBold" />
-                                <ComboBox Width="260" ItemsSource="{Binding TableNames}" SelectedItem="{Binding BaseTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <ComboBox Width="260" ItemsSource="{Binding TableNames}" SelectedItem="{Binding BaseTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Le nom complet schema.table est conservé pour le SQL.">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Converter={StaticResource TableNameDisplayConverter}}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
 
                                 <TextBlock Text="Dialecte" VerticalAlignment="Center" Margin="16,4,4,4" FontWeight="SemiBold" />
                                 <ComboBox Width="135" ItemsSource="{Binding Dialects}" SelectedItem="{Binding Dialect, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -247,7 +254,7 @@
                                     <TextBlock DockPanel.Dock="Top" Text="Dépose ici les colonnes à afficher. L'alias est le nom lisible qui apparaîtra dans le résultat." Style="{StaticResource SectionHint}" />
                                     <DataGrid ItemsSource="{Binding SelectedColumns}">
                                         <DataGrid.Columns>
-                                            <DataGridTextColumn Header="Table" Binding="{Binding Table, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="220" />
+                                            <DataGridTextColumn Header="Table" Binding="{Binding TableDisplayName}" IsReadOnly="True" Width="2*" MinWidth="220" />
                                             <DataGridTextColumn Header="Colonne" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="220" />
                                             <DataGridTextColumn Header="Alias optionnel" Binding="{Binding Alias, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="240" />
                                             <DataGridTemplateColumn Header="Action" Width="290" MinWidth="270">
@@ -275,7 +282,7 @@
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
                                             <DataGridTextColumn Header="Type" Binding="{Binding FieldKind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="0.9*" MinWidth="130" />
-                                            <DataGridTextColumn Header="Table / source" Binding="{Binding Table, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.3*" MinWidth="170" />
+                                            <DataGridTextColumn Header="Table / source" Binding="{Binding TableDisplayName}" IsReadOnly="True" Width="1.3*" MinWidth="170" />
                                             <DataGridTextColumn Header="Colonne / alias" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.6*" MinWidth="210" />
                                             <DataGridTemplateColumn Header="Opérateur" Width="155" MinWidth="145">
                                                 <DataGridTemplateColumn.CellTemplate>
@@ -390,13 +397,21 @@
                                                                 <TextBlock Grid.Row="0" Grid.Column="5" Text="Colonne droite" FontWeight="SemiBold" Margin="4,0" />
 
                                                                 <ComboBox Grid.Row="1" Grid.Column="0" ItemsSource="{Binding DataContext.JoinTypes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding JoinType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                                <ComboBox Grid.Row="1" Grid.Column="1" IsEditable="True" ItemsSource="{Binding DataContext.TableNames, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding FromTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Text="{Binding FromTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Choisis la table gauche." />
-                                                                <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding FromColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinLeftColumn_Drop" ToolTip="Glisse ici la colonne gauche. La table gauche sera remplie automatiquement." />
+                                                                <ComboBox Grid.Row="1" Grid.Column="1" IsEditable="True" IsTextSearchEnabled="True" ItemsSource="{Binding DataContext.TableNames, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding FromTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" Text="{Binding FromTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" ToolTip="Choisis la table gauche. L'affichage masque le préfixe schema mais la valeur complète est conservée.">
+                                                                    <ComboBox.ItemTemplate>
+                                                                        <DataTemplate><TextBlock Text="{Binding Converter={StaticResource TableNameDisplayConverter}}" /></DataTemplate>
+                                                                    </ComboBox.ItemTemplate>
+                                                                </ComboBox>
+                                                                <ComboBox Grid.Row="1" Grid.Column="2" IsEditable="True" IsTextSearchEnabled="True" ItemsSource="{Binding FromColumnCandidates}" Text="{Binding FromColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" SelectedItem="{Binding FromColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinLeftColumn_Drop" ToolTip="Choisis ou glisse la colonne gauche. La table gauche sera remplie automatiquement." />
 
                                                                 <TextBlock Grid.Row="1" Grid.Column="3" Text="=" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" FontSize="18" Foreground="#475569" />
 
-                                                                <ComboBox Grid.Row="1" Grid.Column="4" IsEditable="True" ItemsSource="{Binding DataContext.TableNames, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding ToTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Text="{Binding ToTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Choisis la table droite." />
-                                                                <TextBox Grid.Row="1" Grid.Column="5" Text="{Binding ToColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinRightColumn_Drop" ToolTip="Glisse ici la colonne droite. La table droite sera remplie automatiquement." />
+                                                                <ComboBox Grid.Row="1" Grid.Column="4" IsEditable="True" IsTextSearchEnabled="True" ItemsSource="{Binding DataContext.TableNames, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding ToTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" Text="{Binding ToTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" ToolTip="Choisis la table droite. L'affichage masque le préfixe schema mais la valeur complète est conservée.">
+                                                                    <ComboBox.ItemTemplate>
+                                                                        <DataTemplate><TextBlock Text="{Binding Converter={StaticResource TableNameDisplayConverter}}" /></DataTemplate>
+                                                                    </ComboBox.ItemTemplate>
+                                                                </ComboBox>
+                                                                <ComboBox Grid.Row="1" Grid.Column="5" IsEditable="True" IsTextSearchEnabled="True" ItemsSource="{Binding ToColumnCandidates}" Text="{Binding ToColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" SelectedItem="{Binding ToColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinRightColumn_Drop" ToolTip="Choisis ou glisse la colonne droite. La table droite sera remplie automatiquement." />
                                                                 <StackPanel Grid.Row="1" Grid.Column="6" Orientation="Vertical">
                                                                     <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveJoinCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                                     <Button Content="+ Colonne" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.AddJoinPairCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute une condition supplémentaire à la jointure composite." />
@@ -414,9 +429,9 @@
                                                                                     <ColumnDefinition Width="120" />
                                                                                 </Grid.ColumnDefinitions>
                                                                                 <CheckBox Grid.Column="0" Content="Actif" IsChecked="{Binding Enabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Active/désactive cette colonne de jointure." />
-                                                                                <TextBox Grid.Column="1" Text="{Binding FromColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinPairLeftColumn_Drop" ToolTip="Glisse ici une colonne supplémentaire côté gauche." />
+                                                                                <TextBox Grid.Column="1" Text="{Binding FromColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinPairLeftColumn_Drop" ToolTip="Glisse ici une colonne supplémentaire côté gauche." />
                                                                                 <TextBlock Grid.Column="2" Text="=" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" />
-                                                                                <TextBox Grid.Column="3" Text="{Binding ToColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinPairRightColumn_Drop" ToolTip="Glisse ici une colonne supplémentaire côté droit." />
+                                                                                <TextBox Grid.Column="3" Text="{Binding ToColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinPairRightColumn_Drop" ToolTip="Glisse ici une colonne supplémentaire côté droit." />
                                                                                 <Button Grid.Column="4" Content="Retirer" MinWidth="105" Command="{Binding DataContext.RemoveJoinPairCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                                             </Grid>
                                                                         </DataTemplate>
@@ -443,7 +458,7 @@
                                         <TextBlock DockPanel.Dock="Top" Text="GROUP BY : dépose les colonnes par lesquelles regrouper." Style="{StaticResource SectionHint}" />
                                         <DataGrid ItemsSource="{Binding GroupBy}">
                                             <DataGrid.Columns>
-                                                <DataGridTextColumn Header="Table" Binding="{Binding Table, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="260" />
+                                                <DataGridTextColumn Header="Table" Binding="{Binding TableDisplayName}" IsReadOnly="True" Width="2*" MinWidth="260" />
                                                 <DataGridTextColumn Header="Colonne" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="260" />
                                                 <DataGridTemplateColumn Header="Action" Width="190" MinWidth="170">
                                                     <DataGridTemplateColumn.CellTemplate>
@@ -524,7 +539,7 @@
                                     <DataGrid ItemsSource="{Binding OrderBy}">
                                         <DataGrid.Columns>
                                             <DataGridTextColumn Header="Type" Binding="{Binding FieldKind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="0.9*" MinWidth="130" />
-                                            <DataGridTextColumn Header="Table / source" Binding="{Binding Table, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.5*" MinWidth="210" />
+                                            <DataGridTextColumn Header="Table / source" Binding="{Binding TableDisplayName}" IsReadOnly="True" Width="1.5*" MinWidth="210" />
                                             <DataGridTextColumn Header="Colonne / alias" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.8*" MinWidth="250" />
                                             <DataGridTemplateColumn Header="Sens" Width="160" MinWidth="150">
                                                 <DataGridTemplateColumn.CellTemplate>
@@ -597,7 +612,7 @@
                                                 <TextBlock Text="Nom" FontWeight="SemiBold" VerticalAlignment="Center" Margin="4" />
                                                 <TextBox Width="230" Text="{Binding QueryName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                                 <TextBlock Text="Description" FontWeight="SemiBold" VerticalAlignment="Center" Margin="14,4,4,4" />
-                                                <TextBox Width="420" Text="{Binding QueryDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                <TextBox Width="520" MinHeight="60" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Text="{Binding QueryDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" ToolTip="Description métier sauvegardée avec la requête JSON." />
                                                 <Button Content="Sauvegarder requête" Command="{Binding SaveCurrentQueryCommand}" />
                                                 <Button Content="Recharger bibliothèque" Command="{Binding ReloadSavedQueriesCommand}" />
                                                 <Button Content="Charger sélection" Command="{Binding LoadSelectedQueryCommand}" />
@@ -633,7 +648,7 @@
                                             <DataGrid.Columns>
                                                 <DataGridTextColumn Header="Nom" Binding="{Binding Name}" Width="1.4*" MinWidth="180" />
                                                 <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="2.5*" MinWidth="300" />
-                                                <DataGridTextColumn Header="Base" Binding="{Binding BaseTable}" Width="1*" MinWidth="140" />
+                                                <DataGridTextColumn Header="Base" Binding="{Binding BaseTableDisplayName}" Width="1*" MinWidth="140" />
                                                 <DataGridTextColumn Header="Params" Binding="{Binding Parameters}" Width="1.6*" MinWidth="220" />
                                                 <DataGridTextColumn Header="Nb champs" Binding="{Binding SelectCount}" Width="100" />
                                             </DataGrid.Columns>

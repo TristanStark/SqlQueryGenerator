@@ -3,8 +3,16 @@ using System.Text.RegularExpressions;
 
 namespace SqlQueryGenerator.Core.Generation;
 
+/// <summary>
+/// Représente SqlLiteralFormatter dans SQL Query Generator.
+/// </summary>
 public static partial class SqlLiteralFormatter
 {
+    /// <summary>
+    /// Exécute le traitement FormatValue.
+    /// </summary>
+    /// <param name="raw">Paramètre raw.</param>
+    /// <returns>Résultat du traitement.</returns>
     public static string FormatValue(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
@@ -38,6 +46,11 @@ public static partial class SqlLiteralFormatter
         return $"'{value.Replace("'", "''", StringComparison.Ordinal)}'";
     }
 
+    /// <summary>
+    /// Exécute le traitement FormatRawList.
+    /// </summary>
+    /// <param name="raw">Paramètre raw.</param>
+    /// <returns>Résultat du traitement.</returns>
     public static string FormatRawList(string raw)
     {
         string trimmed = raw.Trim();
@@ -50,6 +63,10 @@ public static partial class SqlLiteralFormatter
         return $"({string.Join(", ", parts.Select(FormatValue))})";
     }
 
+    /// <summary>
+    /// Exécute le traitement NumberRegex.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     [GeneratedRegex(@"^-?\d+(?:\.\d+)?$")]
     private static partial Regex NumberRegex();
 }

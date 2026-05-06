@@ -3,8 +3,16 @@ using System.Text.Json.Serialization;
 
 namespace SqlQueryGenerator.Core.Persistence;
 
+/// <summary>
+/// Représente SavedQueryStore dans SQL Query Generator.
+/// </summary>
 public sealed class SavedQueryStore
 {
+    /// <summary>
+    /// Exécute le traitement new.
+    /// </summary>
+    /// <param name="General">Paramètre General.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.General)
     {
         WriteIndented = true,
@@ -12,6 +20,10 @@ public sealed class SavedQueryStore
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
+    /// <summary>
+    /// Initialise une nouvelle instance de SavedQueryStore.
+    /// </summary>
+    /// <param name="rootDirectory">Paramètre rootDirectory.</param>
     public SavedQueryStore(string rootDirectory)
     {
         RootDirectory = string.IsNullOrWhiteSpace(rootDirectory)
@@ -19,8 +31,16 @@ public sealed class SavedQueryStore
             : rootDirectory;
     }
 
+    /// <summary>
+    /// Stocke la valeur interne RootDirectory.
+    /// </summary>
+    /// <value>Valeur de RootDirectory.</value>
     public string RootDirectory { get; }
 
+    /// <summary>
+    /// Exécute le traitement LoadAll.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     public IReadOnlyList<SavedQueryDefinition> LoadAll()
     {
         Directory.CreateDirectory(RootDirectory);
@@ -42,6 +62,11 @@ public sealed class SavedQueryStore
         return result.OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
+    /// <summary>
+    /// Exécute le traitement Load.
+    /// </summary>
+    /// <param name="filePath">Paramètre filePath.</param>
+    /// <returns>Résultat du traitement.</returns>
     public SavedQueryDefinition Load(string filePath)
     {
         using FileStream stream = File.OpenRead(filePath);
@@ -50,6 +75,11 @@ public sealed class SavedQueryStore
         return saved;
     }
 
+    /// <summary>
+    /// Exécute le traitement Save.
+    /// </summary>
+    /// <param name="saved">Paramètre saved.</param>
+    /// <returns>Résultat du traitement.</returns>
     public string Save(SavedQueryDefinition saved)
     {
         if (string.IsNullOrWhiteSpace(saved.Name))
@@ -70,10 +100,15 @@ public sealed class SavedQueryStore
         return file;
     }
 
+    /// <summary>
+    /// Exécute le traitement MakeSafeFileName.
+    /// </summary>
+    /// <param name="name">Paramètre name.</param>
+    /// <returns>Résultat du traitement.</returns>
     public static string MakeSafeFileName(string name)
     {
-        HashSet<char> invalid = [.. Path.GetInvalidFileNameChars()];
-        char[] chars = [.. name.Trim().Select(c => invalid.Contains(c) ? '_' : c)];
+        HashSet<char> invalid = Path.GetInvalidFileNameChars().ToHashSet();
+        char[] chars = name.Trim().Select(c => invalid.Contains(c) ? '_' : c).ToArray();
         string cleaned = new(chars);
         return string.IsNullOrWhiteSpace(cleaned) ? "query" : cleaned;
     }

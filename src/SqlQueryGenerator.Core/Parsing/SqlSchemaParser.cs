@@ -5,19 +5,40 @@ using System.Text.RegularExpressions;
 
 namespace SqlQueryGenerator.Core.Parsing;
 
+/// <summary>
+/// Représente SqlSchemaParser dans SQL Query Generator.
+/// </summary>
 public sealed partial class SqlSchemaParser
 {
+    /// <summary>
+    /// Stocke la valeur interne  foreignKeyInferer.
+    /// </summary>
+    /// <value>Valeur de _foreignKeyInferer.</value>
     private readonly ForeignKeyInferer _foreignKeyInferer;
 
+    /// <summary>
+    /// Initialise une nouvelle instance de SqlSchemaParser.
+    /// </summary>
+    /// <param name="ForeignKeyInferer">Paramètre ForeignKeyInferer.</param>
     public SqlSchemaParser() : this(new ForeignKeyInferer())
     {
     }
 
+    /// <summary>
+    /// Initialise une nouvelle instance de SqlSchemaParser.
+    /// </summary>
+    /// <param name="foreignKeyInferer">Paramètre foreignKeyInferer.</param>
     public SqlSchemaParser(ForeignKeyInferer foreignKeyInferer)
     {
         _foreignKeyInferer = foreignKeyInferer;
     }
 
+    /// <summary>
+    /// Exécute le traitement Parse.
+    /// </summary>
+    /// <param name="sqlText">Paramètre sqlText.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <returns>Résultat du traitement.</returns>
     public DatabaseSchema Parse(string sqlText, SchemaParseOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(sqlText);
@@ -91,6 +112,10 @@ public sealed partial class SqlSchemaParser
         return schema;
     }
 
+    /// <summary>
+    /// Stocke la valeur interne TryParseCreateView.
+    /// </summary>
+    /// <value>Valeur de TryParseCreateView.</value>
     private static void TryParseCreateView(
         string statement,
         Match viewMatch,
@@ -159,6 +184,12 @@ public sealed partial class SqlSchemaParser
         schema.Tables.Add(view);
     }
 
+    /// <summary>
+    /// Exécute le traitement ExtractExplicitViewColumns.
+    /// </summary>
+    /// <param name="statement">Paramètre statement.</param>
+    /// <param name="viewMatch">Paramètre viewMatch.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static IReadOnlyList<string> ExtractExplicitViewColumns(string statement, Match viewMatch)
     {
         int afterName = viewMatch.Index + viewMatch.Length;
@@ -185,6 +216,11 @@ public sealed partial class SqlSchemaParser
             .ToArray();
     }
 
+    /// <summary>
+    /// Exécute le traitement InferViewColumnsFromSelect.
+    /// </summary>
+    /// <param name="statement">Paramètre statement.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static IReadOnlyList<string> InferViewColumnsFromSelect(string statement)
     {
         Match selectMatch = Regex.Match(statement, @"\bSELECT\b", RegexOptions.IgnoreCase);
@@ -209,6 +245,13 @@ public sealed partial class SqlSchemaParser
             .ToArray();
     }
 
+    /// <summary>
+    /// Exécute le traitement FindTopLevelKeyword.
+    /// </summary>
+    /// <param name="text">Paramètre text.</param>
+    /// <param name="keyword">Paramètre keyword.</param>
+    /// <param name="startIndex">Paramètre startIndex.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static int FindTopLevelKeyword(string text, string keyword, int startIndex)
     {
         int depth = 0;
@@ -239,6 +282,11 @@ public sealed partial class SqlSchemaParser
         return -1;
     }
 
+    /// <summary>
+    /// Exécute le traitement TryInferSelectAlias.
+    /// </summary>
+    /// <param name="expression">Paramètre expression.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string? TryInferSelectAlias(string expression)
     {
         string cleaned = expression.Trim();
@@ -275,6 +323,12 @@ public sealed partial class SqlSchemaParser
         return null;
     }
 
+    /// <summary>
+    /// Exécute le traitement TryParseCreateIndex.
+    /// </summary>
+    /// <param name="statement">Paramètre statement.</param>
+    /// <param name="indexMatch">Paramètre indexMatch.</param>
+    /// <param name="schema">Paramètre schema.</param>
     private static void TryParseCreateIndex(string statement, Match indexMatch, DatabaseSchema schema)
     {
         string indexName = CleanQualifiedIdentifier(indexMatch.Groups["name"].Value);
@@ -289,11 +343,12 @@ public sealed partial class SqlSchemaParser
             return;
         }
 
-        string[] columns = [.. SplitTopLevelComma(statement[(open + 1)..close])
+        string[] columns = SplitTopLevelComma(statement[(open + 1)..close])
             .Select(TryExtractIndexedColumnName)
             .Where(c => !string.IsNullOrWhiteSpace(c))
             .Cast<string>()
-            .Distinct(StringComparer.OrdinalIgnoreCase)];
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
         if (columns.Length == 0)
         {
@@ -304,6 +359,11 @@ public sealed partial class SqlSchemaParser
         schema.Indexes.Add(new IndexDefinition(indexName, tableName, unique, columns));
     }
 
+    /// <summary>
+    /// Exécute le traitement TryExtractIndexedColumnName.
+    /// </summary>
+    /// <param name="expression">Paramètre expression.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string? TryExtractIndexedColumnName(string expression)
     {
         string trimmed = expression.Trim();
@@ -329,6 +389,10 @@ public sealed partial class SqlSchemaParser
         return Regex.IsMatch(cleaned, @"^[A-Za-z_][A-Za-z0-9_$#]*$", RegexOptions.IgnoreCase) ? cleaned : null;
     }
 
+    /// <summary>
+    /// Stocke la valeur interne TryParseCreateTable.
+    /// </summary>
+    /// <value>Valeur de TryParseCreateTable.</value>
     private static void TryParseCreateTable(
         string statement,
         Match createMatch,
@@ -394,6 +458,10 @@ public sealed partial class SqlSchemaParser
         schema.Tables.Add(table);
     }
 
+    /// <summary>
+    /// Stocke la valeur interne ParseColumnDefinition.
+    /// </summary>
+    /// <value>Valeur de ParseColumnDefinition.</value>
     private static ColumnDefinition? ParseColumnDefinition(
         string definition,
         string tableFullName,
@@ -435,6 +503,13 @@ public sealed partial class SqlSchemaParser
         };
     }
 
+    /// <summary>
+    /// Exécute le traitement ParseTableConstraint.
+    /// </summary>
+    /// <param name="definition">Paramètre definition.</param>
+    /// <param name="currentTable">Paramètre currentTable.</param>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="tableLevelPk">Paramètre tableLevelPk.</param>
     private static void ParseTableConstraint(string definition, string currentTable, DatabaseSchema schema, HashSet<string> tableLevelPk)
     {
         string normalized = definition.Trim();
@@ -453,9 +528,9 @@ public sealed partial class SqlSchemaParser
         Match fkMatch = ForeignKeyRegex().Match(normalized);
         if (fkMatch.Success)
         {
-            string[] sourceCols = [.. SplitTopLevelComma(fkMatch.Groups["fromCols"].Value).Select(CleanIdentifier)];
+            string[] sourceCols = SplitTopLevelComma(fkMatch.Groups["fromCols"].Value).Select(CleanIdentifier).ToArray();
             string targetTable = CleanQualifiedIdentifier(fkMatch.Groups["toTable"].Value);
-            string[] targetCols = [.. SplitTopLevelComma(fkMatch.Groups["toCols"].Value).Select(CleanIdentifier)];
+            string[] targetCols = SplitTopLevelComma(fkMatch.Groups["toCols"].Value).Select(CleanIdentifier).ToArray();
             int pairCount = Math.Min(sourceCols.Length, targetCols.Length);
             for (int i = 0; i < pairCount; i++)
             {
@@ -471,6 +546,11 @@ public sealed partial class SqlSchemaParser
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement ExtractDataType.
+    /// </summary>
+    /// <param name="tokens">Paramètre tokens.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string ExtractDataType(IReadOnlyList<string> tokens)
     {
         HashSet<string> stopWords = new(StringComparer.OrdinalIgnoreCase)
@@ -497,6 +577,11 @@ public sealed partial class SqlSchemaParser
         return sb.Length == 0 ? "UNKNOWN" : sb.ToString();
     }
 
+    /// <summary>
+    /// Exécute le traitement ExtractCommentOnColumnStatements.
+    /// </summary>
+    /// <param name="text">Paramètre text.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static IReadOnlyDictionary<string, string> ExtractCommentOnColumnStatements(string text)
     {
         Dictionary<string, string> result = new(StringComparer.OrdinalIgnoreCase);
@@ -511,6 +596,11 @@ public sealed partial class SqlSchemaParser
         return result;
     }
 
+    /// <summary>
+    /// Exécute le traitement ExtractCommentOnTableStatements.
+    /// </summary>
+    /// <param name="text">Paramètre text.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static IReadOnlyDictionary<string, string> ExtractCommentOnTableStatements(string text)
     {
         Dictionary<string, string> result = new(StringComparer.OrdinalIgnoreCase);
@@ -524,6 +614,11 @@ public sealed partial class SqlSchemaParser
         return result;
     }
 
+    /// <summary>
+    /// Exécute le traitement SplitStatements.
+    /// </summary>
+    /// <param name="text">Paramètre text.</param>
+    /// <returns>Résultat du traitement.</returns>
     public static IReadOnlyList<string> SplitStatements(string text)
     {
         List<string> statements = [];
@@ -614,6 +709,11 @@ public sealed partial class SqlSchemaParser
         return statements;
     }
 
+    /// <summary>
+    /// Exécute le traitement SplitTopLevelComma.
+    /// </summary>
+    /// <param name="text">Paramètre text.</param>
+    /// <returns>Résultat du traitement.</returns>
     public static IReadOnlyList<string> SplitTopLevelComma(string text)
     {
         List<string> result = [];
@@ -707,6 +807,12 @@ public sealed partial class SqlSchemaParser
         return result;
     }
 
+    /// <summary>
+    /// Exécute le traitement AppendLineCommentImmediatelyAfterComma.
+    /// </summary>
+    /// <param name="text">Paramètre text.</param>
+    /// <param name="commaIndex">Paramètre commaIndex.</param>
+    /// <param name="currentPart">Paramètre currentPart.</param>
     private static void AppendLineCommentImmediatelyAfterComma(string text, ref int commaIndex, StringBuilder currentPart)
     {
         int i = commaIndex + 1;
@@ -737,6 +843,11 @@ public sealed partial class SqlSchemaParser
         commaIndex = end - 1;
     }
 
+    /// <summary>
+    /// Exécute le traitement AddNonEmptyPart.
+    /// </summary>
+    /// <param name="result">Paramètre result.</param>
+    /// <param name="sb">Paramètre sb.</param>
     private static void AddNonEmptyPart(ICollection<string> result, StringBuilder sb)
     {
         if (sb.ToString().Trim().Length > 0)
@@ -745,6 +856,12 @@ public sealed partial class SqlSchemaParser
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement FindMatchingParenthesis.
+    /// </summary>
+    /// <param name="text">Paramètre text.</param>
+    /// <param name="openIndex">Paramètre openIndex.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static int FindMatchingParenthesis(string text, int openIndex)
     {
         if (openIndex < 0 || openIndex >= text.Length)
@@ -774,6 +891,11 @@ public sealed partial class SqlSchemaParser
         return -1;
     }
 
+    /// <summary>
+    /// Exécute le traitement TokenizeDefinition.
+    /// </summary>
+    /// <param name="definition">Paramètre definition.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static IReadOnlyList<string> TokenizeDefinition(string definition)
     {
         List<string> tokens = [];
@@ -810,6 +932,11 @@ public sealed partial class SqlSchemaParser
         return tokens;
     }
 
+    /// <summary>
+    /// Exécute le traitement IsTableConstraint.
+    /// </summary>
+    /// <param name="definition">Paramètre definition.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool IsTableConstraint(string definition)
     {
         string upper = definition.TrimStart().ToUpperInvariant();
@@ -820,6 +947,11 @@ public sealed partial class SqlSchemaParser
             || upper.StartsWith("CHECK", StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Exécute le traitement CleanIdentifier.
+    /// </summary>
+    /// <param name="identifier">Paramètre identifier.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string CleanIdentifier(string identifier)
     {
         string value = identifier.Trim().Trim(',', ';').Trim();
@@ -831,6 +963,11 @@ public sealed partial class SqlSchemaParser
         return value;
     }
 
+    /// <summary>
+    /// Exécute le traitement CleanQualifiedIdentifier.
+    /// </summary>
+    /// <param name="identifier">Paramètre identifier.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string CleanQualifiedIdentifier(string identifier)
     {
         IEnumerable<string> parts = identifier.Trim().Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -838,6 +975,11 @@ public sealed partial class SqlSchemaParser
         return string.Join('.', parts);
     }
 
+    /// <summary>
+    /// Initialise une nouvelle instance de static.
+    /// </summary>
+    /// <param name="Schema">Paramètre Schema.</param>
+    /// <param name="rawName">Paramètre rawName.</param>
     private static (string? Schema, string Table) SplitQualifiedName(string rawName)
     {
         string cleaned = CleanQualifiedIdentifier(rawName);
@@ -850,6 +992,11 @@ public sealed partial class SqlSchemaParser
         return (null, cleaned);
     }
 
+    /// <summary>
+    /// Initialise une nouvelle instance de static.
+    /// </summary>
+    /// <param name="Definition">Paramètre Definition.</param>
+    /// <param name="text">Paramètre text.</param>
     private static (string Definition, string? Comment) ExtractTrailingLineComment(string text)
     {
         bool inSingle = false;
@@ -868,55 +1015,120 @@ public sealed partial class SqlSchemaParser
         return (text, null);
     }
 
+    /// <summary>
+    /// Exécute le traitement RemoveBlockComments.
+    /// </summary>
+    /// <param name="text">Paramètre text.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string RemoveBlockComments(string text)
     {
         return BlockCommentRegex().Replace(text, " ");
     }
 
+    /// <summary>
+    /// Exécute le traitement ExtractInlineCommentClause.
+    /// </summary>
+    /// <param name="definition">Paramètre definition.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string? ExtractInlineCommentClause(string definition)
     {
         Match match = InlineCommentRegex().Match(definition);
         return match.Success ? UnescapeSqlString(match.Groups["comment"].Value) : null;
     }
 
+    /// <summary>
+    /// Exécute le traitement TryExtractConstraintName.
+    /// </summary>
+    /// <param name="definition">Paramètre definition.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string? TryExtractConstraintName(string definition)
     {
         Match match = ConstraintNameRegex().Match(definition);
         return match.Success ? CleanIdentifier(match.Groups["name"].Value) : null;
     }
 
+    /// <summary>
+    /// Exécute le traitement NormalizeLineEndings.
+    /// </summary>
+    /// <param name="text">Paramètre text.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string NormalizeLineEndings(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
 
+    /// <summary>
+    /// Exécute le traitement UnescapeSqlString.
+    /// </summary>
+    /// <param name="value">Paramètre value.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string UnescapeSqlString(string value) => value.Replace("''", "'", StringComparison.Ordinal);
 
 
+    /// <summary>
+    /// Exécute le traitement CreateViewRegex.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     [GeneratedRegex(@"CREATE\s+(?:OR\s+REPLACE\s+)?(?:FORCE\s+|NOFORCE\s+)?(?:(?:EDITIONABLE|NONEDITIONABLE)\s+)?VIEW\s+(?<name>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex CreateViewRegex();
 
+    /// <summary>
+    /// Exécute le traitement CreateTableRegex.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     [GeneratedRegex(@"CREATE\s+(?:GLOBAL\s+TEMPORARY\s+|TEMPORARY\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?<name>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)\s*\(", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex CreateTableRegex();
 
+    /// <summary>
+    /// Exécute le traitement CreateIndexRegex.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     [GeneratedRegex(@"CREATE\s+(?<unique>UNIQUE\s+)?(?:BITMAP\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(?<name>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)\s+ON\s+(?<table>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)\s*\(", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex CreateIndexRegex();
 
+    /// <summary>
+    /// Exécute le traitement CommentOnColumnRegex.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     [GeneratedRegex(@"COMMENT\s+ON\s+COLUMN\s+(?<table>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)\.(?<column>[`""\[]?\w+[`""\]]?)\s+IS\s+'(?<comment>(?:''|[^'])*)'", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex CommentOnColumnRegex();
 
+    /// <summary>
+    /// Exécute le traitement CommentOnTableRegex.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     [GeneratedRegex(@"COMMENT\s+ON\s+TABLE\s+(?<table>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)\s+IS\s+'(?<comment>(?:''|[^'])*)'", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex CommentOnTableRegex();
 
+    /// <summary>
+    /// Exécute le traitement InlineCommentRegex.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     [GeneratedRegex(@"COMMENT\s+'(?<comment>(?:''|[^'])*)'", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex InlineCommentRegex();
 
+    /// <summary>
+    /// Exécute le traitement BlockCommentRegex.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     [GeneratedRegex(@"/\*.*?\*/", RegexOptions.Singleline)]
     private static partial Regex BlockCommentRegex();
 
+    /// <summary>
+    /// Exécute le traitement TablePrimaryKeyRegex.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     [GeneratedRegex(@"(?:CONSTRAINT\s+[`""\[]?(?<name>\w+)[`""\]]?\s+)?PRIMARY\s+KEY\s*\((?<cols>[^)]*)\)", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex TablePrimaryKeyRegex();
 
+    /// <summary>
+    /// Exécute le traitement ForeignKeyRegex.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     [GeneratedRegex(@"(?:CONSTRAINT\s+[`""\[]?(?<name>\w+)[`""\]]?\s+)?FOREIGN\s+KEY\s*\((?<fromCols>[^)]*)\)\s+REFERENCES\s+(?<toTable>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)\s*\((?<toCols>[^)]*)\)", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex ForeignKeyRegex();
 
+    /// <summary>
+    /// Exécute le traitement ConstraintNameRegex.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     [GeneratedRegex(@"CONSTRAINT\s+[`""\[]?(?<name>\w+)[`""\]]?", RegexOptions.IgnoreCase)]
     private static partial Regex ConstraintNameRegex();
 }

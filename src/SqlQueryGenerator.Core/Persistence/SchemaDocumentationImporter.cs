@@ -3,13 +3,38 @@ using System.Text;
 
 namespace SqlQueryGenerator.Core.Persistence;
 
+/// <summary>
+/// Représente SchemaDocumentationImporter dans SQL Query Generator.
+/// </summary>
 public sealed class SchemaDocumentationImporter
 {
+    /// <summary>
+    /// Stocke la valeur interne TableHeaders.
+    /// </summary>
+    /// <value>Valeur de TableHeaders.</value>
     private static readonly string[] TableHeaders = ["table", "table_name", "nom_table", "table_physique", "objet", "object", "object_name"];
+    /// <summary>
+    /// Stocke la valeur interne ColumnHeaders.
+    /// </summary>
+    /// <value>Valeur de ColumnHeaders.</value>
     private static readonly string[] ColumnHeaders = ["column", "column_name", "nom_colonne", "champ", "field"];
+    /// <summary>
+    /// Stocke la valeur interne DisplayHeaders.
+    /// </summary>
+    /// <value>Valeur de DisplayHeaders.</value>
     private static readonly string[] DisplayHeaders = ["display", "display_name", "nom_fonctionnel", "libelle", "label", "meaning", "signification"];
+    /// <summary>
+    /// Stocke la valeur interne DescriptionHeaders.
+    /// </summary>
+    /// <value>Valeur de DescriptionHeaders.</value>
     private static readonly string[] DescriptionHeaders = ["description", "comment", "commentaire", "definition", "définition", "details", "notes"];
 
+    /// <summary>
+    /// Exécute le traitement Apply.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="text">Paramètre text.</param>
+    /// <returns>Résultat du traitement.</returns>
     public SchemaDocumentationImportResult Apply(DatabaseSchema schema, string text)
     {
         ArgumentNullException.ThrowIfNull(schema);
@@ -73,12 +98,24 @@ public sealed class SchemaDocumentationImporter
         return new SchemaDocumentationImportResult(tableUpdated, columnUpdated, warnings);
     }
 
+    /// <summary>
+    /// Exécute le traitement ApplyFromFile.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="filePath">Paramètre filePath.</param>
+    /// <returns>Résultat du traitement.</returns>
     public SchemaDocumentationImportResult ApplyFromFile(DatabaseSchema schema, string filePath)
     {
         string text = File.ReadAllText(filePath, Encoding.UTF8);
         return Apply(schema, text);
     }
 
+    /// <summary>
+    /// Exécute le traitement MergeDocumentation.
+    /// </summary>
+    /// <param name="display">Paramètre display.</param>
+    /// <param name="description">Paramètre description.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string MergeDocumentation(string? display, string? description)
     {
         display = display?.Trim();
@@ -96,6 +133,12 @@ public sealed class SchemaDocumentationImporter
         return $"{display} — {description}";
     }
 
+    /// <summary>
+    /// Exécute le traitement Get.
+    /// </summary>
+    /// <param name="row">Paramètre row.</param>
+    /// <param name="names">Paramètre names.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string? Get(IReadOnlyDictionary<string, string> row, IEnumerable<string> names)
     {
         foreach (string name in names)
@@ -109,18 +152,26 @@ public sealed class SchemaDocumentationImporter
         return null;
     }
 
+    /// <summary>
+    /// Exécute le traitement ParseRows.
+    /// </summary>
+    /// <param name="text">Paramètre text.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static List<Dictionary<string, string>> ParseRows(string text)
     {
-        string[] lines = [.. text.Replace("\r\n", "\n").Replace('\r', '\n')
+        string[] lines = text.Replace("\r\n", "\n").Replace('\r', '\n')
             .Split('\n')
-            .Where(l => !string.IsNullOrWhiteSpace(l))];
+            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .ToArray();
         if (lines.Length == 0)
         {
             return [];
         }
 
         char delimiter = DetectDelimiter(lines[0]);
-        string[] headers = [.. SplitLine(lines[0], delimiter).Select(h => NormalizeHeader(h))];
+        string[] headers = SplitLine(lines[0], delimiter)
+            .Select(h => NormalizeHeader(h))
+            .ToArray();
 
         List<Dictionary<string, string>> rows = [];
         for (int i = 1; i < lines.Length; i++)
@@ -141,6 +192,11 @@ public sealed class SchemaDocumentationImporter
         return rows;
     }
 
+    /// <summary>
+    /// Exécute le traitement DetectDelimiter.
+    /// </summary>
+    /// <param name="headerLine">Paramètre headerLine.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static char DetectDelimiter(string headerLine)
     {
         char[] candidates = new[] { '\t', ';', ',', '|' };
@@ -149,6 +205,11 @@ public sealed class SchemaDocumentationImporter
             .First();
     }
 
+    /// <summary>
+    /// Exécute le traitement NormalizeHeader.
+    /// </summary>
+    /// <param name="header">Paramètre header.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string NormalizeHeader(string header)
     {
         return header.Trim().Trim('\uFEFF').ToLowerInvariant()
@@ -156,6 +217,12 @@ public sealed class SchemaDocumentationImporter
             .Replace('-', '_');
     }
 
+    /// <summary>
+    /// Exécute le traitement SplitLine.
+    /// </summary>
+    /// <param name="line">Paramètre line.</param>
+    /// <param name="delimiter">Paramètre delimiter.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static List<string> SplitLine(string line, char delimiter)
     {
         List<string> result = [];
@@ -194,8 +261,15 @@ public sealed class SchemaDocumentationImporter
     }
 }
 
+/// <summary>
+/// Représente SchemaDocumentationImportResult dans SQL Query Generator.
+/// </summary>
 public sealed record SchemaDocumentationImportResult(int TablesUpdated, int ColumnsUpdated, IReadOnlyList<string> Warnings)
 {
+    /// <summary>
+    /// Exécute le traitement ToString.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     public override string ToString()
     {
         string message = $"Documentation importée: {TablesUpdated} tables, {ColumnsUpdated} colonnes mises à jour.";

@@ -5,8 +5,14 @@ using SqlQueryGenerator.Core.Query;
 
 namespace SqlQueryGenerator.Tests;
 
+/// <summary>
+/// Représente PurposeTests dans SQL Query Generator.
+/// </summary>
 public sealed class PurposeTests
 {
+    /// <summary>
+    /// Exécute le traitement Describe CountBaseRowsGroupedByRelatedName UsesBusinessIntentInsteadOfRawCountColumn.
+    /// </summary>
     [Fact]
     public void Describe_CountBaseRowsGroupedByRelatedName_UsesBusinessIntentInsteadOfRawCountColumn()
     {

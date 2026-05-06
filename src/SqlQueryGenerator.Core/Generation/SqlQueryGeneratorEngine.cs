@@ -4,8 +4,18 @@ using System.Text;
 
 namespace SqlQueryGenerator.Core.Generation;
 
+/// <summary>
+/// Représente SqlQueryGeneratorEngine dans SQL Query Generator.
+/// </summary>
 public sealed class SqlQueryGeneratorEngine
 {
+    /// <summary>
+    /// Exécute le traitement Generate.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <returns>Résultat du traitement.</returns>
     public SqlGenerationResult Generate(QueryDefinition query, DatabaseSchema schema, SqlGeneratorOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(query);
@@ -57,7 +67,7 @@ public sealed class SqlQueryGeneratorEngine
             sb.AppendLine();
         }
 
-        List<FilterCondition> whereFilters = [.. query.Filters.Where(f => f.FieldKind != QueryFieldKind.Aggregate)];
+        List<FilterCondition> whereFilters = query.Filters.Where(f => f.FieldKind != QueryFieldKind.Aggregate).ToList();
         List<(string Predicate, LogicalConnector Connector)> where = BuildFilterPredicates(query, whereFilters, schema, options, warnings);
         AppendPredicateBlock(sb, "WHERE", where);
 
@@ -79,13 +89,13 @@ public sealed class SqlQueryGeneratorEngine
             sb.Append("GROUP BY ").AppendLine(string.Join(", ", groupBy));
         }
 
-        List<FilterCondition> havingFilters = [.. query.Filters.Where(f => f.FieldKind == QueryFieldKind.Aggregate)];
+        List<FilterCondition> havingFilters = query.Filters.Where(f => f.FieldKind == QueryFieldKind.Aggregate).ToList();
         List<(string Predicate, LogicalConnector Connector)> having = BuildFilterPredicates(query, havingFilters, schema, options, warnings);
         AppendPredicateBlock(sb, "HAVING", having);
 
         if (query.OrderBy.Count > 0)
         {
-            string[] orderItems = [.. query.OrderBy
+            string[] orderItems = query.OrderBy
                 .Select(o =>
                 {
                     string expression = BuildOrderExpression(query, o, options, warnings);
@@ -93,7 +103,8 @@ public sealed class SqlQueryGeneratorEngine
                         ? string.Empty
                         : $"{expression} {(o.Direction == SortDirection.Descending ? "DESC" : "ASC")}";
                 })
-                .Where(o => !string.IsNullOrWhiteSpace(o))];
+                .Where(o => !string.IsNullOrWhiteSpace(o))
+                .ToArray();
             if (orderItems.Length > 0)
             {
                 sb.Append("ORDER BY ").AppendLine(string.Join(", ", orderItems));
@@ -119,6 +130,12 @@ public sealed class SqlQueryGeneratorEngine
         };
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildJoinOnClause.
+    /// </summary>
+    /// <param name="join">Paramètre join.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string BuildJoinOnClause(JoinDefinition join, SqlGeneratorOptions options)
     {
         List<string> predicates =
@@ -140,6 +157,12 @@ public sealed class SqlQueryGeneratorEngine
         return string.Join(" AND ", predicates);
     }
 
+    /// <summary>
+    /// Exécute le traitement ResolveBaseTable.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="warnings">Paramètre warnings.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string? ResolveBaseTable(QueryDefinition query, List<string> warnings)
     {
         if (!string.IsNullOrWhiteSpace(query.BaseTable))
@@ -163,6 +186,11 @@ public sealed class SqlQueryGeneratorEngine
         return first;
     }
 
+    /// <summary>
+    /// Exécute le traitement CollectUsedTables.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static HashSet<string> CollectUsedTables(QueryDefinition query)
     {
         HashSet<string> result = new(StringComparer.OrdinalIgnoreCase);
@@ -176,6 +204,15 @@ public sealed class SqlQueryGeneratorEngine
         return result;
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildJoinPlan.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="baseTable">Paramètre baseTable.</param>
+    /// <param name="usedTables">Paramètre usedTables.</param>
+    /// <param name="warnings">Paramètre warnings.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static IReadOnlyList<JoinDefinition> BuildJoinPlan(QueryDefinition query, DatabaseSchema schema, string baseTable, HashSet<string> usedTables, List<string> warnings)
     {
         List<JoinDefinition> joins = [];
@@ -228,9 +265,16 @@ public sealed class SqlQueryGeneratorEngine
         return joins;
     }
 
+    /// <summary>
+    /// Exécute le traitement AddCompositePairsFromRelationships.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="join">Paramètre join.</param>
+    /// <param name="disabledAutoJoinKeys">Paramètre disabledAutoJoinKeys.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static JoinDefinition AddCompositePairsFromRelationships(DatabaseSchema schema, JoinDefinition join, IEnumerable<string> disabledAutoJoinKeys)
     {
-        JoinColumnPair[] compatible = [.. schema.Relationships
+        JoinColumnPair[] compatible = schema.Relationships
             .Where(r => !IsRelationshipDisabled(r, disabledAutoJoinKeys))
             .Select(r =>
             {
@@ -253,7 +297,8 @@ public sealed class SqlQueryGeneratorEngine
             .Where(p => !SqlNameNormalizer.EqualsName(p.FromColumn, join.FromColumn)
                 && !SqlNameNormalizer.EqualsName(p.ToColumn, join.ToColumn)
                 && LooksLikeCompositeCompanion(p.FromColumn, p.ToColumn))
-            .Take(8)];
+            .Take(8)
+            .ToArray();
 
         if (compatible.Length == 0)
         {
@@ -280,6 +325,12 @@ public sealed class SqlQueryGeneratorEngine
         return result;
     }
 
+    /// <summary>
+    /// Exécute le traitement LooksLikeCompositeCompanion.
+    /// </summary>
+    /// <param name="fromColumn">Paramètre fromColumn.</param>
+    /// <param name="toColumn">Paramètre toColumn.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool LooksLikeCompositeCompanion(string fromColumn, string toColumn)
     {
         string left = SqlNameNormalizer.Normalize(fromColumn);
@@ -308,6 +359,14 @@ public sealed class SqlQueryGeneratorEngine
             || left.EndsWith("_iden", StringComparison.OrdinalIgnoreCase) && right.EndsWith("_iden", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Exécute le traitement FindBestJoinPath.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="connected">Paramètre connected.</param>
+    /// <param name="remaining">Paramètre remaining.</param>
+    /// <param name="disabledAutoJoinKeys">Paramètre disabledAutoJoinKeys.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static List<JoinDefinition> FindBestJoinPath(DatabaseSchema schema, HashSet<string> connected, HashSet<string> remaining, IEnumerable<string> disabledAutoJoinKeys)
     {
         List<JoinDefinition> best = [];
@@ -393,6 +452,14 @@ public sealed class SqlQueryGeneratorEngine
     }
 
 
+    /// <summary>
+    /// Exécute le traitement TryFindBestDirectRelationshipPath.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="startTable">Paramètre startTable.</param>
+    /// <param name="targetTable">Paramètre targetTable.</param>
+    /// <param name="disabledAutoJoinKeys">Paramètre disabledAutoJoinKeys.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static List<JoinDefinition> TryFindBestDirectRelationshipPath(DatabaseSchema schema, string startTable, string targetTable, IEnumerable<string> disabledAutoJoinKeys)
     {
         var candidates = schema.Relationships
@@ -420,6 +487,13 @@ public sealed class SqlQueryGeneratorEngine
         return [best.Join];
     }
 
+    /// <summary>
+    /// Exécute le traitement OrientRelationshipAsJoin.
+    /// </summary>
+    /// <param name="relationship">Paramètre relationship.</param>
+    /// <param name="startTable">Paramètre startTable.</param>
+    /// <param name="targetTable">Paramètre targetTable.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static JoinDefinition? OrientRelationshipAsJoin(InferredRelationship relationship, string startTable, string targetTable)
     {
         if (SqlNameNormalizer.EqualsName(relationship.FromTable, startTable) && SqlNameNormalizer.EqualsName(relationship.ToTable, targetTable))
@@ -451,6 +525,14 @@ public sealed class SqlQueryGeneratorEngine
         return null;
     }
 
+    /// <summary>
+    /// Exécute le traitement DirectRelationshipPlannerScore.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="relationship">Paramètre relationship.</param>
+    /// <param name="startTable">Paramètre startTable.</param>
+    /// <param name="targetTable">Paramètre targetTable.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static double DirectRelationshipPlannerScore(DatabaseSchema schema, InferredRelationship relationship, string startTable, string targetTable)
     {
         JoinDefinition? join = OrientRelationshipAsJoin(relationship, startTable, targetTable);
@@ -509,6 +591,14 @@ public sealed class SqlQueryGeneratorEngine
         return score;
     }
 
+    /// <summary>
+    /// Exécute le traitement TryFindBestDirectJunctionPath.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="startTable">Paramètre startTable.</param>
+    /// <param name="targetTable">Paramètre targetTable.</param>
+    /// <param name="disabledAutoJoinKeys">Paramètre disabledAutoJoinKeys.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static List<JoinDefinition> TryFindBestDirectJunctionPath(DatabaseSchema schema, string startTable, string targetTable, IEnumerable<string> disabledAutoJoinKeys)
     {
         TableDefinition? start = schema.FindTable(startTable);
@@ -595,6 +685,13 @@ public sealed class SqlQueryGeneratorEngine
         return bestScore >= 1.25 ? best : [];
     }
 
+    /// <summary>
+    /// Exécute le traitement ScoreJunctionTableCandidate.
+    /// </summary>
+    /// <param name="bridge">Paramètre bridge.</param>
+    /// <param name="left">Paramètre left.</param>
+    /// <param name="right">Paramètre right.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static double ScoreJunctionTableCandidate(TableDefinition bridge, TableDefinition left, TableDefinition right)
     {
         string leftStem = TableStem(left.FullName);
@@ -651,9 +748,15 @@ public sealed class SqlQueryGeneratorEngine
         return score;
     }
 
+    /// <summary>
+    /// Exécute le traitement FindBridgeColumnForTable.
+    /// </summary>
+    /// <param name="bridge">Paramètre bridge.</param>
+    /// <param name="table">Paramètre table.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static ColumnDefinition? FindBridgeColumnForTable(TableDefinition bridge, TableDefinition table)
     {
-        string[] stems = [.. TableNameStems(table.FullName).Concat(TableNameStems(table.Name)).Distinct(StringComparer.OrdinalIgnoreCase)];
+        string[] stems = TableNameStems(table.FullName).Concat(TableNameStems(table.Name)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         foreach (string? stem in stems)
         {
             ColumnDefinition? direct = bridge.Columns.FirstOrDefault(c => IsColumnForTable(c.Name, stem));
@@ -669,6 +772,12 @@ public sealed class SqlQueryGeneratorEngine
                 || Singularize(SqlNameNormalizer.Normalize(c.Name)).StartsWith(stem, StringComparison.OrdinalIgnoreCase)));
     }
 
+    /// <summary>
+    /// Exécute le traitement FindBestKeyColumnForBridge.
+    /// </summary>
+    /// <param name="table">Paramètre table.</param>
+    /// <param name="bridgeColumn">Paramètre bridgeColumn.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static ColumnDefinition? FindBestKeyColumnForBridge(TableDefinition table, ColumnDefinition bridgeColumn)
     {
         string tableStem = TableStem(table.FullName);
@@ -684,6 +793,13 @@ public sealed class SqlQueryGeneratorEngine
         return candidates.FirstOrDefault()?.Column;
     }
 
+    /// <summary>
+    /// Exécute le traitement CandidateKeyScore.
+    /// </summary>
+    /// <param name="column">Paramètre column.</param>
+    /// <param name="tableStem">Paramètre tableStem.</param>
+    /// <param name="bridgeColumnNorm">Paramètre bridgeColumnNorm.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static double CandidateKeyScore(ColumnDefinition column, string tableStem, string bridgeColumnNorm)
     {
         string col = Singularize(SqlNameNormalizer.Normalize(column.Name));
@@ -716,6 +832,12 @@ public sealed class SqlQueryGeneratorEngine
         return score;
     }
 
+    /// <summary>
+    /// Exécute le traitement KeyColumnScore.
+    /// </summary>
+    /// <param name="column">Paramètre column.</param>
+    /// <param name="table">Paramètre table.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static double KeyColumnScore(ColumnDefinition column, TableDefinition table)
     {
         string col = Singularize(SqlNameNormalizer.Normalize(column.Name));
@@ -726,12 +848,27 @@ public sealed class SqlQueryGeneratorEngine
         return score;
     }
 
+    /// <summary>
+    /// Exécute le traitement BridgeColumnScore.
+    /// </summary>
+    /// <param name="column">Paramètre column.</param>
+    /// <param name="targetTable">Paramètre targetTable.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static double BridgeColumnScore(ColumnDefinition column, TableDefinition targetTable)
     {
         IEnumerable<string> stems = TableNameStems(targetTable.FullName).Concat(TableNameStems(targetTable.Name)).Distinct(StringComparer.OrdinalIgnoreCase);
         return stems.Any(stem => IsColumnForTable(column.Name, stem)) ? 0.35 : 0.0;
     }
 
+    /// <summary>
+    /// Exécute le traitement FindCandidatePaths.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="startTable">Paramètre startTable.</param>
+    /// <param name="targetTable">Paramètre targetTable.</param>
+    /// <param name="maxDepth">Paramètre maxDepth.</param>
+    /// <param name="disabledAutoJoinKeys">Paramètre disabledAutoJoinKeys.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static IEnumerable<List<JoinDefinition>> FindCandidatePaths(DatabaseSchema schema, string startTable, string targetTable, int maxDepth, IEnumerable<string> disabledAutoJoinKeys)
     {
         List<List<JoinDefinition>> results = [];
@@ -786,7 +923,7 @@ public sealed class SqlQueryGeneratorEngine
                     continue;
                 }
 
-                List<JoinDefinition> nextPath = [.. current.Path, .. new[] { oriented }];
+                List<JoinDefinition> nextPath = current.Path.Concat(new[] { oriented }).ToList();
                 if (SqlNameNormalizer.EqualsName(nextTable, targetTable))
                 {
                     results.Add(nextPath);
@@ -801,6 +938,12 @@ public sealed class SqlQueryGeneratorEngine
         return results;
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildRelationshipAdjacency.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="disabledAutoJoinKeys">Paramètre disabledAutoJoinKeys.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static IReadOnlyDictionary<string, InferredRelationship[]> BuildRelationshipAdjacency(DatabaseSchema schema, IEnumerable<string> disabledAutoJoinKeys)
     {
         ISet<string> disabled = disabledAutoJoinKeys as ISet<string> ?? disabledAutoJoinKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -838,6 +981,13 @@ public sealed class SqlQueryGeneratorEngine
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement IsBadFkToFkHop.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="join">Paramètre join.</param>
+    /// <param name="finalTargetTable">Paramètre finalTargetTable.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool IsBadFkToFkHop(DatabaseSchema schema, JoinDefinition join, string finalTargetTable)
     {
         ColumnDefinition? fromCol = schema.FindColumn(join.FromTable, join.FromColumn);
@@ -859,6 +1009,14 @@ public sealed class SqlQueryGeneratorEngine
         return fromCol?.IsPrimaryKey != true && toCol?.IsPrimaryKey != true;
     }
 
+    /// <summary>
+    /// Exécute le traitement ScoreJoinPath.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="path">Paramètre path.</param>
+    /// <param name="startTable">Paramètre startTable.</param>
+    /// <param name="targetTable">Paramètre targetTable.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static double ScoreJoinPath(DatabaseSchema schema, IReadOnlyList<JoinDefinition> path, string startTable, string targetTable)
     {
         double score = path.Sum(j => RelationshipScore(schema, j));
@@ -881,6 +1039,12 @@ public sealed class SqlQueryGeneratorEngine
         return score;
     }
 
+    /// <summary>
+    /// Exécute le traitement RelationshipScore.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="join">Paramètre join.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static double RelationshipScore(DatabaseSchema schema, JoinDefinition join)
     {
         InferredRelationship? relationship = FindRelationship(schema, join);
@@ -944,6 +1108,12 @@ public sealed class SqlQueryGeneratorEngine
         return score;
     }
 
+    /// <summary>
+    /// Exécute le traitement FindRelationship.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="join">Paramètre join.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static InferredRelationship? FindRelationship(DatabaseSchema schema, JoinDefinition join)
     {
         return schema.Relationships.FirstOrDefault(r =>
@@ -958,11 +1128,25 @@ public sealed class SqlQueryGeneratorEngine
                 && SqlNameNormalizer.EqualsName(r.ToColumn, join.FromColumn));
     }
 
+    /// <summary>
+    /// Exécute le traitement RelationshipConfidence.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="join">Paramètre join.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static double RelationshipConfidence(DatabaseSchema schema, JoinDefinition join)
     {
         return FindRelationship(schema, join)?.Confidence ?? 0.50;
     }
 
+    /// <summary>
+    /// Exécute le traitement JunctionBridgeScore.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="startTable">Paramètre startTable.</param>
+    /// <param name="bridgeTable">Paramètre bridgeTable.</param>
+    /// <param name="targetTable">Paramètre targetTable.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static double JunctionBridgeScore(DatabaseSchema schema, string startTable, string bridgeTable, string targetTable)
     {
         TableDefinition? bridge = schema.FindTable(bridgeTable);
@@ -975,7 +1159,7 @@ public sealed class SqlQueryGeneratorEngine
         string targetStem = TableStem(targetTable);
         string bridgeNorm = SqlNameNormalizer.Normalize(bridgeTable);
         string bridgeSingular = Singularize(bridgeNorm);
-        string[] tokens = [.. bridgeSingular.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+        string[] tokens = bridgeSingular.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToArray();
 
         double score = 0.0;
         string exactA = $"{startStem}_{targetStem}";
@@ -1020,6 +1204,12 @@ public sealed class SqlQueryGeneratorEngine
         return score;
     }
 
+    /// <summary>
+    /// Exécute le traitement IsColumnForTable.
+    /// </summary>
+    /// <param name="columnName">Paramètre columnName.</param>
+    /// <param name="tableStem">Paramètre tableStem.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool IsColumnForTable(string columnName, string tableStem)
     {
         string normalized = Singularize(SqlNameNormalizer.Normalize(columnName));
@@ -1030,6 +1220,11 @@ public sealed class SqlQueryGeneratorEngine
             || normalized == $"id_{tableStem}";
     }
 
+    /// <summary>
+    /// Exécute le traitement IsForeignKeyLike.
+    /// </summary>
+    /// <param name="normalizedColumnName">Paramètre normalizedColumnName.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool IsForeignKeyLike(string normalizedColumnName)
     {
         return normalizedColumnName.EndsWith("_ID", StringComparison.OrdinalIgnoreCase)
@@ -1040,11 +1235,21 @@ public sealed class SqlQueryGeneratorEngine
             || normalizedColumnName.StartsWith("FK_", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Exécute le traitement IsGenericIdentifier.
+    /// </summary>
+    /// <param name="normalizedColumnName">Paramètre normalizedColumnName.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool IsGenericIdentifier(string normalizedColumnName)
     {
         return normalizedColumnName is "ID" or "IDEN" or "IDENT";
     }
 
+    /// <summary>
+    /// Exécute le traitement TableStem.
+    /// </summary>
+    /// <param name="tableName">Paramètre tableName.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string TableStem(string tableName)
     {
         string normalized = SqlNameNormalizer.Normalize(tableName).Trim('_');
@@ -1062,6 +1267,11 @@ public sealed class SqlQueryGeneratorEngine
         return Singularize(tokens[^1]);
     }
 
+    /// <summary>
+    /// Exécute le traitement TableNameStems.
+    /// </summary>
+    /// <param name="tableName">Paramètre tableName.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static IEnumerable<string> TableNameStems(string tableName)
     {
         string normalized = SqlNameNormalizer.Normalize(tableName).Trim('_');
@@ -1078,12 +1288,22 @@ public sealed class SqlQueryGeneratorEngine
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement Singularize.
+    /// </summary>
+    /// <param name="normalizedName">Paramètre normalizedName.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string Singularize(string normalizedName)
     {
         IEnumerable<string> parts = normalizedName.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(SingularizeToken);
         return string.Join('_', parts);
     }
 
+    /// <summary>
+    /// Exécute le traitement SingularizeToken.
+    /// </summary>
+    /// <param name="token">Paramètre token.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string SingularizeToken(string token)
     {
         if (token.Length <= 3)
@@ -1104,6 +1324,12 @@ public sealed class SqlQueryGeneratorEngine
         return token;
     }
 
+    /// <summary>
+    /// Exécute le traitement SameNameRelaxed.
+    /// </summary>
+    /// <param name="left">Paramètre left.</param>
+    /// <param name="right">Paramètre right.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool SameNameRelaxed(string left, string right)
     {
         string a = Singularize(SqlNameNormalizer.Normalize(left));
@@ -1111,6 +1337,14 @@ public sealed class SqlQueryGeneratorEngine
         return a.Equals(b, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Exécute le traitement JoinKey.
+    /// </summary>
+    /// <param name="fromTable">Paramètre fromTable.</param>
+    /// <param name="fromColumn">Paramètre fromColumn.</param>
+    /// <param name="toTable">Paramètre toTable.</param>
+    /// <param name="toColumn">Paramètre toColumn.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string JoinKey(string fromTable, string fromColumn, string toTable, string toColumn)
     {
         return string.Join("|",
@@ -1120,6 +1354,11 @@ public sealed class SqlQueryGeneratorEngine
             NormalizeKeyPart(toColumn));
     }
 
+    /// <summary>
+    /// Exécute le traitement NormalizeKeyPart.
+    /// </summary>
+    /// <param name="value">Paramètre value.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string NormalizeKeyPart(string? value)
     {
         return string.IsNullOrWhiteSpace(value)
@@ -1127,12 +1366,24 @@ public sealed class SqlQueryGeneratorEngine
             : value.Trim().ToUpperInvariant();
     }
 
+    /// <summary>
+    /// Exécute le traitement IsRelationshipDisabled.
+    /// </summary>
+    /// <param name="relationship">Paramètre relationship.</param>
+    /// <param name="disabledAutoJoinKeys">Paramètre disabledAutoJoinKeys.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool IsRelationshipDisabled(InferredRelationship relationship, IEnumerable<string> disabledAutoJoinKeys)
     {
         ISet<string> disabled = disabledAutoJoinKeys as ISet<string> ?? disabledAutoJoinKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
         return disabled.Contains(relationship.Key) || disabled.Contains(relationship.ReverseKey);
     }
 
+    /// <summary>
+    /// Exécute le traitement IsJoinDisabled.
+    /// </summary>
+    /// <param name="join">Paramètre join.</param>
+    /// <param name="disabledAutoJoinKeys">Paramètre disabledAutoJoinKeys.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool IsJoinDisabled(JoinDefinition join, IEnumerable<string> disabledAutoJoinKeys)
     {
         ISet<string> disabled = disabledAutoJoinKeys as ISet<string> ?? disabledAutoJoinKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1141,6 +1392,13 @@ public sealed class SqlQueryGeneratorEngine
         return disabled.Contains(key) || disabled.Contains(reverseKey);
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildSelectItems.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <param name="warnings">Paramètre warnings.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static List<string> BuildSelectItems(QueryDefinition query, SqlGeneratorOptions options, List<string> warnings)
     {
         List<string> result = [.. query.SelectedColumns.Select(c => ColumnSql(c, options, includeAlias: true))];
@@ -1179,6 +1437,13 @@ public sealed class SqlQueryGeneratorEngine
         return result;
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildAggregateExpression.
+    /// </summary>
+    /// <param name="aggregate">Paramètre aggregate.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <param name="warnings">Paramètre warnings.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string BuildAggregateExpression(AggregateSelection aggregate, SqlGeneratorOptions options, List<string> warnings)
     {
         string fn = aggregate.Function switch
@@ -1232,6 +1497,13 @@ public sealed class SqlQueryGeneratorEngine
         return $"{fn}({caseExpression})";
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildAggregateCondition.
+    /// </summary>
+    /// <param name="aggregate">Paramètre aggregate.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <param name="warnings">Paramètre warnings.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string BuildAggregateCondition(AggregateSelection aggregate, SqlGeneratorOptions options, List<string> warnings)
     {
         if (aggregate.ConditionColumn is null)
@@ -1248,6 +1520,12 @@ public sealed class SqlQueryGeneratorEngine
         return BuildLiteralPredicateSql(column, op, aggregate.ConditionValue, aggregate.ConditionSecondValue, aggregate.ConditionColumn.Key, warnings);
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildCustomExpression.
+    /// </summary>
+    /// <param name="custom">Paramètre custom.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string BuildCustomExpression(CustomColumnSelection custom, SqlGeneratorOptions options)
     {
         if (!string.IsNullOrWhiteSpace(custom.RawExpression))
@@ -1266,6 +1544,16 @@ public sealed class SqlQueryGeneratorEngine
         return string.Empty;
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildFilterPredicates.
+    /// </summary>
+    /// <param name="Predicate">Paramètre Predicate.</param>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="filters">Paramètre filters.</param>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <param name="warnings">Paramètre warnings.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static List<(string Predicate, LogicalConnector Connector)> BuildFilterPredicates(QueryDefinition query, IReadOnlyList<FilterCondition> filters, DatabaseSchema schema, SqlGeneratorOptions options, List<string> warnings)
     {
         List<(string Predicate, LogicalConnector Connector)> result = [];
@@ -1290,6 +1578,12 @@ public sealed class SqlQueryGeneratorEngine
         return result;
     }
 
+    /// <summary>
+    /// Exécute le traitement AppendPredicateBlock.
+    /// </summary>
+    /// <param name="sb">Paramètre sb.</param>
+    /// <param name="keyword">Paramètre keyword.</param>
+    /// <param name="predicates">Paramètre predicates.</param>
     private static void AppendPredicateBlock(StringBuilder sb, string keyword, IReadOnlyList<(string Predicate, LogicalConnector Connector)> predicates)
     {
         if (predicates.Count == 0)
@@ -1304,6 +1598,14 @@ public sealed class SqlQueryGeneratorEngine
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildFilterExpression.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="filter">Paramètre filter.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <param name="warnings">Paramètre warnings.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string BuildFilterExpression(QueryDefinition query, FilterCondition filter, SqlGeneratorOptions options, List<string> warnings)
     {
         if (filter.Column is not null)
@@ -1325,6 +1627,14 @@ public sealed class SqlQueryGeneratorEngine
         };
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildOrderExpression.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="order">Paramètre order.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <param name="warnings">Paramètre warnings.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string BuildOrderExpression(QueryDefinition query, OrderByItem order, SqlGeneratorOptions options, List<string> warnings)
     {
         if (order.Column is not null)
@@ -1343,6 +1653,14 @@ public sealed class SqlQueryGeneratorEngine
         return Q(order.FieldAlias!, options);
     }
 
+    /// <summary>
+    /// Exécute le traitement ResolveAggregateExpressionByAlias.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="alias">Paramètre alias.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <param name="warnings">Paramètre warnings.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string ResolveAggregateExpressionByAlias(QueryDefinition query, string alias, SqlGeneratorOptions options, List<string> warnings)
     {
         AggregateSelection? aggregate = query.Aggregates.FirstOrDefault(a => string.Equals(a.Alias, alias, StringComparison.OrdinalIgnoreCase));
@@ -1355,6 +1673,14 @@ public sealed class SqlQueryGeneratorEngine
         return BuildAggregateExpression(aggregate, options, warnings);
     }
 
+    /// <summary>
+    /// Exécute le traitement ResolveCustomExpressionByAlias.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="alias">Paramètre alias.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <param name="warnings">Paramètre warnings.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string ResolveCustomExpressionByAlias(QueryDefinition query, string alias, SqlGeneratorOptions options, List<string> warnings)
     {
         CustomColumnSelection? custom = query.CustomColumns.FirstOrDefault(c => string.Equals(c.Alias, alias, StringComparison.OrdinalIgnoreCase));
@@ -1376,6 +1702,16 @@ public sealed class SqlQueryGeneratorEngine
     }
 
 
+    /// <summary>
+    /// Exécute le traitement BuildLiteralPredicateSql.
+    /// </summary>
+    /// <param name="columnSql">Paramètre columnSql.</param>
+    /// <param name="op">Paramètre op.</param>
+    /// <param name="value">Paramètre value.</param>
+    /// <param name="secondValue">Paramètre secondValue.</param>
+    /// <param name="warningKey">Paramètre warningKey.</param>
+    /// <param name="warnings">Paramètre warnings.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string BuildLiteralPredicateSql(string columnSql, string op, string? value, string? secondValue, string warningKey, List<string> warnings)
     {
         if (op is "IS NULL" or "IS NOT NULL")
@@ -1401,6 +1737,17 @@ public sealed class SqlQueryGeneratorEngine
         return $"{columnSql} {op} {SqlLiteralFormatter.FormatValue(value)}";
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildPredicateSql.
+    /// </summary>
+    /// <param name="columnSql">Paramètre columnSql.</param>
+    /// <param name="op">Paramètre op.</param>
+    /// <param name="filter">Paramètre filter.</param>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <param name="warningKey">Paramètre warningKey.</param>
+    /// <param name="warnings">Paramètre warnings.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string BuildPredicateSql(string columnSql, string op, FilterCondition filter, DatabaseSchema schema, SqlGeneratorOptions options, string warningKey, List<string> warnings)
     {
         if (op is "IS NULL" or "IS NOT NULL")
@@ -1454,6 +1801,13 @@ public sealed class SqlQueryGeneratorEngine
         return $"{columnSql} {op} {valueSql}";
     }
 
+    /// <summary>
+    /// Exécute le traitement FormatFilterValue.
+    /// </summary>
+    /// <param name="raw">Paramètre raw.</param>
+    /// <param name="valueKind">Paramètre valueKind.</param>
+    /// <param name="warnings">Paramètre warnings.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string FormatFilterValue(string? raw, FilterValueKind valueKind, List<string> warnings)
     {
         if (valueKind == FilterValueKind.RawSql)
@@ -1481,6 +1835,14 @@ public sealed class SqlQueryGeneratorEngine
         return SqlLiteralFormatter.FormatValue(raw);
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildSubquerySql.
+    /// </summary>
+    /// <param name="filter">Paramètre filter.</param>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <param name="warnings">Paramètre warnings.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string BuildSubquerySql(FilterCondition filter, DatabaseSchema schema, SqlGeneratorOptions options, List<string> warnings)
     {
         if (filter.Subquery is null)
@@ -1497,19 +1859,34 @@ public sealed class SqlQueryGeneratorEngine
         return IndentSql(result.Sql.Trim().TrimEnd(';'), 4);
     }
 
-    private static readonly string[] separator = new[] { "\r\n", "\n" };
-
+    /// <summary>
+    /// Exécute le traitement IndentSql.
+    /// </summary>
+    /// <param name="sql">Paramètre sql.</param>
+    /// <param name="spaces">Paramètre spaces.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string IndentSql(string sql, int spaces)
     {
         string prefix = new(' ', spaces);
-        return string.Join(Environment.NewLine, sql.Split(separator, StringSplitOptions.None).Select(line => prefix + line));
+        return string.Join(Environment.NewLine, sql.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None).Select(line => prefix + line));
     }
 
+    /// <summary>
+    /// Exécute le traitement BuildGroupBy.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static List<string> BuildGroupBy(QueryDefinition query, SqlGeneratorOptions options)
     {
-        return [.. query.GroupBy.Select(c => ColumnSql(c, options, includeAlias: false)).Distinct(StringComparer.OrdinalIgnoreCase)];
+        return query.GroupBy.Select(c => ColumnSql(c, options, includeAlias: false)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    /// <summary>
+    /// Exécute le traitement NormalizeOperator.
+    /// </summary>
+    /// <param name="op">Paramètre op.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string NormalizeOperator(string? op)
     {
         string value = string.IsNullOrWhiteSpace(op) ? "=" : op.Trim().ToUpperInvariant();
@@ -1524,6 +1901,13 @@ public sealed class SqlQueryGeneratorEngine
         };
     }
 
+    /// <summary>
+    /// Exécute le traitement ColumnSql.
+    /// </summary>
+    /// <param name="reference">Paramètre reference.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <param name="includeAlias">Paramètre includeAlias.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string ColumnSql(ColumnReference reference, SqlGeneratorOptions options, bool includeAlias)
     {
         string sql = $"{Q(reference.Table, options)}.{Q(reference.Column, options)}";
@@ -1534,6 +1918,12 @@ public sealed class SqlQueryGeneratorEngine
         return sql;
     }
 
+    /// <summary>
+    /// Exécute le traitement Q.
+    /// </summary>
+    /// <param name="identifier">Paramètre identifier.</param>
+    /// <param name="options">Paramètre options.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string Q(string identifier, SqlGeneratorOptions options)
     {
         return SqlIdentifierQuoter.Quote(identifier, options.Dialect, options.QuoteIdentifiers);

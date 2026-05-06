@@ -309,3 +309,15 @@ Voir `docs/V21_SUBQUERIES_SAVED_QUERIES_PERFORMANCE.md`.
 - Import de documentation table/colonne depuis CSV/TSV/TXT exporté d'un tableau.
 
 Voir `docs/V24_COMPOSITE_JOINS_AND_DOCUMENTATION.md`.
+
+## V25 — ergonomie gros schémas
+
+- Recherche colonnes optimisée par caches FK/index.
+- Saisie des colonnes de jointures manuelles accélérée par suggestions et `Delay` WPF.
+- Affichage UI nettoyé pour les noms `schema.table` : le schéma est caché dans les listes, mais conservé dans le SQL.
+- Alias avec accents et espaces supportés via quotes SQL automatiques.
+- Description de requête sauvegardée renforcée en champ multi-ligne.
+
+## V25.1 — Documentation hotfix
+
+La hotfix V25.1 documente systématiquement le code C# avec des commentaires XML. Toute future version doit documenter les nouveaux types, méthodes, propriétés, champs et membres d'énumération au moment de leur ajout.

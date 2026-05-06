@@ -3,8 +3,17 @@ using SqlQueryGenerator.Core.Query;
 
 namespace SqlQueryGenerator.Core.Heuristics;
 
+/// <summary>
+/// Représente QueryPerformanceAnalyzer dans SQL Query Generator.
+/// </summary>
 public sealed class QueryPerformanceAnalyzer
 {
+    /// <summary>
+    /// Exécute le traitement Analyze.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <returns>Résultat du traitement.</returns>
     public QueryPerformanceReport Analyze(QueryDefinition query, DatabaseSchema schema)
     {
         ArgumentNullException.ThrowIfNull(query);
@@ -103,6 +112,14 @@ public sealed class QueryPerformanceAnalyzer
         return report;
     }
 
+    /// <summary>
+    /// Exécute le traitement AnalyzeJoinSide.
+    /// </summary>
+    /// <param name="report">Paramètre report.</param>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="table">Paramètre table.</param>
+    /// <param name="column">Paramètre column.</param>
+    /// <param name="side">Paramètre side.</param>
     private static void AnalyzeJoinSide(QueryPerformanceReport report, DatabaseSchema schema, string table, string column, string side)
     {
         ColumnDefinition? col = schema.FindColumn(table, column);
@@ -125,6 +142,11 @@ public sealed class QueryPerformanceAnalyzer
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement CollectUsedTables.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static HashSet<string> CollectUsedTables(QueryDefinition query)
     {
         HashSet<string> result = new(StringComparer.OrdinalIgnoreCase);
@@ -144,11 +166,27 @@ public sealed class QueryPerformanceAnalyzer
     }
 }
 
+/// <summary>
+/// Représente QueryPerformanceReport dans SQL Query Generator.
+/// </summary>
 public sealed class QueryPerformanceReport
 {
+    /// <summary>
+    /// Exécute le traitement new.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     private readonly List<QueryPerformanceHint> _hints = [];
+    /// <summary>
+    /// Obtient ou définit Hints.
+    /// </summary>
+    /// <value>Valeur de Hints.</value>
     public IReadOnlyList<QueryPerformanceHint> Hints => _hints;
 
+    /// <summary>
+    /// Exécute le traitement Add.
+    /// </summary>
+    /// <param name="severity">Paramètre severity.</param>
+    /// <param name="message">Paramètre message.</param>
     public void Add(QueryPerformanceSeverity severity, string message)
     {
         if (_hints.Any(h => h.Severity == severity && string.Equals(h.Message, message, StringComparison.OrdinalIgnoreCase)))
@@ -158,18 +196,40 @@ public sealed class QueryPerformanceReport
         _hints.Add(new QueryPerformanceHint(severity, message));
     }
 
+    /// <summary>
+    /// Exécute le traitement ToString.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     public override string ToString()
     {
         return string.Join(Environment.NewLine, _hints.Select(h => $"[{h.Severity}] {h.Message}"));
     }
 }
 
+/// <summary>
+/// Représente QueryPerformanceHint dans SQL Query Generator.
+/// </summary>
 public sealed record QueryPerformanceHint(QueryPerformanceSeverity Severity, string Message);
 
+/// <summary>
+/// Liste les valeurs possibles de QueryPerformanceSeverity.
+/// </summary>
 public enum QueryPerformanceSeverity
 {
+    /// <summary>
+    /// Valeur Good de l'énumération.
+    /// </summary>
     Good,
+    /// <summary>
+    /// Valeur Info de l'énumération.
+    /// </summary>
     Info,
+    /// <summary>
+    /// Valeur Warning de l'énumération.
+    /// </summary>
     Warning,
+    /// <summary>
+    /// Valeur Critical de l'énumération.
+    /// </summary>
     Critical
 }

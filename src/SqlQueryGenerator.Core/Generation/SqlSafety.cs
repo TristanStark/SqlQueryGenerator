@@ -2,8 +2,15 @@ using System.Text.RegularExpressions;
 
 namespace SqlQueryGenerator.Core.Generation;
 
+/// <summary>
+/// Représente SqlSafety dans SQL Query Generator.
+/// </summary>
 public static partial class SqlSafety
 {
+    /// <summary>
+    /// Exécute le traitement EnsureSelectExpressionIsSafe.
+    /// </summary>
+    /// <param name="expression">Paramètre expression.</param>
     public static void EnsureSelectExpressionIsSafe(string expression)
     {
         if (string.IsNullOrWhiteSpace(expression))
@@ -25,6 +32,10 @@ public static partial class SqlSafety
         }
     }
 
+    /// <summary>
+    /// Exécute le traitement DangerousSqlRegex.
+    /// </summary>
+    /// <returns>Résultat du traitement.</returns>
     [GeneratedRegex(@"\b(DELETE|UPDATE|INSERT|DROP|ALTER|CREATE|TRUNCATE|MERGE|EXEC|EXECUTE|GRANT|REVOKE|CALL)\b", RegexOptions.IgnoreCase)]
     private static partial Regex DangerousSqlRegex();
 }

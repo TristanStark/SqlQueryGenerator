@@ -4,19 +4,28 @@ using System.Text;
 
 namespace SqlQueryGenerator.Core.Heuristics;
 
+/// <summary>
+/// Représente QueryPurposeDescriber dans SQL Query Generator.
+/// </summary>
 public sealed class QueryPurposeDescriber
 {
+    /// <summary>
+    /// Exécute le traitement Describe.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <returns>Résultat du traitement.</returns>
     public string Describe(QueryDefinition query, DatabaseSchema schema)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(schema);
 
         string subject = HumanizeTable(query.BaseTable ?? FirstUsedTable(query) ?? "les données");
-        string[] groupings = [.. query.GroupBy.Select(DescribeGrouping).Distinct(StringComparer.OrdinalIgnoreCase)];
-        string[] aggregates = [.. query.Aggregates.Select(a => DescribeAggregate(a, query, subject)).Where(s => !string.IsNullOrWhiteSpace(s))];
-        string[] selected = [.. query.SelectedColumns.Select(DescribeSelectedColumn).Distinct(StringComparer.OrdinalIgnoreCase)];
-        string[] filters = [.. query.Filters.Select(DescribeFilter).Where(s => !string.IsNullOrWhiteSpace(s))];
-        string[] orders = [.. query.OrderBy.Select(o => $"trié par {DescribeOrderField(o)} {(o.Direction == SortDirection.Descending ? "décroissant" : "croissant")}")];
+        string[] groupings = query.GroupBy.Select(DescribeGrouping).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        string[] aggregates = query.Aggregates.Select(a => DescribeAggregate(a, query, subject)).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+        string[] selected = query.SelectedColumns.Select(DescribeSelectedColumn).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        string[] filters = query.Filters.Select(DescribeFilter).Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+        string[] orders = query.OrderBy.Select(o => $"trié par {DescribeOrderField(o)} {(o.Direction == SortDirection.Descending ? "décroissant" : "croissant")}").ToArray();
 
         StringBuilder sb = new();
         sb.Append("Cette requête ");
@@ -61,6 +70,11 @@ public sealed class QueryPurposeDescriber
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Exécute le traitement FirstUsedTable.
+    /// </summary>
+    /// <param name="query">Paramètre query.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string? FirstUsedTable(QueryDefinition query)
     {
         return query.SelectedColumns.FirstOrDefault()?.Table
@@ -70,6 +84,13 @@ public sealed class QueryPurposeDescriber
             ?? query.Aggregates.FirstOrDefault(a => a.Column is not null)?.Column?.Table;
     }
 
+    /// <summary>
+    /// Exécute le traitement DescribeAggregate.
+    /// </summary>
+    /// <param name="aggregate">Paramètre aggregate.</param>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="subject">Paramètre subject.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string DescribeAggregate(AggregateSelection aggregate, QueryDefinition query, string subject)
     {
         string prefix = aggregate.Distinct ? "distincts de " : string.Empty;
@@ -91,6 +112,14 @@ public sealed class QueryPurposeDescriber
         return text;
     }
 
+    /// <summary>
+    /// Exécute le traitement DescribeCount.
+    /// </summary>
+    /// <param name="aggregate">Paramètre aggregate.</param>
+    /// <param name="query">Paramètre query.</param>
+    /// <param name="subject">Paramètre subject.</param>
+    /// <param name="distinctPrefix">Paramètre distinctPrefix.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string DescribeCount(AggregateSelection aggregate, QueryDefinition query, string subject, string distinctPrefix)
     {
         if (aggregate.Column is null)
@@ -114,11 +143,21 @@ public sealed class QueryPurposeDescriber
         return $"le nombre de {distinctPrefix}{DescribeSelectedColumn(aggregate.Column)} renseigné";
     }
 
+    /// <summary>
+    /// Exécute le traitement DescribeColumnForAggregate.
+    /// </summary>
+    /// <param name="column">Paramètre column.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string DescribeColumnForAggregate(ColumnReference? column)
     {
         return column is null ? "lignes" : DescribeSelectedColumn(column);
     }
 
+    /// <summary>
+    /// Exécute le traitement DescribeGrouping.
+    /// </summary>
+    /// <param name="column">Paramètre column.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string DescribeGrouping(ColumnReference column)
     {
         string columnName = SqlNameNormalizer.Normalize(column.Column);
@@ -132,6 +171,11 @@ public sealed class QueryPurposeDescriber
         return $"{HumanizeColumn(column.Column)} de {tableName}";
     }
 
+    /// <summary>
+    /// Exécute le traitement DescribeSelectedColumn.
+    /// </summary>
+    /// <param name="column">Paramètre column.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string DescribeSelectedColumn(ColumnReference column)
     {
         string col = HumanizeColumn(column.Column);
@@ -139,12 +183,22 @@ public sealed class QueryPurposeDescriber
         return IsVeryGenericDisplayColumn(column.Column) ? $"{col} de {table}" : col;
     }
 
+    /// <summary>
+    /// Exécute le traitement IsVeryGenericDisplayColumn.
+    /// </summary>
+    /// <param name="columnName">Paramètre columnName.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool IsVeryGenericDisplayColumn(string columnName)
     {
         string normalized = SqlNameNormalizer.Normalize(columnName);
         return normalized is "NAME" or "NOM" or "LABEL" or "LIBELLE" or "TITLE" or "TITRE" or "CODE";
     }
 
+    /// <summary>
+    /// Exécute le traitement IsIdentifierColumn.
+    /// </summary>
+    /// <param name="columnName">Paramètre columnName.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static bool IsIdentifierColumn(string columnName)
     {
         string normalized = SqlNameNormalizer.Normalize(columnName);
@@ -154,6 +208,11 @@ public sealed class QueryPurposeDescriber
             || normalized.EndsWith("_IDENT", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Exécute le traitement DescribeFilter.
+    /// </summary>
+    /// <param name="filter">Paramètre filter.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string DescribeFilter(FilterCondition filter)
     {
         string field = filter.Column is not null
@@ -162,6 +221,11 @@ public sealed class QueryPurposeDescriber
         return $"{field} {HumanizeOperator(filter.Operator)} {filter.Value}".Trim();
     }
 
+    /// <summary>
+    /// Exécute le traitement DescribeOrderField.
+    /// </summary>
+    /// <param name="order">Paramètre order.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string DescribeOrderField(OrderByItem order)
     {
         return order.Column is not null
@@ -169,6 +233,11 @@ public sealed class QueryPurposeDescriber
             : HumanizeName(order.FieldAlias ?? "champ calculé");
     }
 
+    /// <summary>
+    /// Exécute le traitement HumanizeOperator.
+    /// </summary>
+    /// <param name="op">Paramètre op.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string HumanizeOperator(string op)
     {
         return op.ToUpperInvariant() switch
@@ -190,14 +259,34 @@ public sealed class QueryPurposeDescriber
         };
     }
 
+    /// <summary>
+    /// Exécute le traitement HumanizeTable.
+    /// </summary>
+    /// <param name="name">Paramètre name.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string HumanizeTable(string name) => HumanizeName(name);
+    /// <summary>
+    /// Exécute le traitement HumanizeColumn.
+    /// </summary>
+    /// <param name="name">Paramètre name.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string HumanizeColumn(string name) => HumanizeName(name);
 
+    /// <summary>
+    /// Exécute le traitement HumanizeName.
+    /// </summary>
+    /// <param name="name">Paramètre name.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string HumanizeName(string name)
     {
         return name.Replace('_', ' ').Trim().ToLowerInvariant();
     }
 
+    /// <summary>
+    /// Exécute le traitement SingularizeHuman.
+    /// </summary>
+    /// <param name="name">Paramètre name.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string SingularizeHuman(string name)
     {
         string[] words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -210,6 +299,11 @@ public sealed class QueryPurposeDescriber
         return string.Join(' ', words);
     }
 
+    /// <summary>
+    /// Exécute le traitement SingularizeToken.
+    /// </summary>
+    /// <param name="token">Paramètre token.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string SingularizeToken(string token)
     {
         if (token.Length <= 3)
@@ -230,6 +324,11 @@ public sealed class QueryPurposeDescriber
         return token;
     }
 
+    /// <summary>
+    /// Exécute le traitement JoinFrench.
+    /// </summary>
+    /// <param name="values">Paramètre values.</param>
+    /// <returns>Résultat du traitement.</returns>
     private static string JoinFrench(IReadOnlyList<string> values)
     {
         if (values.Count == 0) return string.Empty;

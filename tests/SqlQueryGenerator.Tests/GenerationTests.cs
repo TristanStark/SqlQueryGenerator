@@ -5,8 +5,14 @@ using SqlQueryGenerator.Core.Query;
 
 namespace SqlQueryGenerator.Tests;
 
+/// <summary>
+/// Représente GenerationTests dans SQL Query Generator.
+/// </summary>
 public sealed class GenerationTests
 {
+    /// <summary>
+    /// Exécute le traitement Generate SelectWithJoinFilterGroupAggregateAndOrder ProducesFlatSql.
+    /// </summary>
     [Fact]
     public void Generate_SelectWithJoinFilterGroupAggregateAndOrder_ProducesFlatSql()
     {
@@ -32,6 +38,9 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
         Assert.DoesNotContain("SELECT * FROM (", result.Sql);
     }
 
+    /// <summary>
+    /// Exécute le traitement Generate CustomCaseColumn ProducesCaseWhen.
+    /// </summary>
     [Fact]
     public void Generate_CustomCaseColumn_ProducesCaseWhen()
     {
@@ -54,6 +63,9 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
     }
 
 
+    /// <summary>
+    /// Exécute le traitement Generate QueryDistinct EmitsSelectDistinct.
+    /// </summary>
     [Fact]
     public void Generate_QueryDistinct_EmitsSelectDistinct()
     {
@@ -67,6 +79,9 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
         Assert.StartsWith("SELECT DISTINCT T.A", result.Sql);
     }
 
+    /// <summary>
+    /// Exécute le traitement Generate AggregateDistinct EmitsDistinctInsideAggregate.
+    /// </summary>
     [Fact]
     public void Generate_AggregateDistinct_EmitsDistinctInsideAggregate()
     {
@@ -86,6 +101,9 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
         Assert.Contains("COUNT(DISTINCT T.A) AS nb_a", result.Sql);
     }
 
+    /// <summary>
+    /// Exécute le traitement Generate ConditionalCount EmitsCaseWhenCountWithoutSubquery.
+    /// </summary>
     [Fact]
     public void Generate_ConditionalCount_EmitsCaseWhenCountWithoutSubquery()
     {
@@ -110,6 +128,9 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
         Assert.DoesNotContain("SELECT * FROM (", result.Sql);
     }
 
+    /// <summary>
+    /// Exécute le traitement Generate ConditionalSum EmitsCaseWhenSumWithoutSubquery.
+    /// </summary>
     [Fact]
     public void Generate_ConditionalSum_EmitsCaseWhenSumWithoutSubquery()
     {
@@ -136,6 +157,9 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
 
 
 
+    /// <summary>
+    /// Exécute le traitement Generate AutoJoin PrefersSpecificForeignKeyOverGenericId.
+    /// </summary>
     [Fact]
     public void Generate_AutoJoin_PrefersSpecificForeignKeyOverGenericId()
     {
@@ -167,6 +191,9 @@ CREATE TABLE jobs (
     }
 
 
+    /// <summary>
+    /// Exécute le traitement Generate AutoJoin UsesJunctionTableBetweenBaseAndSelectedTable.
+    /// </summary>
     [Fact]
     public void Generate_AutoJoin_UsesJunctionTableBetweenBaseAndSelectedTable()
     {
@@ -196,6 +223,9 @@ CREATE TABLE pnj_item (
     }
 
 
+    /// <summary>
+    /// Exécute le traitement Generate AutoJoin PrefersExactJunctionTableOverSpecificFocusTable.
+    /// </summary>
     [Fact]
     public void Generate_AutoJoin_PrefersExactJunctionTableOverSpecificFocusTable()
     {
@@ -238,6 +268,9 @@ CREATE TABLE pnj_jobs_items_focus (
     }
 
 
+    /// <summary>
+    /// Exécute le traitement Generate AutoJoin RejectsLongDetourWhenDirectJunctionExists.
+    /// </summary>
     [Fact]
     public void Generate_AutoJoin_RejectsLongDetourWhenDirectJunctionExists()
     {
@@ -292,6 +325,9 @@ CREATE TABLE pnj_jobs_items_focus (
         Assert.DoesNotContain("pnj_item.item_id = items.base_item_code", result.Sql);
     }
 
+    /// <summary>
+    /// Exécute le traitement Generate DisabledAutoJoin DoesNotUseThatDetectedRelationship.
+    /// </summary>
     [Fact]
     public void Generate_DisabledAutoJoin_DoesNotUseThatDetectedRelationship()
     {
@@ -312,6 +348,9 @@ CREATE TABLE pnj_item (pnj_id INTEGER, item_id INTEGER);
         Assert.Contains("Aucune jointure fiable", string.Join("\n", result.Warnings));
     }
 
+    /// <summary>
+    /// Exécute le traitement Generate FilterOnAggregate EmitsHavingWithoutSubquery.
+    /// </summary>
     [Fact]
     public void Generate_FilterOnAggregate_EmitsHavingWithoutSubquery()
     {
@@ -343,6 +382,9 @@ CREATE TABLE pnj_item (pnj_id INTEGER, item_id INTEGER);
         Assert.DoesNotContain("SELECT * FROM (", result.Sql);
     }
 
+    /// <summary>
+    /// Exécute le traitement Generate OrderByAggregateAlias UsesAlias.
+    /// </summary>
     [Fact]
     public void Generate_OrderByAggregateAlias_UsesAlias()
     {
@@ -368,6 +410,9 @@ CREATE TABLE pnj_item (pnj_id INTEGER, item_id INTEGER);
         Assert.Contains("ORDER BY count_id DESC", result.Sql);
     }
 
+    /// <summary>
+    /// Exécute le traitement Generate FilterAndOrderOnCustomColumn UsesExpressionForWhereAndAliasForOrder.
+    /// </summary>
     [Fact]
     public void Generate_FilterAndOrderOnCustomColumn_UsesExpressionForWhereAndAliasForOrder()
     {
@@ -405,6 +450,9 @@ CREATE TABLE pnj_item (pnj_id INTEGER, item_id INTEGER);
     }
 
 
+    /// <summary>
+    /// Exécute le traitement Generate AutoJoin PrefersDirectDetectedLookupOverBridgeDetour.
+    /// </summary>
     [Fact]
     public void Generate_AutoJoin_PrefersDirectDetectedLookupOverBridgeDetour()
     {
@@ -449,6 +497,9 @@ CREATE TABLE seances_pnjs (
         Assert.DoesNotContain("Aucune jointure fiable", string.Join("\n", result.Warnings));
     }
 
+    /// <summary>
+    /// Exécute le traitement Generate AutoJoin StillUsesDirectLookupWhenUnrelatedBridgeIsDisabled.
+    /// </summary>
     [Fact]
     public void Generate_AutoJoin_StillUsesDirectLookupWhenUnrelatedBridgeIsDisabled()
     {
@@ -482,8 +533,14 @@ CREATE TABLE seances_pnjs (
 }
 
 // v21 regression tests are intentionally kept simple and focused on core behavior.
+/// <summary>
+/// Représente GenerationV21Tests dans SQL Query Generator.
+/// </summary>
 public sealed class GenerationV21Tests
 {
+    /// <summary>
+    /// Exécute le traitement Generate FilterWithSubquery EmbedsSavedQueryAsRightSide.
+    /// </summary>
     [Fact]
     public void Generate_FilterWithSubquery_EmbedsSavedQueryAsRightSide()
     {
@@ -521,8 +578,14 @@ CREATE TABLE PAYMENTS (ID INTEGER PRIMARY KEY, ACTI_IDEN INTEGER, AMOUNT NUMBER)
     }
 }
 
+/// <summary>
+/// Représente GenerationV24Tests dans SQL Query Generator.
+/// </summary>
 public sealed class GenerationV24Tests
 {
+    /// <summary>
+    /// Exécute le traitement Generate ManualCompositeJoin EmitsAndPredicates.
+    /// </summary>
     [Fact]
     public void Generate_ManualCompositeJoin_EmitsAndPredicates()
     {
@@ -549,6 +612,9 @@ CREATE TABLE B (acti_iden INTEGER, emet_iden INTEGER, soaa_date TEXT, label TEXT
         Assert.Contains("INNER JOIN B ON A.acti_iden = B.acti_iden AND A.emet_iden = B.emet_iden AND A.soaa_date = B.soaa_date", result.Sql);
     }
 
+    /// <summary>
+    /// Exécute le traitement Generate ManualCompositeJoin IgnoresDisabledPair.
+    /// </summary>
     [Fact]
     public void Generate_ManualCompositeJoin_IgnoresDisabledPair()
     {
@@ -573,5 +639,27 @@ CREATE TABLE B (acti_iden INTEGER, emet_iden INTEGER, soaa_date TEXT);
 
         Assert.Contains("INNER JOIN B ON A.acti_iden = B.acti_iden", result.Sql);
         Assert.DoesNotContain("A.emet_iden = B.emet_iden", result.Sql);
+    }
+}
+
+/// <summary>
+/// Représente GenerationV25Tests dans SQL Query Generator.
+/// </summary>
+public sealed class GenerationV25Tests
+{
+    /// <summary>
+    /// Exécute le traitement Generate AliasWithSpacesAndAccents IsDelimitedSafely.
+    /// </summary>
+    [Fact]
+    public void Generate_AliasWithSpacesAndAccents_IsDelimitedSafely()
+    {
+        const string sql = "CREATE TABLE PNJ (id INTEGER PRIMARY KEY, age INTEGER);";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new() { BaseTable = "PNJ" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "PNJ", Column = "age", Alias = "Âge moyen" });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { Dialect = SqlDialect.SQLite });
+
+        Assert.Contains("PNJ.age AS \"Âge moyen\"", result.Sql);
     }
 }

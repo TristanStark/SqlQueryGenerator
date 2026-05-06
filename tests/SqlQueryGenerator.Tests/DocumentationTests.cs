@@ -4,8 +4,14 @@ using SqlQueryGenerator.Core.Persistence;
 
 namespace SqlQueryGenerator.Tests;
 
+/// <summary>
+/// Représente DocumentationTests dans SQL Query Generator.
+/// </summary>
 public sealed class DocumentationTests
 {
+    /// <summary>
+    /// Exécute le traitement Import TableAndColumnDocumentation UpdatesSchemaComments.
+    /// </summary>
     [Fact]
     public void Import_TableAndColumnDocumentation_UpdatesSchemaComments()
     {
