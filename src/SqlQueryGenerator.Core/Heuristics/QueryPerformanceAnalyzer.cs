@@ -38,7 +38,17 @@ public sealed class QueryPerformanceAnalyzer
         foreach (FilterCondition? filter in query.Filters.Where(f => f.Column is not null))
         {
             ColumnReference col = filter.Column!;
+            if (col.Column.Trim() == "*")
+            {
+                continue;
+            }
+
             if (schema.FindColumn(col.Table, col.Column) is null)
+            {
+                continue;
+            }
+
+            if (col.Column.Trim() == "*")
             {
                 continue;
             }
@@ -66,6 +76,11 @@ public sealed class QueryPerformanceAnalyzer
 
         foreach (ColumnReference group in query.GroupBy)
         {
+            if (group.Column.Trim() == "*")
+            {
+                continue;
+            }
+
             if (schema.IsColumnIndexed(group.Table, group.Column))
             {
                 report.Add(QueryPerformanceSeverity.Info, $"GROUP BY {group.Table}.{group.Column}: colonne indexée détectée, peut aider selon le moteur et le plan.");

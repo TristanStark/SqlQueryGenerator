@@ -13,6 +13,12 @@ public sealed class ColumnItemViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de _isExpanded.</value>
     private bool _isExpanded;
+
+    /// <summary>
+    /// Stocke l'état de sélection de masse utilisé pour ajouter plusieurs colonnes au SELECT en une seule action.
+    /// </summary>
+    /// <value>Valeur indiquant si la colonne est cochée dans l'arbre des colonnes disponibles.</value>
+    private bool _isBulkSelected;
     /// <summary>
     /// Initialise une nouvelle instance de ColumnItemViewModel.
     /// </summary>
@@ -115,6 +121,16 @@ public sealed class ColumnItemViewModel : ObservableObject
     {
         get => _isExpanded;
         set => SetProperty(ref _isExpanded, value);
+    }
+
+    /// <summary>
+    /// Obtient ou définit l'état de sélection de masse de la colonne.
+    /// </summary>
+    /// <value><c>true</c> lorsque la colonne est cochée pour un ajout groupé au SELECT ; sinon <c>false</c>.</value>
+    public bool IsBulkSelected
+    {
+        get => _isBulkSelected;
+        set => SetProperty(ref _isBulkSelected, value);
     }
 
 

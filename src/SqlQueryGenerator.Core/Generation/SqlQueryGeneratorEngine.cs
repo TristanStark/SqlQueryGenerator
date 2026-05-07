@@ -76,6 +76,11 @@ public sealed class SqlQueryGeneratorEngine
         {
             foreach (ColumnReference selected in query.SelectedColumns)
             {
+                if (IsWildcardColumn(selected))
+                {
+                    continue;
+                }
+
                 string expr = ColumnSql(selected, options, includeAlias: false);
                 if (!groupBy.Contains(expr, StringComparer.OrdinalIgnoreCase))
                 {
@@ -1910,13 +1915,22 @@ public sealed class SqlQueryGeneratorEngine
     /// <returns>Résultat du traitement.</returns>
     private static string ColumnSql(ColumnReference reference, SqlGeneratorOptions options, bool includeAlias)
     {
-        string sql = $"{Q(reference.Table, options)}.{Q(reference.Column, options)}";
-        if (includeAlias && !string.IsNullOrWhiteSpace(reference.Alias))
+        string sql = IsWildcardColumn(reference)
+            ? $"{Q(reference.Table, options)}.*"
+            : $"{Q(reference.Table, options)}.{Q(reference.Column, options)}";
+        if (includeAlias && !IsWildcardColumn(reference) && !string.IsNullOrWhiteSpace(reference.Alias))
         {
             sql += " AS " + Q(reference.Alias, options);
         }
         return sql;
     }
+
+    /// <summary>
+    /// Détermine si une référence de colonne représente une projection <c>table.*</c>.
+    /// </summary>
+    /// <param name="reference">Référence de colonne à inspecter.</param>
+    /// <returns><c>true</c> lorsque la colonne vaut <c>*</c> ; sinon <c>false</c>.</returns>
+    private static bool IsWildcardColumn(ColumnReference reference) => reference.Column.Trim() == "*";
 
     /// <summary>
     /// Exécute le traitement Q.

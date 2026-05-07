@@ -142,6 +142,9 @@
 
                         <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                             <Button Content="+ Sélection" Command="{Binding AddSelectedColumnCommand}" ToolTip="Ajoute la colonne au SELECT." />
+                            <Button Content="+ Sélection cochée" Command="{Binding AddCheckedColumnsToSelectCommand}" ToolTip="Ajoute au SELECT toutes les colonnes cochées dans l'arbre." />
+                            <Button Content="Table .*" Command="{Binding AddSelectedTableWildcardCommand}" ToolTip="Ajoute table.* pour la table sélectionnée." />
+                            <Button Content="Décocher" Command="{Binding ClearCheckedColumnsCommand}" ToolTip="Décoche toutes les colonnes de sélection multiple." />
                             <Button Content="+ Filtre" Command="{Binding AddSelectedFilterCommand}" ToolTip="Ajoute la colonne au WHERE." />
                             <Button Content="+ Groupe" Command="{Binding AddSelectedGroupByCommand}" ToolTip="Ajoute la colonne au GROUP BY." />
                             <Button Content="+ Tri" Command="{Binding AddSelectedOrderByCommand}" ToolTip="Ajoute la colonne au ORDER BY." />
@@ -164,6 +167,11 @@
                                 <TreeView.Resources>
                                     <HierarchicalDataTemplate DataType="{x:Type vm:TableItemViewModel}" ItemsSource="{Binding Columns}">
                                         <StackPanel Orientation="Horizontal" ToolTip="{Binding Comment}">
+                                            <StackPanel.ContextMenu>
+                                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                                    <MenuItem Header="Ajouter table.* au SELECT" Click="AddTableWildcardMenu_Click" />
+                                                </ContextMenu>
+                                            </StackPanel.ContextMenu>
                                             <TextBlock Text="🗂 " Margin="0,0,4,0" />
                                             <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
                                             <TextBlock Text=" (" Foreground="#64748B" />
@@ -185,6 +193,7 @@
                                                 </ContextMenu>
                                             </Grid.ContextMenu>
                                             <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="28" />
                                                 <ColumnDefinition Width="26" />
                                                 <ColumnDefinition Width="26" />
                                                 <ColumnDefinition Width="30" />
@@ -193,20 +202,21 @@
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
 
-                                            <Border Grid.Column="0" Visibility="{Binding IsPrimaryKey, Converter={StaticResource BoolToVisibility}}" Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="1" CornerRadius="3" Padding="2,0" Margin="0,0,4,0" ToolTip="Clé primaire">
+                                            <CheckBox Grid.Column="0" IsChecked="{Binding IsBulkSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Cocher pour ajouter plusieurs colonnes au SELECT." HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            <Border Grid.Column="1" Visibility="{Binding IsPrimaryKey, Converter={StaticResource BoolToVisibility}}" Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="1" CornerRadius="3" Padding="2,0" Margin="0,0,4,0" ToolTip="Clé primaire">
                                                 <TextBlock Text="PK" Foreground="#92400E" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" />
                                             </Border>
-                                            <Border Grid.Column="1" Visibility="{Binding IsForeignKey, Converter={StaticResource BoolToVisibility}}" Background="#E0F2FE" BorderBrush="#0284C7" BorderThickness="1" CornerRadius="3" Padding="2,0" Margin="0,0,4,0" ToolTip="{Binding ForeignKeySummary}">
+                                            <Border Grid.Column="2" Visibility="{Binding IsForeignKey, Converter={StaticResource BoolToVisibility}}" Background="#E0F2FE" BorderBrush="#0284C7" BorderThickness="1" CornerRadius="3" Padding="2,0" Margin="0,0,4,0" ToolTip="{Binding ForeignKeySummary}">
                                                 <TextBlock Text="FK" Foreground="#075985" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" />
                                             </Border>
-                                            <Border Grid.Column="2" Visibility="{Binding IsIndexed, Converter={StaticResource BoolToVisibility}}" Background="#DCFCE7" BorderBrush="#16A34A" BorderThickness="1" CornerRadius="3" Padding="2,0" Margin="0,0,4,0" ToolTip="{Binding IndexSummary}">
+                                            <Border Grid.Column="3" Visibility="{Binding IsIndexed, Converter={StaticResource BoolToVisibility}}" Background="#DCFCE7" BorderBrush="#16A34A" BorderThickness="1" CornerRadius="3" Padding="2,0" Margin="0,0,4,0" ToolTip="{Binding IndexSummary}">
                                                 <TextBlock Text="{Binding IndexBadge}" Foreground="#166534" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" />
                                             </Border>
-                                            <TextBlock Grid.Column="3" Text="{Binding Column}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                            <Border Grid.Column="4" Background="{Binding TypeBackground}" CornerRadius="4" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Grid.Column="4" Text="{Binding Column}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <Border Grid.Column="5" Background="{Binding TypeBackground}" CornerRadius="4" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding TypeCategory}" Foreground="{Binding TypeForeground}" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                             </Border>
-                                            <TextBlock Grid.Column="5" Text="{Binding Comment}" Foreground="#475569" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="6" Text="{Binding Comment}" Foreground="#475569" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                         </Grid>
                                     </DataTemplate>
                                 </TreeView.Resources>
@@ -690,22 +700,26 @@
                 <GroupBox Grid.Column="2" Header="But / validation">
                     <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="1*" MinHeight="90" />
                             <RowDefinition Height="8" />
-                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="1*" MinHeight="90" />
                             <RowDefinition Height="8" />
-                            <RowDefinition Height="*" />
+                            <RowDefinition Height="1.2*" MinHeight="120" />
                         </Grid.RowDefinitions>
                         <Border Grid.Row="0" Background="#EFF6FF" BorderBrush="#93C5FD" BorderThickness="1" CornerRadius="6" Padding="8" Margin="4">
                             <DockPanel LastChildFill="True">
                                 <TextBlock DockPanel.Dock="Top" Text="But probable de la requête" FontWeight="Bold" Foreground="#1E3A8A" Margin="0,0,0,4" />
-                                <TextBlock Text="{Binding QueryPurpose, Mode=OneWay}" TextWrapping="Wrap" Foreground="#1F2937" />
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                    <TextBlock Text="{Binding QueryPurpose, Mode=OneWay}" TextWrapping="Wrap" Foreground="#1F2937" />
+                                </ScrollViewer>
                             </DockPanel>
                         </Border>
                         <Border Grid.Row="2" Background="#F0FDF4" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="6" Padding="8" Margin="4">
                             <DockPanel LastChildFill="True">
                                 <TextBlock DockPanel.Dock="Top" Text="Analyse performance heuristique" FontWeight="Bold" Foreground="#166534" Margin="0,0,0,4" />
-                                <TextBlock Text="{Binding PerformanceReport, Mode=OneWay}" TextWrapping="Wrap" Foreground="#1F2937" />
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                    <TextBlock Text="{Binding PerformanceReport, Mode=OneWay}" TextWrapping="Wrap" Foreground="#1F2937" />
+                                </ScrollViewer>
                             </DockPanel>
                         </Border>
                         <TextBox Grid.Row="4" Text="{Binding Warnings, Mode=OneWay}"

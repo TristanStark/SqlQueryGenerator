@@ -663,3 +663,27 @@ public sealed class GenerationV25Tests
         Assert.Contains("PNJ.age AS \"Âge moyen\"", result.Sql);
     }
 }
+
+
+/// <summary>
+/// Contient les tests de génération SQL ajoutés pour la v26.
+/// </summary>
+public sealed class GenerationV26Tests
+{
+    /// <summary>
+    /// Vérifie que la projection table.* est générée sans quoter l'astérisque.
+    /// </summary>
+    [Fact]
+    public void Generate_TableWildcard_EmitsQualifiedStar()
+    {
+        const string sql = "CREATE TABLE PNJ (id INTEGER PRIMARY KEY, nom TEXT);";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new() { BaseTable = "PNJ" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "PNJ", Column = "*" });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
+
+        Assert.Contains("SELECT PNJ.*", result.Sql);
+        Assert.DoesNotContain("PNJ.\"*\"", result.Sql);
+    }
+}

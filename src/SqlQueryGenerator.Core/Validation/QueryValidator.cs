@@ -25,6 +25,11 @@ public sealed class QueryValidator
 
         foreach (ColumnReference col in EnumerateColumns(query))
         {
+            if (col.Column.Trim() == "*")
+            {
+                continue;
+            }
+
             if (schema.FindColumn(col.Table, col.Column) is null)
             {
                 errors.Add($"Colonne inconnue: {col.Table}.{col.Column}");

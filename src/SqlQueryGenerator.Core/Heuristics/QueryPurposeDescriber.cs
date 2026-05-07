@@ -178,8 +178,13 @@ public sealed class QueryPurposeDescriber
     /// <returns>Résultat du traitement.</returns>
     private static string DescribeSelectedColumn(ColumnReference column)
     {
-        string col = HumanizeColumn(column.Column);
         string table = HumanizeTable(column.Table);
+        if (column.Column.Trim() == "*")
+        {
+            return $"toutes les colonnes de {table}";
+        }
+
+        string col = HumanizeColumn(column.Column);
         return IsVeryGenericDisplayColumn(column.Column) ? $"{col} de {table}" : col;
     }
 

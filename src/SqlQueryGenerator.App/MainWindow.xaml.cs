@@ -109,6 +109,7 @@ public partial class MainWindow : Window
     private void AvailableColumnsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
         ViewModel.SelectedAvailableColumn = e.NewValue as ColumnItemViewModel;
+        ViewModel.SelectedAvailableTable = e.NewValue as TableItemViewModel;
     }
 
     /// <summary>
@@ -191,6 +192,27 @@ public partial class MainWindow : Window
     /// <param name="sender">Paramètre sender.</param>
     /// <param name="e">Paramètre e.</param>
     private void AddColumnToAggregateMenu_Click(object sender, RoutedEventArgs e) => AddColumnFromMenu(sender, "aggregate");
+
+    /// <summary>
+    /// Ajoute une projection <c>table.*</c> au SELECT depuis le menu contextuel d'une table.
+    /// </summary>
+    /// <param name="sender">Élément de menu ayant déclenché l'action.</param>
+    /// <param name="e">Arguments de l'événement WPF.</param>
+    private void AddTableWildcardMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element)
+        {
+            return;
+        }
+
+        TableItemViewModel? table = element.DataContext as TableItemViewModel;
+        if (table is null && element.Parent is ContextMenu contextMenu)
+        {
+            table = contextMenu.DataContext as TableItemViewModel;
+        }
+
+        ViewModel.AddTableWildcard(table);
+    }
 
     /// <summary>
     /// Exécute le traitement AddColumnFromMenu.

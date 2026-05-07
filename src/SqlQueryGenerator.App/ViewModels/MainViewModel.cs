@@ -142,6 +142,11 @@ public sealed class MainViewModel : ObservableObject
     /// <value>Valeur de _selectedAvailableColumn.</value>
     private ColumnItemViewModel? _selectedAvailableColumn;
     /// <summary>
+    /// Stocke la table sélectionnée dans l'arbre des colonnes disponibles.
+    /// </summary>
+    /// <value>Table actuellement sélectionnée, ou <c>null</c> si une colonne est sélectionnée.</value>
+    private TableItemViewModel? _selectedAvailableTable;
+    /// <summary>
     /// Stocke la valeur interne  selectedRelationship.
     /// </summary>
     /// <value>Valeur de _selectedRelationship.</value>
@@ -205,6 +210,9 @@ public sealed class MainViewModel : ObservableObject
         RemoveJoinCommand = new RelayCommand(obj => RemoveFromCollection(Joins, obj));
         RemoveCustomColumnCommand = new RelayCommand(obj => RemoveFromCollection(CustomColumns, obj));
         AddSelectedColumnCommand = new RelayCommand(_ => AddSelectedColumnTo("select"), _ => SelectedAvailableColumn is not null);
+        AddCheckedColumnsToSelectCommand = new RelayCommand(AddCheckedColumnsToSelect);
+        ClearCheckedColumnsCommand = new RelayCommand(ClearCheckedColumns);
+        AddSelectedTableWildcardCommand = new RelayCommand(_ => AddTableWildcard(SelectedAvailableTable), _ => SelectedAvailableTable is not null);
         AddSelectedFilterCommand = new RelayCommand(_ => AddSelectedColumnTo("filter"), _ => SelectedAvailableColumn is not null);
         AddSelectedGroupByCommand = new RelayCommand(_ => AddSelectedColumnTo("group"), _ => SelectedAvailableColumn is not null);
         AddSelectedOrderByCommand = new RelayCommand(_ => AddSelectedColumnTo("order"), _ => SelectedAvailableColumn is not null);
@@ -400,6 +408,21 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de AddSelectedColumnCommand.</value>
     public RelayCommand AddSelectedColumnCommand { get; }
+    /// <summary>
+    /// Commande ajoutant au SELECT toutes les colonnes cochées dans l'arbre des colonnes disponibles.
+    /// </summary>
+    /// <value>Commande d'ajout groupé au SELECT.</value>
+    public RelayCommand AddCheckedColumnsToSelectCommand { get; }
+    /// <summary>
+    /// Commande qui décoche toutes les colonnes actuellement cochées dans l'arbre.
+    /// </summary>
+    /// <value>Commande d'effacement de la sélection de masse.</value>
+    public RelayCommand ClearCheckedColumnsCommand { get; }
+    /// <summary>
+    /// Commande ajoutant <c>table.*</c> au SELECT pour la table sélectionnée.
+    /// </summary>
+    /// <value>Commande d'ajout direct de toutes les colonnes d'une table.</value>
+    public RelayCommand AddSelectedTableWildcardCommand { get; }
     /// <summary>
     /// Stocke la valeur interne AddSelectedFilterCommand.
     /// </summary>
@@ -702,6 +725,22 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Obtient ou définit la table sélectionnée dans l'arbre des colonnes disponibles.
+    /// </summary>
+    /// <value>Table sélectionnée pour les actions de table, notamment <c>table.*</c>.</value>
+    public TableItemViewModel? SelectedAvailableTable
+    {
+        get => _selectedAvailableTable;
+        set
+        {
+            if (SetProperty(ref _selectedAvailableTable, value))
+            {
+                AddSelectedTableWildcardCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    /// <summary>
     /// Stocke la valeur interne SelectedRelationship.
     /// </summary>
     /// <value>Valeur de SelectedRelationship.</value>
@@ -847,6 +886,57 @@ public sealed class MainViewModel : ObservableObject
         {
             SelectedColumns.Add(new SelectColumnRowViewModel { Table = column.Table, Column = column.Column });
         }
+    }
+
+    /// <summary>
+    /// Ajoute au SELECT toutes les colonnes cochées dans l'arbre des colonnes disponibles.
+    /// </summary>
+    public void AddCheckedColumnsToSelect()
+    {
+        ColumnItemViewModel[] checkedColumns = Tables
+            .SelectMany(t => t.Columns)
+            .Where(c => c.IsBulkSelected)
+            .ToArray();
+
+        foreach (ColumnItemViewModel? column in checkedColumns)
+        {
+            EnsureSelectedColumn(column);
+        }
+
+        if (checkedColumns.Length > 0)
+        {
+            GenerateSql();
+        }
+    }
+
+    /// <summary>
+    /// Décoche toutes les colonnes de l'arbre des colonnes disponibles.
+    /// </summary>
+    public void ClearCheckedColumns()
+    {
+        foreach (ColumnItemViewModel? column in Tables.SelectMany(t => t.Columns))
+        {
+            column.IsBulkSelected = false;
+        }
+    }
+
+    /// <summary>
+    /// Ajoute une projection <c>table.*</c> au SELECT pour la table indiquée.
+    /// </summary>
+    /// <param name="table">Table à projeter entièrement.</param>
+    public void AddTableWildcard(TableItemViewModel? table)
+    {
+        if (table is null || string.IsNullOrWhiteSpace(table.Name))
+        {
+            return;
+        }
+
+        if (!SelectedColumns.Any(c => SameColumn(c.Table, c.Column, table.Name, "*")))
+        {
+            SelectedColumns.Add(new SelectColumnRowViewModel { Table = table.Name, Column = "*" });
+        }
+
+        GenerateSql();
     }
 
     /// <summary>
@@ -1138,6 +1228,7 @@ public sealed class MainViewModel : ObservableObject
         _lastAppliedColumnSearchText = needle;
         Tables.Clear();
         SelectedAvailableColumn = null;
+        SelectedAvailableTable = null;
 
         foreach (TableDefinition table in _sortedSchemaTables)
         {
