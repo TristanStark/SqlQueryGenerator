@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
@@ -6,15 +6,7 @@
     <UseAppHost>true</UseAppHost>
     <AssemblyName>SqlQueryGenerator.App</AssemblyName>
     <RootNamespace>SqlQueryGenerator.App</RootNamespace>
-    <StartupObject>SqlQueryGenerator.App.App</StartupObject>
     <ApplicationIcon>logo.ico</ApplicationIcon>
-    <SignAssembly>False</SignAssembly>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <IsPublishable>False</IsPublishable>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <IsPublishable>False</IsPublishable>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="logo.ico" />

@@ -157,7 +157,7 @@
                                       SelectedItemChanged="AvailableColumnsTree_SelectedItemChanged"
                                       PreviewMouseMove="ColumnsTree_PreviewMouseMove"
                                       MouseDoubleClick="ColumnsTree_MouseDoubleClick"
-                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                       ScrollViewer.VerticalScrollBarVisibility="Auto">
                                 <TreeView.ItemContainerStyle>
                                     <Style TargetType="TreeViewItem">
@@ -181,7 +181,7 @@
                                     </HierarchicalDataTemplate>
 
                                     <DataTemplate DataType="{x:Type vm:ColumnItemViewModel}">
-                                        <Grid Margin="0,2,0,2" ToolTip="{Binding DisplayName}">
+                                        <Grid Margin="0,2,0,2" ToolTip="{Binding DisplayName}" PreviewMouseLeftButtonDown="ColumnNode_PreviewMouseLeftButtonDown">
                                             <Grid.ContextMenu>
                                                 <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                                     <MenuItem Header="Ajouter au SELECT" Click="AddColumnToSelectMenu_Click" />
@@ -193,12 +193,12 @@
                                                 </ContextMenu>
                                             </Grid.ContextMenu>
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="28" />
+                                                <ColumnDefinition Width="24" />
+                                                <ColumnDefinition Width="23" />
+                                                <ColumnDefinition Width="23" />
                                                 <ColumnDefinition Width="26" />
-                                                <ColumnDefinition Width="26" />
-                                                <ColumnDefinition Width="30" />
-                                                <ColumnDefinition Width="190" />
-                                                <ColumnDefinition Width="105" />
+                                                <ColumnDefinition Width="145" />
+                                                <ColumnDefinition Width="76" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
 
@@ -212,9 +212,9 @@
                                             <Border Grid.Column="3" Visibility="{Binding IsIndexed, Converter={StaticResource BoolToVisibility}}" Background="#DCFCE7" BorderBrush="#16A34A" BorderThickness="1" CornerRadius="3" Padding="2,0" Margin="0,0,4,0" ToolTip="{Binding IndexSummary}">
                                                 <TextBlock Text="{Binding IndexBadge}" Foreground="#166534" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" />
                                             </Border>
-                                            <TextBlock Grid.Column="4" Text="{Binding Column}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="4" Text="{Binding Column}" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                             <Border Grid.Column="5" Background="{Binding TypeBackground}" CornerRadius="4" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding TypeCategory}" Foreground="{Binding TypeForeground}" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                                <TextBlock Text="{Binding TypeCategory}" Foreground="{Binding TypeForeground}" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                             </Border>
                                             <TextBlock Grid.Column="6" Text="{Binding Comment}" Foreground="#475569" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                         </Grid>
@@ -392,7 +392,7 @@
                                                                     <ColumnDefinition Width="36" />
                                                                     <ColumnDefinition Width="230" />
                                                                     <ColumnDefinition Width="210" />
-                                                                    <ColumnDefinition Width="150" />
+                                                                    <ColumnDefinition Width="300" />
                                                                 </Grid.ColumnDefinitions>
                                                                 <Grid.RowDefinitions>
                                                                     <RowDefinition Height="Auto" />
@@ -422,10 +422,14 @@
                                                                     </ComboBox.ItemTemplate>
                                                                 </ComboBox>
                                                                 <ComboBox Grid.Row="1" Grid.Column="5" IsEditable="True" IsTextSearchEnabled="True" ItemsSource="{Binding ToColumnCandidates}" Text="{Binding ToColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" SelectedItem="{Binding ToColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinRightColumn_Drop" ToolTip="Choisis ou glisse la colonne droite. La table droite sera remplie automatiquement." />
-                                                                <StackPanel Grid.Row="1" Grid.Column="6" Orientation="Vertical">
-                                                                    <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveJoinCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
-                                                                    <Button Content="+ Colonne" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.AddJoinPairCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute une condition supplémentaire à la jointure composite." />
-                                                                </StackPanel>
+                                                                <Grid Grid.Row="1" Grid.Column="6" Margin="4,0,0,0">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*" />
+                                                                        <ColumnDefinition Width="*" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <Button Grid.Column="0" Content="Retirer" HorizontalAlignment="Stretch" MinWidth="130" Padding="10,4" Margin="0,4,4,4" Command="{Binding DataContext.RemoveJoinCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                    <Button Grid.Column="1" Content="+ Colonne" HorizontalAlignment="Stretch" MinWidth="130" Padding="10,4" Margin="4,4,0,4" Command="{Binding DataContext.AddJoinPairCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute une condition supplémentaire à la jointure composite." />
+                                                                </Grid>
 
                                                                 <ItemsControl Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="5" ItemsSource="{Binding AdditionalPairs}" Margin="4,8,4,0">
                                                                     <ItemsControl.ItemTemplate>

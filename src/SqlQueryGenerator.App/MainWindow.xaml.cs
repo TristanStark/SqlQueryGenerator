@@ -19,6 +19,12 @@ public partial class MainWindow : Window
     private Point _dragStartPoint;
 
     /// <summary>
+    /// Dernière colonne utilisée comme ancre pour la sélection multiple par raccourci clavier.
+    /// </summary>
+    /// <value>Colonne d'ancrage utilisée par Shift+clic, ou <c>null</c> si aucune colonne n'a encore été choisie.</value>
+    private ColumnItemViewModel? _bulkSelectionAnchor;
+
+    /// <summary>
     /// Initialise une nouvelle instance de MainWindow.
     /// </summary>
     public MainWindow()
@@ -110,6 +116,81 @@ public partial class MainWindow : Window
     {
         ViewModel.SelectedAvailableColumn = e.NewValue as ColumnItemViewModel;
         ViewModel.SelectedAvailableTable = e.NewValue as TableItemViewModel;
+
+        if (e.NewValue is ColumnItemViewModel column)
+        {
+            _bulkSelectionAnchor = column;
+        }
+    }
+
+    /// <summary>
+    /// Gère les raccourcis de sélection multiple sur une colonne de l'arbre.
+    /// </summary>
+    /// <param name="sender">Élément visuel représentant la colonne cliquée.</param>
+    /// <param name="e">Arguments de souris contenant l'état des touches de modification.</param>
+    private void ColumnNode_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: ColumnItemViewModel column })
+        {
+            return;
+        }
+
+        ModifierKeys modifiers = Keyboard.Modifiers;
+        if ((modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+        {
+            SelectBulkRange(column);
+            e.Handled = true;
+            return;
+        }
+
+        if ((modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        {
+            column.IsBulkSelected = !column.IsBulkSelected;
+            _bulkSelectionAnchor = column;
+            ViewModel.SelectedAvailableColumn = column;
+            ViewModel.SelectedAvailableTable = null;
+            e.Handled = true;
+            return;
+        }
+
+        _bulkSelectionAnchor = column;
+    }
+
+    /// <summary>
+    /// Coche toutes les colonnes visibles entre l'ancre de sélection et la colonne cible.
+    /// </summary>
+    /// <param name="targetColumn">Colonne finale de la plage à sélectionner.</param>
+    private void SelectBulkRange(ColumnItemViewModel targetColumn)
+    {
+        List<ColumnItemViewModel> visibleColumns = ViewModel.Tables
+            .SelectMany(table => table.Columns)
+            .ToList();
+
+        int targetIndex = visibleColumns.IndexOf(targetColumn);
+        if (targetIndex < 0)
+        {
+            return;
+        }
+
+        int anchorIndex = _bulkSelectionAnchor is null ? -1 : visibleColumns.IndexOf(_bulkSelectionAnchor);
+        if (anchorIndex < 0)
+        {
+            targetColumn.IsBulkSelected = true;
+            _bulkSelectionAnchor = targetColumn;
+            ViewModel.SelectedAvailableColumn = targetColumn;
+            ViewModel.SelectedAvailableTable = null;
+            return;
+        }
+
+        int start = Math.Min(anchorIndex, targetIndex);
+        int end = Math.Max(anchorIndex, targetIndex);
+        for (int index = start; index <= end; index++)
+        {
+            visibleColumns[index].IsBulkSelected = true;
+        }
+
+        ViewModel.SelectedAvailableColumn = targetColumn;
+        ViewModel.SelectedAvailableTable = null;
     }
 
     /// <summary>
