@@ -166,7 +166,7 @@ public sealed class ForeignKeyInferer
 
             // Strong case: specific same column name where target is PK/unique.
             // This is now O(group^2) for small same-name groups instead of O(total_columns^2).
-            ColumnInfo[] strongTargets = group.Where(c => c.TargetUnique).ToArray();
+            ColumnInfo[] strongTargets = [.. group.Where(c => c.TargetUnique)];
             if (strongTargets.Length > 0)
             {
                 foreach (ColumnInfo? source in group.Where(c => !c.Column.IsPrimaryKey))
@@ -199,9 +199,7 @@ public sealed class ForeignKeyInferer
                 return;
             }
 
-            ColumnInfo[] weakCandidates = group
-                .Where(c => !c.Column.IsPrimaryKey && c.LooksLikeIdentifier)
-                .ToArray();
+            ColumnInfo[] weakCandidates = [.. group.Where(c => !c.Column.IsPrimaryKey && c.LooksLikeIdentifier)];
 
             for (int i = 0; i < weakCandidates.Length; i++)
             {
@@ -963,12 +961,11 @@ public sealed class ForeignKeyInferer
         /// <returns>Résultat du traitement.</returns>
         public IEnumerable<TableInfo> FindTablesByTokenOrVariant(string stem)
         {
-            string[] variants = GetTableNameVariants(stem)
+            string[] variants = [.. GetTableNameVariants(stem)
                 .Select(v => v.Name)
                 .Append(stem)
                 .Append(Singularize(stem))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+                .Distinct(StringComparer.OrdinalIgnoreCase)];
 
             return variants
                 .SelectMany(v => (_tablesByToken.TryGetValue(v, out IReadOnlyList<TableInfo>? tokenTables) ? tokenTables : Array.Empty<TableInfo>())
@@ -1101,9 +1098,7 @@ public sealed class ForeignKeyInferer
         /// <param name="uniqueColumns">Paramètre uniqueColumns.</param>
         public void BuildColumns(HashSet<string> indexedColumns, HashSet<string> uniqueColumns)
         {
-            ColumnInfo[] columns = Table.Columns
-                .Select(c => new ColumnInfo(this, c, indexedColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || indexedColumns.Contains(QualifiedColumnKey(Table.Name, c.Name)), uniqueColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || uniqueColumns.Contains(QualifiedColumnKey(Table.Name, c.Name))))
-                .ToArray();
+            ColumnInfo[] columns = [.. Table.Columns.Select(c => new ColumnInfo(this, c, indexedColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || indexedColumns.Contains(QualifiedColumnKey(Table.Name, c.Name)), uniqueColumns.Contains(QualifiedColumnKey(FullName, c.Name)) || uniqueColumns.Contains(QualifiedColumnKey(Table.Name, c.Name))))];
 
             Columns = columns;
             ReferenceTargetColumns = columns.Where(c => c.IsReferenceTargetColumn).ToArray();

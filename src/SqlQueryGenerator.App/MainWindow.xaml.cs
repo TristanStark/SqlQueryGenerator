@@ -162,9 +162,7 @@ public partial class MainWindow : Window
     /// <param name="targetColumn">Colonne finale de la plage à sélectionner.</param>
     private void SelectBulkRange(ColumnItemViewModel targetColumn)
     {
-        List<ColumnItemViewModel> visibleColumns = ViewModel.Tables
-            .SelectMany(table => table.Columns)
-            .ToList();
+        List<ColumnItemViewModel> visibleColumns = [.. ViewModel.Tables.SelectMany(table => table.Columns)];
 
         int targetIndex = visibleColumns.IndexOf(targetColumn);
         if (targetIndex < 0)

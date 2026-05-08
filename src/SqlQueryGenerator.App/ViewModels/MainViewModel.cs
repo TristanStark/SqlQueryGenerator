@@ -893,10 +893,9 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     public void AddCheckedColumnsToSelect()
     {
-        ColumnItemViewModel[] checkedColumns = Tables
+        ColumnItemViewModel[] checkedColumns = [.. Tables
             .SelectMany(t => t.Columns)
-            .Where(c => c.IsBulkSelected)
-            .ToArray();
+            .Where(c => c.IsBulkSelected)];
 
         foreach (ColumnItemViewModel? column in checkedColumns)
         {
@@ -1180,7 +1179,7 @@ public sealed class MainViewModel : ObservableObject
         foreach (TableDefinition table in _sortedSchemaTables)
         {
             TableNames.Add(table.FullName);
-            ColumnDefinition[] sortedColumns = table.Columns.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+            ColumnDefinition[] sortedColumns = [.. table.Columns.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)];
             columnNamesByTable[table.FullName] = sortedColumns.Select(c => c.Name).ToArray();
             columnNamesByTable[SqlObjectDisplayName.Table(table.FullName)] = sortedColumns.Select(c => c.Name).ToArray();
             foreach (ColumnDefinition? col in sortedColumns)
@@ -1250,7 +1249,7 @@ public sealed class MainViewModel : ObservableObject
                         || (LookupSummary(c, _cachedIndexSummaries).Contains(needle, StringComparison.OrdinalIgnoreCase)));
             }
 
-            List<ColumnDefinition> visibleList = visibleColumns.ToList();
+            List<ColumnDefinition> visibleList = [.. visibleColumns];
             if (visibleList.Count == 0)
             {
                 continue;
@@ -1406,7 +1405,7 @@ public sealed class MainViewModel : ObservableObject
             GeneratedSql = result.Sql;
             QueryPurpose = _purposeDescriber.Describe(query, _schema);
             PerformanceReport = _performanceAnalyzer.Analyze(query, _schema).ToString();
-            string[] messages = validationErrors.Concat(result.Warnings).Concat(_schema.Warnings).Distinct().ToArray();
+            string[] messages = [.. validationErrors.Concat(result.Warnings).Concat(_schema.Warnings).Distinct()];
             Warnings = messages.Length == 0 ? "Aucun avertissement." : string.Join(Environment.NewLine, messages);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)

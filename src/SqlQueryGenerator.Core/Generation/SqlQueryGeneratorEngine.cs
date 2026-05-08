@@ -67,7 +67,7 @@ public sealed class SqlQueryGeneratorEngine
             sb.AppendLine();
         }
 
-        List<FilterCondition> whereFilters = query.Filters.Where(f => f.FieldKind != QueryFieldKind.Aggregate).ToList();
+        List<FilterCondition> whereFilters = [.. query.Filters.Where(f => f.FieldKind != QueryFieldKind.Aggregate)];
         List<(string Predicate, LogicalConnector Connector)> where = BuildFilterPredicates(query, whereFilters, schema, options, warnings);
         AppendPredicateBlock(sb, "WHERE", where);
 
@@ -94,13 +94,13 @@ public sealed class SqlQueryGeneratorEngine
             sb.Append("GROUP BY ").AppendLine(string.Join(", ", groupBy));
         }
 
-        List<FilterCondition> havingFilters = query.Filters.Where(f => f.FieldKind == QueryFieldKind.Aggregate).ToList();
+        List<FilterCondition> havingFilters = [.. query.Filters.Where(f => f.FieldKind == QueryFieldKind.Aggregate)];
         List<(string Predicate, LogicalConnector Connector)> having = BuildFilterPredicates(query, havingFilters, schema, options, warnings);
         AppendPredicateBlock(sb, "HAVING", having);
 
         if (query.OrderBy.Count > 0)
         {
-            string[] orderItems = query.OrderBy
+            string[] orderItems = [.. query.OrderBy
                 .Select(o =>
                 {
                     string expression = BuildOrderExpression(query, o, options, warnings);
@@ -108,8 +108,7 @@ public sealed class SqlQueryGeneratorEngine
                         ? string.Empty
                         : $"{expression} {(o.Direction == SortDirection.Descending ? "DESC" : "ASC")}";
                 })
-                .Where(o => !string.IsNullOrWhiteSpace(o))
-                .ToArray();
+                .Where(o => !string.IsNullOrWhiteSpace(o))];
             if (orderItems.Length > 0)
             {
                 sb.Append("ORDER BY ").AppendLine(string.Join(", ", orderItems));
@@ -279,7 +278,7 @@ public sealed class SqlQueryGeneratorEngine
     /// <returns>Résultat du traitement.</returns>
     private static JoinDefinition AddCompositePairsFromRelationships(DatabaseSchema schema, JoinDefinition join, IEnumerable<string> disabledAutoJoinKeys)
     {
-        JoinColumnPair[] compatible = schema.Relationships
+        JoinColumnPair[] compatible = [.. schema.Relationships
             .Where(r => !IsRelationshipDisabled(r, disabledAutoJoinKeys))
             .Select(r =>
             {
@@ -302,8 +301,7 @@ public sealed class SqlQueryGeneratorEngine
             .Where(p => !SqlNameNormalizer.EqualsName(p.FromColumn, join.FromColumn)
                 && !SqlNameNormalizer.EqualsName(p.ToColumn, join.ToColumn)
                 && LooksLikeCompositeCompanion(p.FromColumn, p.ToColumn))
-            .Take(8)
-            .ToArray();
+            .Take(8)];
 
         if (compatible.Length == 0)
         {
@@ -761,7 +759,7 @@ public sealed class SqlQueryGeneratorEngine
     /// <returns>Résultat du traitement.</returns>
     private static ColumnDefinition? FindBridgeColumnForTable(TableDefinition bridge, TableDefinition table)
     {
-        string[] stems = TableNameStems(table.FullName).Concat(TableNameStems(table.Name)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        string[] stems = [.. TableNameStems(table.FullName).Concat(TableNameStems(table.Name)).Distinct(StringComparer.OrdinalIgnoreCase)];
         foreach (string? stem in stems)
         {
             ColumnDefinition? direct = bridge.Columns.FirstOrDefault(c => IsColumnForTable(c.Name, stem));
@@ -928,7 +926,7 @@ public sealed class SqlQueryGeneratorEngine
                     continue;
                 }
 
-                List<JoinDefinition> nextPath = current.Path.Concat(new[] { oriented }).ToList();
+                List<JoinDefinition> nextPath = [.. current.Path, .. new[] { oriented }];
                 if (SqlNameNormalizer.EqualsName(nextTable, targetTable))
                 {
                     results.Add(nextPath);
@@ -1164,7 +1162,7 @@ public sealed class SqlQueryGeneratorEngine
         string targetStem = TableStem(targetTable);
         string bridgeNorm = SqlNameNormalizer.Normalize(bridgeTable);
         string bridgeSingular = Singularize(bridgeNorm);
-        string[] tokens = bridgeSingular.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToArray();
+        string[] tokens = [.. bridgeSingular.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
 
         double score = 0.0;
         string exactA = $"{startStem}_{targetStem}";
@@ -1884,7 +1882,7 @@ public sealed class SqlQueryGeneratorEngine
     /// <returns>Résultat du traitement.</returns>
     private static List<string> BuildGroupBy(QueryDefinition query, SqlGeneratorOptions options)
     {
-        return query.GroupBy.Select(c => ColumnSql(c, options, includeAlias: false)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return [.. query.GroupBy.Select(c => ColumnSql(c, options, includeAlias: false)).Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
     /// <summary>

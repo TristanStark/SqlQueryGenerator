@@ -159,19 +159,16 @@ public sealed class SchemaDocumentationImporter
     /// <returns>Résultat du traitement.</returns>
     private static List<Dictionary<string, string>> ParseRows(string text)
     {
-        string[] lines = text.Replace("\r\n", "\n").Replace('\r', '\n')
+        string[] lines = [.. text.Replace("\r\n", "\n").Replace('\r', '\n')
             .Split('\n')
-            .Where(l => !string.IsNullOrWhiteSpace(l))
-            .ToArray();
+            .Where(l => !string.IsNullOrWhiteSpace(l))];
         if (lines.Length == 0)
         {
             return [];
         }
 
         char delimiter = DetectDelimiter(lines[0]);
-        string[] headers = SplitLine(lines[0], delimiter)
-            .Select(h => NormalizeHeader(h))
-            .ToArray();
+        string[] headers = [.. SplitLine(lines[0], delimiter).Select(h => NormalizeHeader(h))];
 
         List<Dictionary<string, string>> rows = [];
         for (int i = 1; i < lines.Length; i++)

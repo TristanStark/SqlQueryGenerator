@@ -193,7 +193,7 @@
                                                 </ContextMenu>
                                             </Grid.ContextMenu>
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="24" />
+                                                <ColumnDefinition Width="34" />
                                                 <ColumnDefinition Width="23" />
                                                 <ColumnDefinition Width="23" />
                                                 <ColumnDefinition Width="26" />
@@ -202,7 +202,7 @@
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
 
-                                            <CheckBox Grid.Column="0" IsChecked="{Binding IsBulkSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Cocher pour ajouter plusieurs colonnes au SELECT." HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            <CheckBox Grid.Column="0" IsChecked="{Binding IsBulkSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Cocher pour ajouter plusieurs colonnes au SELECT." HorizontalAlignment="Center" VerticalAlignment="Center" Width="18" MinWidth="0" Padding="0" Margin="0,0,8,0" />
                                             <Border Grid.Column="1" Visibility="{Binding IsPrimaryKey, Converter={StaticResource BoolToVisibility}}" Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="1" CornerRadius="3" Padding="2,0" Margin="0,0,4,0" ToolTip="Clé primaire">
                                                 <TextBlock Text="PK" Foreground="#92400E" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" />
                                             </Border>

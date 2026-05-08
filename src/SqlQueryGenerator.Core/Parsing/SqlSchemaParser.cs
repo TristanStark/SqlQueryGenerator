@@ -343,12 +343,11 @@ public sealed partial class SqlSchemaParser
             return;
         }
 
-        string[] columns = SplitTopLevelComma(statement[(open + 1)..close])
+        string[] columns = [.. SplitTopLevelComma(statement[(open + 1)..close])
             .Select(TryExtractIndexedColumnName)
             .Where(c => !string.IsNullOrWhiteSpace(c))
             .Cast<string>()
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
 
         if (columns.Length == 0)
         {
@@ -528,9 +527,9 @@ public sealed partial class SqlSchemaParser
         Match fkMatch = ForeignKeyRegex().Match(normalized);
         if (fkMatch.Success)
         {
-            string[] sourceCols = SplitTopLevelComma(fkMatch.Groups["fromCols"].Value).Select(CleanIdentifier).ToArray();
+            string[] sourceCols = [.. SplitTopLevelComma(fkMatch.Groups["fromCols"].Value).Select(CleanIdentifier)];
             string targetTable = CleanQualifiedIdentifier(fkMatch.Groups["toTable"].Value);
-            string[] targetCols = SplitTopLevelComma(fkMatch.Groups["toCols"].Value).Select(CleanIdentifier).ToArray();
+            string[] targetCols = [.. SplitTopLevelComma(fkMatch.Groups["toCols"].Value).Select(CleanIdentifier)];
             int pairCount = Math.Min(sourceCols.Length, targetCols.Length);
             for (int i = 0; i < pairCount; i++)
             {
