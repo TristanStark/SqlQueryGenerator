@@ -50,16 +50,16 @@ public sealed class AggregateGoalHeuristicEngine
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
-        List<AggregateProjection> aggregates = [.. NormalizeAggregates(snapshot)];
+        List<AggregateProjection> aggregates = NormalizeAggregates(snapshot).ToList();
         if (aggregates.Count == 0)
         {
             return AggregateGoalHeuristicResult.Empty;
         }
 
-        List<GroupingIntent> groupingIntents = [.. BuildGroupingIntents(snapshot.Groupings)];
-        List<AggregateMetricIntent> metricIntents = [.. BuildMetricIntents(aggregates)];
+        List<GroupingIntent> groupingIntents = BuildGroupingIntents(snapshot.Groupings).ToList();
+        List<AggregateMetricIntent> metricIntents = BuildMetricIntents(aggregates).ToList();
         List<AggregateGoalReason> reasons = [];
-        List<string> warnings = [.. BuildWarnings(snapshot, groupingIntents)];
+        List<string> warnings = BuildWarnings(snapshot, groupingIntents).ToList();
 
         AggregateSignal signal = BuildSignal(snapshot, aggregates, groupingIntents);
         AggregateGoalKind kind = InferKind(signal, reasons);

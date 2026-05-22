@@ -617,6 +617,7 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="1.15*" MinHeight="150" />
                                         <RowDefinition Height="*" />
                                     </Grid.RowDefinitions>
 
@@ -632,7 +633,7 @@
                                                 <Button Content="Charger sélection" Command="{Binding LoadSelectedQueryCommand}" />
                                                 <Button Content="Utiliser comme sous-requête filtrante" Command="{Binding AddSelectedSavedQueryAsSubqueryFilterCommand}" ToolTip="Ajoute la requête sauvegardée sélectionnée comme filtre IN/=/EXISTS. Si une colonne est sélectionnée dans l'arbre de gauche, elle devient la colonne filtrée." />
                                             </WrapPanel>
-                                            <TextBlock Text="Sauvegarde locale JSON dans le dossier saved_queries. Les paramètres sont conservés comme :nom_param ou ?. Une sous-requête sauvegardée peut être réutilisée dans les filtres de la requête principale." TextWrapping="Wrap" Foreground="#475569" />
+                                            <TextBlock Text="Sauvegarde locale JSON dans le dossier saved_queries. Les presets peuvent être construits avec l'UI ou être du SQL brut SELECT. Les deux types peuvent être utilisés comme sous-requêtes filtrantes." TextWrapping="Wrap" Foreground="#475569" />
                                         </DockPanel>
                                     </Border>
 
@@ -657,9 +658,31 @@
                                         </DockPanel>
                                     </GroupBox>
 
-                                    <GroupBox Grid.Row="2" Header="Bibliothèque de requêtes sauvegardées" Margin="4">
+                                    <GroupBox Grid.Row="2" Header="SQL brut / reverse engineering" Margin="4">
+                                        <DockPanel LastChildFill="True">
+                                            <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                                <Button Content="Importer fichier SQL brut" Click="OpenRawSql_Click" ToolTip="Charge un fichier .sql/.txt dans l'éditeur SQL brut." />
+                                                <Button Content="Depuis SQL généré" Command="{Binding UseGeneratedSqlAsRawInputCommand}" ToolTip="Copie la requête générée actuelle dans l'éditeur SQL brut." />
+                                                <Button Content="Sauvegarder SQL brut" Command="{Binding SaveRawSqlPresetCommand}" ToolTip="Sauvegarde le SQL brut comme preset réutilisable en sous-requête." />
+                                                <Button Content="Charger SQL brut sélectionné" Command="{Binding LoadSelectedRawSqlCommand}" ToolTip="Charge le preset sélectionné dans l'éditeur SQL brut." />
+                                                <Button Content="Reverse SQL → constructeur" Command="{Binding ReverseEngineerRawSqlCommand}" ToolTip="Analyse le SELECT collé et remplit automatiquement sélection, jointures, filtres, groupes, agrégats et tris quand c'est possible." />
+                                            </WrapPanel>
+                                            <TextBox Text="{Binding RawSqlText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}"
+                                                     FontFamily="Consolas"
+                                                     FontSize="13"
+                                                     AcceptsReturn="True"
+                                                     AcceptsTab="True"
+                                                     VerticalScrollBarVisibility="Auto"
+                                                     HorizontalScrollBarVisibility="Auto"
+                                                     TextWrapping="NoWrap"
+                                                     ToolTip="Colle ici un SELECT existant. Il peut être sauvegardé tel quel ou converti en constructeur visuel." />
+                                        </DockPanel>
+                                    </GroupBox>
+
+                                    <GroupBox Grid.Row="3" Header="Bibliothèque de requêtes sauvegardées" Margin="4">
                                         <DataGrid ItemsSource="{Binding SavedQueries}" SelectedItem="{Binding SelectedSavedQuery, Mode=TwoWay}">
                                             <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Type" Binding="{Binding Kind}" Width="110" MinWidth="100" />
                                                 <DataGridTextColumn Header="Nom" Binding="{Binding Name}" Width="1.4*" MinWidth="180" />
                                                 <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="2.5*" MinWidth="300" />
                                                 <DataGridTextColumn Header="Base" Binding="{Binding BaseTableDisplayName}" Width="1*" MinWidth="140" />

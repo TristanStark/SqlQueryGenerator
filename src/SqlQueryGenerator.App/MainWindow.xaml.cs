@@ -81,6 +81,27 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Opens a raw SQL file and copies its content into the raw SQL editor.
+    /// </summary>
+    /// <param name="sender">Event source.</param>
+    /// <param name="e">Event arguments.</param>
+    private void OpenRawSql_Click(object sender, RoutedEventArgs e)
+    {
+        OpenFileDialog dialog = new()
+        {
+            Title = "Importer un SQL brut",
+            Filter = "SQL/TXT (*.sql;*.txt)|*.sql;*.txt|Tous les fichiers (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) == true)
+        {
+            ViewModel.LoadRawSqlFromFile(dialog.FileName);
+        }
+    }
+
+    /// <summary>
     /// Exécute le traitement PasteSchema Click.
     /// </summary>
     /// <param name="sender">Paramètre sender.</param>
@@ -162,7 +183,9 @@ public partial class MainWindow : Window
     /// <param name="targetColumn">Colonne finale de la plage à sélectionner.</param>
     private void SelectBulkRange(ColumnItemViewModel targetColumn)
     {
-        List<ColumnItemViewModel> visibleColumns = [.. ViewModel.Tables.SelectMany(table => table.Columns)];
+        List<ColumnItemViewModel> visibleColumns = ViewModel.Tables
+            .SelectMany(table => table.Columns)
+            .ToList();
 
         int targetIndex = visibleColumns.IndexOf(targetColumn);
         if (targetIndex < 0)

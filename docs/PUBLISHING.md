@@ -35,3 +35,31 @@ artifacts\publish\win-x64-self-contained\SqlQueryGenerator.App.exe
 ```
 
 This version embeds the .NET runtime. It is much larger, but easier to distribute.
+
+## Portable USB distribution
+
+Do not distribute files from `obj/` or `bin/` after a plain `dotnet build`. Use publish scripts.
+
+Recommended robust mode:
+
+```powershell
+.\publish-portable-folder-win-x64.ps1
+```
+
+Copy the whole output folder to the USB key:
+
+```text
+artifacts\portable\SqlQueryGenerator-win-x64-folder
+```
+
+Single-file mode:
+
+```powershell
+.\publish-portable-singlefile-win-x64.ps1
+```
+
+ZIP mode:
+
+```powershell
+.\package-portable-win-x64.ps1
+```

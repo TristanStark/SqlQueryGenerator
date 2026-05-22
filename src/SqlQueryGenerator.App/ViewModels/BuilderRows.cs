@@ -838,6 +838,16 @@ public sealed class SavedQueryItemViewModel : ObservableObject
     /// <value>Valeur de Saved.</value>
     public SqlQueryGenerator.Core.Persistence.SavedQueryDefinition Saved { get; }
     /// <summary>
+    /// Gets the preset kind displayed in the saved query library.
+    /// </summary>
+    /// <value>Human-readable preset kind.</value>
+    public string Kind => Saved.Kind == SqlQueryGenerator.Core.Persistence.SavedQueryKind.RawSql ? "SQL brut" : "Constructeur";
+    /// <summary>
+    /// Gets whether the preset contains raw SQL instead of a visual query model.
+    /// </summary>
+    /// <value><c>true</c> for raw SQL presets.</value>
+    public bool IsRawSql => Saved.Kind == SqlQueryGenerator.Core.Persistence.SavedQueryKind.RawSql;
+    /// <summary>
     /// Obtient ou définit Name.
     /// </summary>
     /// <value>Valeur de Name.</value>
@@ -856,7 +866,7 @@ public sealed class SavedQueryItemViewModel : ObservableObject
     /// Obtient ou définit BaseTable.
     /// </summary>
     /// <value>Valeur de BaseTable.</value>
-    public string BaseTable => Saved.Query.BaseTable ?? string.Empty;
+    public string BaseTable => Saved.Kind == SqlQueryGenerator.Core.Persistence.SavedQueryKind.RawSql ? "SQL brut" : Saved.Query.BaseTable ?? string.Empty;
     /// <summary>
     /// Obtient ou définit BaseTableDisplayName.
     /// </summary>
@@ -866,7 +876,7 @@ public sealed class SavedQueryItemViewModel : ObservableObject
     /// Obtient ou définit SelectCount.
     /// </summary>
     /// <value>Valeur de SelectCount.</value>
-    public int SelectCount => Saved.Query.SelectedColumns.Count + Saved.Query.Aggregates.Count + Saved.Query.CustomColumns.Count;
+    public int SelectCount => Saved.Kind == SqlQueryGenerator.Core.Persistence.SavedQueryKind.RawSql ? 0 : Saved.Query.SelectedColumns.Count + Saved.Query.Aggregates.Count + Saved.Query.CustomColumns.Count;
 
     /// <summary>
     /// Stocke la valeur interne IsSubqueryCandidate.

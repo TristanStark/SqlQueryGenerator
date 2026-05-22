@@ -104,10 +104,11 @@ public sealed class GoalTextFormatter
     {
         ArgumentNullException.ThrowIfNull(labels);
 
-        List<string> distinctLabels = [.. labels
+        List<string> distinctLabels = labels
             .Where(label => !string.IsNullOrWhiteSpace(label))
             .Select(CleanLabel)
-            .Distinct(StringComparer.OrdinalIgnoreCase)];
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         if (distinctLabels.Count == 0)
         {
@@ -117,7 +118,7 @@ public sealed class GoalTextFormatter
         if (distinctLabels.Count > maxLabels)
         {
             int remainingCount = distinctLabels.Count - maxLabels;
-            distinctLabels = [.. distinctLabels.Take(maxLabels)];
+            distinctLabels = distinctLabels.Take(maxLabels).ToList();
             distinctLabels.Add($"{remainingCount} autre{(remainingCount > 1 ? "s" : string.Empty)}");
         }
 

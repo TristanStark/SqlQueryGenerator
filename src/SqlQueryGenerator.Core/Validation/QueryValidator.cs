@@ -1,3 +1,4 @@
+using SqlQueryGenerator.Core.Generation;
 using SqlQueryGenerator.Core.Models;
 using SqlQueryGenerator.Core.Query;
 
@@ -59,6 +60,20 @@ public sealed class QueryValidator
 
         foreach (FilterCondition? subqueryFilter in query.Filters.Where(f => f.ValueKind == FilterValueKind.Subquery))
         {
+            if (!string.IsNullOrWhiteSpace(subqueryFilter.RawSubquerySql))
+            {
+                try
+                {
+                    SqlSafety.EnsureSelectQueryIsSafe(subqueryFilter.RawSubquerySql);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    errors.Add($"Sous-requête SQL brute invalide {subqueryFilter.SubqueryName ?? "sans nom"}: {ex.Message}");
+                }
+
+                continue;
+            }
+
             if (subqueryFilter.Subquery is null)
             {
                 errors.Add($"Filtre sous-requête sans requête associée: {subqueryFilter.SubqueryName ?? "sans nom"}.");

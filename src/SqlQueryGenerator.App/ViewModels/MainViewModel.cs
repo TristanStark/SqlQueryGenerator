@@ -25,6 +25,11 @@ public sealed class MainViewModel : ObservableObject
     /// <returns>Résultat du traitement.</returns>
     private readonly SqlSchemaParser _parser = new();
     /// <summary>
+    /// Reverse-engineers pasted SELECT SQL into the visual query model when possible.
+    /// </summary>
+    /// <value>Reusable best-effort SQL reverse parser.</value>
+    private readonly SqlSelectReverseParser _reverseParser = new();
+    /// <summary>
     /// Exécute le traitement new.
     /// </summary>
     /// <returns>Résultat du traitement.</returns>
@@ -101,6 +106,11 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de _queryDescription.</value>
     private string _queryDescription = string.Empty;
+    /// <summary>
+    /// Stores raw SELECT SQL used for raw presets and reverse engineering.
+    /// </summary>
+    /// <value>Raw SQL text pasted or loaded by the user.</value>
+    private string _rawSqlText = string.Empty;
     /// <summary>
     /// Stocke la valeur interne  selectedSavedQuery.
     /// </summary>
@@ -229,6 +239,10 @@ public sealed class MainViewModel : ObservableObject
         AddParameterCommand = new RelayCommand(() => Parameters.Add(new QueryParameterRowViewModel { Name = $"param_{Parameters.Count + 1}", Required = true }));
         RemoveParameterCommand = new RelayCommand(obj => RemoveFromCollection(Parameters, obj));
         SaveCurrentQueryCommand = new RelayCommand(SaveCurrentQuery);
+        SaveRawSqlPresetCommand = new RelayCommand(SaveRawSqlPreset);
+        LoadSelectedRawSqlCommand = new RelayCommand(_ => LoadSelectedRawSqlPreset(), _ => SelectedSavedQuery is not null);
+        ReverseEngineerRawSqlCommand = new RelayCommand(ReverseEngineerRawSql);
+        UseGeneratedSqlAsRawInputCommand = new RelayCommand(() => RawSqlText = GeneratedSql);
         ReloadSavedQueriesCommand = new RelayCommand(ReloadSavedQueries);
         LoadSelectedQueryCommand = new RelayCommand(_ => LoadSelectedSavedQuery(), _ => SelectedSavedQuery is not null);
         AddSelectedSavedQueryAsSubqueryFilterCommand = new RelayCommand(_ => AddSelectedSavedQueryAsSubqueryFilter(), _ => SelectedSavedQuery is not null);
@@ -504,6 +518,26 @@ public sealed class MainViewModel : ObservableObject
     /// <value>Valeur de SaveCurrentQueryCommand.</value>
     public RelayCommand SaveCurrentQueryCommand { get; }
     /// <summary>
+    /// Saves the raw SQL text as a read-only SQL preset.
+    /// </summary>
+    /// <value>Command bound to the raw SQL save button.</value>
+    public RelayCommand SaveRawSqlPresetCommand { get; }
+    /// <summary>
+    /// Loads the selected raw SQL preset into the raw SQL editor.
+    /// </summary>
+    /// <value>Command bound to the raw SQL load button.</value>
+    public RelayCommand LoadSelectedRawSqlCommand { get; }
+    /// <summary>
+    /// Reverse-engineers the raw SQL editor content into the visual builder.
+    /// </summary>
+    /// <value>Command bound to the reverse SQL button.</value>
+    public RelayCommand ReverseEngineerRawSqlCommand { get; }
+    /// <summary>
+    /// Copies the currently generated SQL into the raw SQL editor.
+    /// </summary>
+    /// <value>Command bound to the generated-to-raw helper button.</value>
+    public RelayCommand UseGeneratedSqlAsRawInputCommand { get; }
+    /// <summary>
     /// Stocke la valeur interne ReloadSavedQueriesCommand.
     /// </summary>
     /// <value>Valeur de ReloadSavedQueriesCommand.</value>
@@ -564,6 +598,11 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de QueryDescription.</value>
     public string QueryDescription { get => _queryDescription; set => SetProperty(ref _queryDescription, value); }
+    /// <summary>
+    /// Gets or sets the raw SELECT SQL used by raw presets and reverse engineering.
+    /// </summary>
+    /// <value>Raw SQL editor content.</value>
+    public string RawSqlText { get => _rawSqlText; set => SetProperty(ref _rawSqlText, value); }
 
     /// <summary>
     /// Stocke la valeur interne SelectedSavedQuery.
@@ -577,6 +616,7 @@ public sealed class MainViewModel : ObservableObject
             if (SetProperty(ref _selectedSavedQuery, value))
             {
                 LoadSelectedQueryCommand.RaiseCanExecuteChanged();
+                LoadSelectedRawSqlCommand.RaiseCanExecuteChanged();
                 AddSelectedSavedQueryAsSubqueryFilterCommand.RaiseCanExecuteChanged();
             }
         }
@@ -757,6 +797,30 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Loads a raw SQL SELECT file into the raw SQL editor for saving or reverse engineering.
+    /// </summary>
+    /// <param name="filePath">Path to a SQL or text file containing one SELECT statement.</param>
+    public void LoadRawSqlFromFile(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            Status = "Fichier SQL brut introuvable.";
+            return;
+        }
+
+        FileInfo info = new(filePath);
+        if (info.Length > 5_000_000)
+        {
+            MessageBox.Show("Le fichier SQL brut dépasse 5 Mo. Réduis le fichier avant import.", "Fichier trop volumineux", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        RawSqlText = File.ReadAllText(filePath);
+        QueryName = Path.GetFileNameWithoutExtension(filePath);
+        Status = $"SQL brut chargé: {filePath}";
+    }
+
+    /// <summary>
     /// Exécute le traitement LoadSchemaFromFile.
     /// </summary>
     /// <param name="filePath">Paramètre filePath.</param>
@@ -893,9 +957,10 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     public void AddCheckedColumnsToSelect()
     {
-        ColumnItemViewModel[] checkedColumns = [.. Tables
+        ColumnItemViewModel[] checkedColumns = Tables
             .SelectMany(t => t.Columns)
-            .Where(c => c.IsBulkSelected)];
+            .Where(c => c.IsBulkSelected)
+            .ToArray();
 
         foreach (ColumnItemViewModel? column in checkedColumns)
         {
@@ -1179,7 +1244,7 @@ public sealed class MainViewModel : ObservableObject
         foreach (TableDefinition table in _sortedSchemaTables)
         {
             TableNames.Add(table.FullName);
-            ColumnDefinition[] sortedColumns = [.. table.Columns.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)];
+            ColumnDefinition[] sortedColumns = table.Columns.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ToArray();
             columnNamesByTable[table.FullName] = sortedColumns.Select(c => c.Name).ToArray();
             columnNamesByTable[SqlObjectDisplayName.Table(table.FullName)] = sortedColumns.Select(c => c.Name).ToArray();
             foreach (ColumnDefinition? col in sortedColumns)
@@ -1249,7 +1314,7 @@ public sealed class MainViewModel : ObservableObject
                         || (LookupSummary(c, _cachedIndexSummaries).Contains(needle, StringComparison.OrdinalIgnoreCase)));
             }
 
-            List<ColumnDefinition> visibleList = [.. visibleColumns];
+            List<ColumnDefinition> visibleList = visibleColumns.ToList();
             if (visibleList.Count == 0)
             {
                 continue;
@@ -1405,7 +1470,7 @@ public sealed class MainViewModel : ObservableObject
             GeneratedSql = result.Sql;
             QueryPurpose = _purposeDescriber.Describe(query, _schema);
             PerformanceReport = _performanceAnalyzer.Analyze(query, _schema).ToString();
-            string[] messages = [.. validationErrors.Concat(result.Warnings).Concat(_schema.Warnings).Distinct()];
+            string[] messages = validationErrors.Concat(result.Warnings).Concat(_schema.Warnings).Distinct().ToArray();
             Warnings = messages.Length == 0 ? "Aucun avertissement." : string.Join(Environment.NewLine, messages);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
@@ -1457,7 +1522,8 @@ public sealed class MainViewModel : ObservableObject
                     Value = row.Value,
                     SecondValue = row.SecondValue,
                     ValueKind = row.ValueKind,
-                    Subquery = row.SavedSubquery?.Query,
+                    Subquery = row.SavedSubquery?.Kind == SavedQueryKind.Builder ? row.SavedSubquery.Query : null,
+                    RawSubquerySql = row.SavedSubquery?.Kind == SavedQueryKind.RawSql ? row.SavedSubquery.RawSql : null,
                     SubqueryName = BlankToNull(row.SubqueryName),
                     Connector = row.Connector
                 });
@@ -1478,7 +1544,8 @@ public sealed class MainViewModel : ObservableObject
                     Value = row.Value,
                     SecondValue = row.SecondValue,
                     ValueKind = row.ValueKind,
-                    Subquery = row.SavedSubquery?.Query,
+                    Subquery = row.SavedSubquery?.Kind == SavedQueryKind.Builder ? row.SavedSubquery.Query : null,
+                    RawSubquerySql = row.SavedSubquery?.Kind == SavedQueryKind.RawSql ? row.SavedSubquery.RawSql : null,
                     SubqueryName = BlankToNull(row.SubqueryName),
                     Connector = row.Connector
                 });
@@ -1627,6 +1694,17 @@ public sealed class MainViewModel : ObservableObject
                     }
                 }
             }
+
+            if (!string.IsNullOrWhiteSpace(filter.RawSubquerySql))
+            {
+                foreach (QueryParameterDefinition subParam in SqlSelectReverseParser.ExtractParameters(filter.RawSubquerySql))
+                {
+                    if (existing.Add(subParam.Placeholder))
+                    {
+                        query.Parameters.Add(subParam with { Description = subParam.Description ?? $"Paramètre requis par la sous-requête SQL brute {filter.SubqueryName}" });
+                    }
+                }
+            }
         }
     }
 
@@ -1693,6 +1771,7 @@ public sealed class MainViewModel : ObservableObject
             query.Description = BlankToNull(QueryDescription);
             SavedQueryDefinition saved = new()
             {
+                Kind = SavedQueryKind.Builder,
                 Name = name,
                 Description = BlankToNull(QueryDescription),
                 Query = query,
@@ -1706,6 +1785,112 @@ public sealed class MainViewModel : ObservableObject
         {
             Warnings = "Erreur de sauvegarde: " + ex.Message;
         }
+    }
+
+    /// <summary>
+    /// Saves the raw SQL editor content as a raw SELECT preset that can be reused as a subquery.
+    /// </summary>
+    private void SaveRawSqlPreset()
+    {
+        try
+        {
+            string rawSql = SqlSafety.NormalizeRawSelectQuery(RawSqlText);
+            string name = string.IsNullOrWhiteSpace(QueryName) ? $"sql_brut_{DateTime.Now:yyyyMMdd_HHmmss}" : QueryName.Trim();
+            QueryDefinition metadataQuery = new()
+            {
+                Name = name,
+                Description = BlankToNull(QueryDescription)
+            };
+            foreach (QueryParameterDefinition parameter in SqlSelectReverseParser.ExtractParameters(rawSql))
+            {
+                metadataQuery.Parameters.Add(parameter);
+            }
+
+            SavedQueryDefinition saved = new()
+            {
+                Kind = SavedQueryKind.RawSql,
+                Name = name,
+                Description = BlankToNull(QueryDescription),
+                Query = metadataQuery,
+                RawSql = rawSql,
+                LastGeneratedSql = rawSql
+            };
+
+            string path = _savedQueryStore.Save(saved);
+            ReloadSavedQueries();
+            Status = $"Preset SQL brut sauvegardé: {path}";
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            Warnings = "Erreur de sauvegarde SQL brut: " + ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Loads the selected raw SQL preset into the raw SQL editor and generated SQL panel.
+    /// </summary>
+    private void LoadSelectedRawSqlPreset()
+    {
+        if (SelectedSavedQuery is null)
+        {
+            return;
+        }
+
+        SavedQueryDefinition saved = SelectedSavedQuery.Saved;
+        RawSqlText = saved.Kind == SavedQueryKind.RawSql
+            ? saved.RawSql ?? saved.LastGeneratedSql ?? string.Empty
+            : saved.LastGeneratedSql ?? string.Empty;
+        QueryName = saved.Name;
+        QueryDescription = saved.Description ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(RawSqlText))
+        {
+            GeneratedSql = RawSqlText.TrimEnd() + Environment.NewLine;
+            QueryPurpose = "Preset SQL brut chargé. Utilise Reverse SQL pour le transformer en constructeur visuel.";
+            PerformanceReport = "Analyse performance limitée tant que la requête n'est pas convertie en modèle visuel.";
+            Warnings = saved.Kind == SavedQueryKind.RawSql ? "Preset SQL brut chargé." : "SQL généré du preset visuel chargé dans l'éditeur brut.";
+        }
+    }
+
+    /// <summary>
+    /// Reverse-engineers the raw SQL editor content into the visual query builder.
+    /// </summary>
+    private void ReverseEngineerRawSql()
+    {
+        try
+        {
+            QueryDefinition query = _reverseParser.Parse(RawSqlText);
+            query.Name = BlankToNull(QueryName) ?? "requete_reverse";
+            query.Description = BlankToNull(QueryDescription) ?? "Requête reconstruite depuis du SQL brut.";
+            LoadQueryDefinition(query, query.Name, query.Description);
+            Status = "Reverse SQL terminé: les clauses reconnues ont été replacées dans le constructeur visuel.";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            Warnings = "Reverse SQL impossible: " + ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds a temporary saved query object from a serialized filter subquery.
+    /// </summary>
+    /// <param name="filter">Filter condition that may reference a raw or structured subquery.</param>
+    /// <returns>Saved query object suitable for UI display, or <c>null</c>.</returns>
+    private static SavedQueryDefinition? BuildSavedSubqueryForFilter(FilterCondition filter)
+    {
+        if (!string.IsNullOrWhiteSpace(filter.RawSubquerySql))
+        {
+            return new SavedQueryDefinition
+            {
+                Kind = SavedQueryKind.RawSql,
+                Name = filter.SubqueryName ?? "sql_brut",
+                RawSql = filter.RawSubquerySql,
+                LastGeneratedSql = filter.RawSubquerySql
+            };
+        }
+
+        return filter.Subquery is null
+            ? null
+            : new SavedQueryDefinition { Kind = SavedQueryKind.Builder, Name = filter.SubqueryName ?? filter.Subquery.Name ?? "subquery", Query = filter.Subquery };
     }
 
     /// <summary>
@@ -1727,6 +1912,12 @@ public sealed class MainViewModel : ObservableObject
     {
         if (SelectedSavedQuery is null)
         {
+            return;
+        }
+
+        if (SelectedSavedQuery.Saved.Kind == SavedQueryKind.RawSql)
+        {
+            LoadSelectedRawSqlPreset();
             return;
         }
 
@@ -1799,8 +1990,8 @@ public sealed class MainViewModel : ObservableObject
                     Value = f.Value ?? string.Empty,
                     SecondValue = f.SecondValue ?? string.Empty,
                     ValueKind = f.ValueKind,
-                    SubqueryName = f.SubqueryName ?? f.Subquery?.Name ?? string.Empty,
-                    SavedSubquery = f.Subquery is null ? null : new SavedQueryDefinition { Name = f.SubqueryName ?? f.Subquery.Name ?? "subquery", Query = f.Subquery },
+                    SubqueryName = f.SubqueryName ?? f.Subquery?.Name ?? (string.IsNullOrWhiteSpace(f.RawSubquerySql) ? string.Empty : "sql_brut"),
+                    SavedSubquery = BuildSavedSubqueryForFilter(f),
                     Connector = f.Connector
                 });
             }

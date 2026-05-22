@@ -269,6 +269,11 @@ public sealed record FilterCondition
     /// <value>Valeur de Subquery.</value>
     public QueryDefinition? Subquery { get; init; }
     /// <summary>
+    /// Gets the raw SQL subquery text to embed when the filter references a raw SQL preset.
+    /// </summary>
+    /// <value>Raw SELECT SQL, or <c>null</c> when the subquery is represented structurally.</value>
+    public string? RawSubquerySql { get; init; }
+    /// <summary>
     /// Stocke la valeur interne SubqueryName.
     /// </summary>
     /// <value>Valeur de SubqueryName.</value>
