@@ -11,6 +11,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
 using System.Windows;
+using System.Windows.Threading;
 
 namespace SqlQueryGenerator.App.ViewModels;
 
@@ -206,10 +207,58 @@ public sealed class MainViewModel : ObservableObject
     private IReadOnlyDictionary<string, IReadOnlyList<string>> _columnNamesByTable = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Maximum number of column rows rendered by a search to keep WPF memory usage bounded on large schemas.
+    /// </summary>
+    /// <value>Upper bound for visible column results in the left tree.</value>
+    private const int MaxVisibleColumnSearchResults = 650;
+
+    /// <summary>
+    /// Maximum number of columns displayed when a table name itself matches a broad search.
+    /// </summary>
+    /// <value>Per-table column cap used for broad table-name matches.</value>
+    private const int MaxVisibleColumnsForTableNameMatch = 120;
+
+    /// <summary>
+    /// Debounces left-tree searches so filtering is not executed for every keystroke.
+    /// </summary>
+    /// <value>Dispatcher timer bound to the WPF UI thread.</value>
+    private readonly DispatcherTimer _columnSearchDebounceTimer;
+
+    /// <summary>
+    /// Stable table view models reused by filtering to avoid recreating WPF-bound objects on every search.
+    /// </summary>
+    /// <value>All table nodes, ordered by display name.</value>
+    private IReadOnlyList<TableItemViewModel> _allTableViewModels = Array.Empty<TableItemViewModel>();
+
+    /// <summary>
+    /// Stable column view models grouped by fully qualified table name.
+    /// </summary>
+    /// <value>Column VM cache used by search, selection and clear operations.</value>
+    private IReadOnlyDictionary<string, IReadOnlyList<ColumnItemViewModel>> _columnViewModelsByTable = new Dictionary<string, IReadOnlyList<ColumnItemViewModel>>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Precomputed text index for fast left-tree search.
+    /// </summary>
+    /// <value>One entry per column, storing lower-cased searchable text once.</value>
+    private IReadOnlyList<ColumnSearchIndexEntry> _columnSearchIndex = Array.Empty<ColumnSearchIndexEntry>();
+
+    /// <summary>
+    /// Indicates whether the most recent search was truncated to preserve responsiveness and RAM.
+    /// </summary>
+    /// <value><c>true</c> when not all matching columns are rendered.</value>
+    private bool _isColumnSearchTruncated;
+
+    /// <summary>
     /// Initialise une nouvelle instance de MainViewModel.
     /// </summary>
     public MainViewModel()
     {
+        _columnSearchDebounceTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(275)
+        };
+        _columnSearchDebounceTimer.Tick += ColumnSearchDebounceTimer_Tick;
+
         GenerateCommand = new RelayCommand(GenerateSql);
         ClearQueryCommand = new RelayCommand(ClearQuery);
         RemoveSelectedColumnCommand = new RelayCommand(obj => RemoveFromCollection(SelectedColumns, obj));
@@ -730,7 +779,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _columnSearchText, value))
             {
-                ApplyColumnTreeFilter();
+                ScheduleColumnTreeFilter();
                 ClearColumnSearchCommand.RaiseCanExecuteChanged();
             }
         }
@@ -957,8 +1006,7 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     public void AddCheckedColumnsToSelect()
     {
-        ColumnItemViewModel[] checkedColumns = Tables
-            .SelectMany(t => t.Columns)
+        ColumnItemViewModel[] checkedColumns = AllColumns
             .Where(c => c.IsBulkSelected)
             .ToArray();
 
@@ -978,7 +1026,7 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     public void ClearCheckedColumns()
     {
-        foreach (ColumnItemViewModel? column in Tables.SelectMany(t => t.Columns))
+        foreach (ColumnItemViewModel? column in AllColumns)
         {
             column.IsBulkSelected = false;
         }
@@ -1241,23 +1289,49 @@ public sealed class MainViewModel : ObservableObject
         _sortedSchemaTables = _schema.Tables.OrderBy(t => t.FullName, StringComparer.OrdinalIgnoreCase).ToArray();
 
         Dictionary<string, IReadOnlyList<string>> columnNamesByTable = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, IReadOnlyList<ColumnItemViewModel>> columnViewModelsByTable = new(StringComparer.OrdinalIgnoreCase);
+        List<TableItemViewModel> tableViewModels = [];
+        List<ColumnSearchIndexEntry> searchIndex = [];
+
         foreach (TableDefinition table in _sortedSchemaTables)
         {
             TableNames.Add(table.FullName);
             ColumnDefinition[] sortedColumns = table.Columns.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ToArray();
-            columnNamesByTable[table.FullName] = sortedColumns.Select(c => c.Name).ToArray();
-            columnNamesByTable[SqlObjectDisplayName.Table(table.FullName)] = sortedColumns.Select(c => c.Name).ToArray();
-            foreach (ColumnDefinition? col in sortedColumns)
-            {
-                AllColumns.Add(new ColumnItemViewModel(
+            ColumnItemViewModel[] columnViewModels = sortedColumns
+                .Select(col => new ColumnItemViewModel(
                     col,
                     LookupSummary(col, _cachedForeignKeySummaries),
                     LookupSummary(col, _cachedIndexSummaries),
-                    _cachedUniqueIndexColumns.Contains($"{col.TableName}.{col.Name}")));
+                    _cachedUniqueIndexColumns.Contains($"{col.TableName}.{col.Name}")))
+                .ToArray();
+
+            TableItemViewModel tableViewModel = new(table, columnViewModels)
+            {
+                IsExpanded = false
+            };
+
+            tableViewModels.Add(tableViewModel);
+            columnViewModelsByTable[table.FullName] = columnViewModels;
+            columnViewModelsByTable[SqlObjectDisplayName.Table(table.FullName)] = columnViewModels;
+            columnNamesByTable[table.FullName] = columnViewModels.Select(c => c.Column).ToArray();
+            columnNamesByTable[SqlObjectDisplayName.Table(table.FullName)] = columnViewModels.Select(c => c.Column).ToArray();
+
+            foreach (ColumnItemViewModel columnViewModel in columnViewModels)
+            {
+                AllColumns.Add(columnViewModel);
+                searchIndex.Add(new ColumnSearchIndexEntry(
+                    tableViewModel,
+                    columnViewModel,
+                    NormalizeSearchText($"{table.FullName} {tableViewModel.DisplayName} {table.Comment} {columnViewModel.SearchText}")));
             }
         }
+
         ColumnNamesByTable = columnNamesByTable;
+        _columnViewModelsByTable = columnViewModelsByTable;
+        _allTableViewModels = tableViewModels;
+        _columnSearchIndex = searchIndex;
         _lastAppliedColumnSearchText = "__schema_reloaded__";
+        _isColumnSearchTruncated = false;
         foreach (InferredRelationship? rel in _schema.Relationships.OrderByDescending(r => r.Confidence).Take(500))
         {
             RelationshipItemViewModel vm = new(rel);
@@ -1279,11 +1353,37 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Exécute le traitement ApplyColumnTreeFilter.
+    /// Schedules a debounced refresh of the left schema tree search results.
+    /// </summary>
+    private void ScheduleColumnTreeFilter()
+    {
+        _columnSearchDebounceTimer.Stop();
+        if (string.IsNullOrWhiteSpace(ColumnSearchText))
+        {
+            ApplyColumnTreeFilter();
+            return;
+        }
+
+        _columnSearchDebounceTimer.Start();
+    }
+
+    /// <summary>
+    /// Applies the pending column search after the debounce interval has elapsed.
+    /// </summary>
+    /// <param name="sender">Timer that triggered the refresh.</param>
+    /// <param name="e">Timer event arguments.</param>
+    private void ColumnSearchDebounceTimer_Tick(object? sender, EventArgs e)
+    {
+        _columnSearchDebounceTimer.Stop();
+        ApplyColumnTreeFilter();
+    }
+
+    /// <summary>
+    /// Applies the current left-tree filter using stable view models and a prebuilt search index.
     /// </summary>
     private void ApplyColumnTreeFilter()
     {
-        string needle = ColumnSearchText?.Trim() ?? string.Empty;
+        string needle = NormalizeSearchText(ColumnSearchText ?? string.Empty);
         if (string.Equals(needle, _lastAppliedColumnSearchText, StringComparison.Ordinal))
         {
             return;
@@ -1293,38 +1393,79 @@ public sealed class MainViewModel : ObservableObject
         Tables.Clear();
         SelectedAvailableColumn = null;
         SelectedAvailableTable = null;
+        _isColumnSearchTruncated = false;
 
-        foreach (TableDefinition table in _sortedSchemaTables)
+        if (string.IsNullOrWhiteSpace(needle))
         {
-            IEnumerable<ColumnDefinition> visibleColumns = table.Columns;
-
-            if (!string.IsNullOrWhiteSpace(needle))
+            foreach (TableItemViewModel table in _allTableViewModels)
             {
-                string tableDisplayName = SqlObjectDisplayName.Table(table.FullName);
-                bool tableMatches = table.FullName.Contains(needle, StringComparison.OrdinalIgnoreCase)
-                    || tableDisplayName.Contains(needle, StringComparison.OrdinalIgnoreCase)
-                    || (!string.IsNullOrWhiteSpace(table.Comment) && table.Comment.Contains(needle, StringComparison.OrdinalIgnoreCase));
-
-                visibleColumns = tableMatches
-                    ? table.Columns
-                    : table.Columns.Where(c => c.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)
-                        || (c.DataType?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
-                        || (c.Comment?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
-                        || (LookupSummary(c, _cachedForeignKeySummaries).Contains(needle, StringComparison.OrdinalIgnoreCase))
-                        || (LookupSummary(c, _cachedIndexSummaries).Contains(needle, StringComparison.OrdinalIgnoreCase)));
+                table.ResetVisibleColumns();
+                table.IsExpanded = false;
+                Tables.Add(table);
             }
 
-            List<ColumnDefinition> visibleList = visibleColumns.ToList();
-            if (visibleList.Count == 0)
+            Status = BuildSchemaLoadedStatus();
+            return;
+        }
+
+        Dictionary<TableItemViewModel, List<ColumnItemViewModel>> matchesByTable = [];
+        int matchCount = 0;
+        foreach (ColumnSearchIndexEntry entry in _columnSearchIndex)
+        {
+            if (!entry.NormalizedSearchText.Contains(needle, StringComparison.Ordinal))
             {
                 continue;
             }
 
-            Tables.Add(new TableItemViewModel(table, visibleList, _cachedForeignKeySummaries, _cachedIndexSummaries, _cachedUniqueIndexColumns)
+            matchCount++;
+            if (matchCount > MaxVisibleColumnSearchResults)
             {
-                IsExpanded = !string.IsNullOrWhiteSpace(needle)
-            });
+                _isColumnSearchTruncated = true;
+                break;
+            }
+
+            if (!matchesByTable.TryGetValue(entry.Table, out List<ColumnItemViewModel>? columns))
+            {
+                columns = [];
+                matchesByTable[entry.Table] = columns;
+            }
+
+            columns.Add(entry.Column);
         }
+
+        foreach (TableItemViewModel table in _allTableViewModels)
+        {
+            if (matchesByTable.TryGetValue(table, out List<ColumnItemViewModel>? columns))
+            {
+                table.SetVisibleColumns(columns.Distinct().OrderBy(c => c.Column, StringComparer.OrdinalIgnoreCase));
+                table.IsExpanded = true;
+                Tables.Add(table);
+            }
+        }
+
+        string suffix = _isColumnSearchTruncated
+            ? $" Recherche tronquée aux {MaxVisibleColumnSearchResults} premières colonnes pour préserver la RAM. Affine le filtre."
+            : string.Empty;
+        Status = $"Recherche '{ColumnSearchText}': {matchCount:N0} colonne(s) correspondante(s), {Tables.Count:N0} table(s) affichée(s).{suffix}";
+    }
+
+    /// <summary>
+    /// Builds a compact status message for a fully loaded schema.
+    /// </summary>
+    /// <returns>Schema summary for the status bar.</returns>
+    private string BuildSchemaLoadedStatus()
+    {
+        return $"Schéma chargé: {_schema.Tables.Count} objets, {_schema.Tables.Sum(t => t.Columns.Count)} colonnes, {_schema.Relationships.Count} relations probables.";
+    }
+
+    /// <summary>
+    /// Normalizes text used by the left-tree search index.
+    /// </summary>
+    /// <param name="value">Raw searchable text.</param>
+    /// <returns>Lower-cased, trimmed search text.</returns>
+    private static string NormalizeSearchText(string value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToUpperInvariant();
     }
 
     /// <summary>

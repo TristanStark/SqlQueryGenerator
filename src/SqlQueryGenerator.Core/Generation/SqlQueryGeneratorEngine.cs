@@ -744,7 +744,7 @@ public sealed class SqlQueryGeneratorEngine
             score += 0.25;
         }
 
-        string[] suspiciousTokens = new[] { "focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests" };
+        string[] suspiciousTokens = ["focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests"];
         if (tokens.Any(t => suspiciousTokens.Contains(t, StringComparer.OrdinalIgnoreCase)))
         {
             score -= 1.20;
@@ -1134,17 +1134,6 @@ public sealed class SqlQueryGeneratorEngine
     }
 
     /// <summary>
-    /// Exécute le traitement RelationshipConfidence.
-    /// </summary>
-    /// <param name="schema">Paramètre schema.</param>
-    /// <param name="join">Paramètre join.</param>
-    /// <returns>Résultat du traitement.</returns>
-    private static double RelationshipConfidence(DatabaseSchema schema, JoinDefinition join)
-    {
-        return FindRelationship(schema, join)?.Confidence ?? 0.50;
-    }
-
-    /// <summary>
     /// Exécute le traitement JunctionBridgeScore.
     /// </summary>
     /// <param name="schema">Paramètre schema.</param>
@@ -1200,7 +1189,7 @@ public sealed class SqlQueryGeneratorEngine
             score += 0.15;
         }
 
-        string[] suspiciousTokens = new[] { "focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests" };
+        string[] suspiciousTokens = ["focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests"];
         if (tokens.Any(t => suspiciousTokens.Contains(t, StringComparer.OrdinalIgnoreCase)))
         {
             score -= 0.95;
@@ -1879,7 +1868,7 @@ public sealed class SqlQueryGeneratorEngine
     private static string IndentSql(string sql, int spaces)
     {
         string prefix = new(' ', spaces);
-        return string.Join(Environment.NewLine, sql.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None).Select(line => prefix + line));
+        return string.Join(Environment.NewLine, sql.Split(["\r\n", "\n"], StringSplitOptions.None).Select(line => prefix + line));
     }
 
     /// <summary>

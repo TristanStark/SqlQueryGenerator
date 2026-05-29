@@ -5,63 +5,89 @@ using System.Collections.ObjectModel;
 namespace SqlQueryGenerator.App.ViewModels;
 
 /// <summary>
-/// Représente TableItemViewModel dans SQL Query Generator.
+/// View model representing one table or view in the left schema tree.
 /// </summary>
 public sealed class TableItemViewModel : ObservableObject
 {
     /// <summary>
-    /// Stocke la valeur interne  isExpanded.
+    /// Stores whether the table node is expanded in the tree.
     /// </summary>
-    /// <value>Valeur de _isExpanded.</value>
+    /// <value><c>true</c> when the table node is expanded; otherwise <c>false</c>.</value>
     private bool _isExpanded;
 
     /// <summary>
-    /// Initialise une nouvelle instance de TableItemViewModel.
+    /// Stores the complete, stable list of column view models for the table.
     /// </summary>
+    /// <value>All columns belonging to the table, reused across searches to avoid WPF memory churn.</value>
+    private readonly IReadOnlyList<ColumnItemViewModel> _allColumns;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TableItemViewModel"/> class from raw schema columns.
+    /// </summary>
+    /// <param name="table">Schema table represented by this node.</param>
+    /// <param name="visibleColumns">Optional subset of columns visible in the tree.</param>
+    /// <param name="foreignKeySummaries">Optional cached FK summaries keyed by qualified column name.</param>
+    /// <param name="indexSummaries">Optional cached index summaries keyed by qualified column name.</param>
+    /// <param name="uniqueIndexColumns">Optional set of columns backed by a unique index.</param>
     public TableItemViewModel(
         TableDefinition table,
         IEnumerable<ColumnDefinition>? visibleColumns = null,
         IReadOnlyDictionary<string, string>? foreignKeySummaries = null,
         IReadOnlyDictionary<string, string>? indexSummaries = null,
         IReadOnlySet<string>? uniqueIndexColumns = null)
+        : this(
+            table,
+            (visibleColumns ?? table.Columns)
+                .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(c => new ColumnItemViewModel(
+                    c,
+                    LookupSummary(c, foreignKeySummaries),
+                    LookupSummary(c, indexSummaries),
+                    IsInSet(c, uniqueIndexColumns))))
     {
-        Name = table.FullName;
-        Comment = table.Comment ?? string.Empty;
-        IEnumerable<ColumnDefinition> sourceColumns = visibleColumns ?? table.Columns;
-        Columns = new ObservableCollection<ColumnItemViewModel>(sourceColumns
-            .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(c => new ColumnItemViewModel(
-                c,
-                LookupSummary(c, foreignKeySummaries),
-                LookupSummary(c, indexSummaries),
-                IsInSet(c, uniqueIndexColumns))));
     }
 
     /// <summary>
-    /// Stocke la valeur interne Name.
+    /// Initializes a new instance of the <see cref="TableItemViewModel"/> class from stable prebuilt column view models.
     /// </summary>
-    /// <value>Valeur de Name.</value>
+    /// <param name="table">Schema table represented by this node.</param>
+    /// <param name="columns">Stable column view models belonging to the table.</param>
+    public TableItemViewModel(TableDefinition table, IEnumerable<ColumnItemViewModel> columns)
+    {
+        Name = table.FullName;
+        Comment = table.Comment ?? string.Empty;
+        _allColumns = columns.OrderBy(c => c.Column, StringComparer.OrdinalIgnoreCase).ToArray();
+        Columns = new ObservableCollection<ColumnItemViewModel>(_allColumns);
+    }
+
+    /// <summary>
+    /// Gets the complete database table name, including schema prefix when present.
+    /// </summary>
+    /// <value>Fully qualified table name used by generated SQL.</value>
     public string Name { get; }
+
     /// <summary>
-    /// Obtient ou définit DisplayName.
+    /// Gets the display name shown in the UI, without noisy schema prefix when possible.
     /// </summary>
-    /// <value>Valeur de DisplayName.</value>
+    /// <value>Human-readable table name.</value>
     public string DisplayName => SqlObjectDisplayName.Table(Name);
+
     /// <summary>
-    /// Stocke la valeur interne Comment.
+    /// Gets the imported or parsed documentation comment for the table.
     /// </summary>
-    /// <value>Valeur de Comment.</value>
+    /// <value>Table description, or an empty string when no documentation is available.</value>
     public string Comment { get; }
+
     /// <summary>
-    /// Stocke la valeur interne Columns.
+    /// Gets the currently visible columns for this table node.
     /// </summary>
-    /// <value>Valeur de Columns.</value>
+    /// <value>Subset displayed by the tree after applying the current search.</value>
     public ObservableCollection<ColumnItemViewModel> Columns { get; }
 
     /// <summary>
-    /// Stocke la valeur interne IsExpanded.
+    /// Gets or sets whether the table node is expanded in the TreeView.
     /// </summary>
-    /// <value>Valeur de IsExpanded.</value>
+    /// <value><c>true</c> when expanded; otherwise <c>false</c>.</value>
     public bool IsExpanded
     {
         get => _isExpanded;
@@ -69,25 +95,71 @@ public sealed class TableItemViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Obtient ou définit ColumnCount.
+    /// Gets the number of currently visible columns.
     /// </summary>
-    /// <value>Valeur de ColumnCount.</value>
+    /// <value>Visible column count after filtering.</value>
     public int ColumnCount => Columns.Count;
 
     /// <summary>
-    /// Obtient ou définit HeaderText.
+    /// Gets the total number of columns on the table before filtering.
     /// </summary>
-    /// <value>Valeur de HeaderText.</value>
-    public string HeaderText => string.IsNullOrWhiteSpace(Comment)
-        ? $"{DisplayName} ({ColumnCount})"
-        : $"{DisplayName} ({ColumnCount}) — {Comment}";
+    /// <value>Total column count.</value>
+    public int TotalColumnCount => _allColumns.Count;
 
     /// <summary>
-    /// Exécute le traitement LookupSummary.
+    /// Gets all stable column view models for the table.
     /// </summary>
-    /// <param name="column">Paramètre column.</param>
-    /// <param name="summaries">Paramètre summaries.</param>
-    /// <returns>Résultat du traitement.</returns>
+    /// <value>Complete table column list reused across searches.</value>
+    public IReadOnlyList<ColumnItemViewModel> AllColumns => _allColumns;
+
+    /// <summary>
+    /// Gets the text shown in table headers and tooltips.
+    /// </summary>
+    /// <value>Display name, column counts and optional table documentation.</value>
+    public string HeaderText
+    {
+        get
+        {
+            string countText = ColumnCount == TotalColumnCount ? ColumnCount.ToString() : $"{ColumnCount}/{TotalColumnCount}";
+            return string.IsNullOrWhiteSpace(Comment)
+                ? $"{DisplayName} ({countText})"
+                : $"{DisplayName} ({countText}) — {Comment}";
+        }
+    }
+
+    /// <summary>
+    /// Replaces the visible column subset without recreating column view models.
+    /// </summary>
+    /// <param name="columns">Columns to show for the current search/filter state.</param>
+    public void SetVisibleColumns(IEnumerable<ColumnItemViewModel> columns)
+    {
+        ColumnItemViewModel[] nextColumns = columns.ToArray();
+        if (Columns.Count == nextColumns.Length && Columns.SequenceEqual(nextColumns))
+        {
+            return;
+        }
+
+        Columns.Clear();
+        foreach (ColumnItemViewModel column in nextColumns)
+        {
+            Columns.Add(column);
+        }
+
+        OnPropertyChanged(nameof(ColumnCount));
+        OnPropertyChanged(nameof(HeaderText));
+    }
+
+    /// <summary>
+    /// Restores all columns as visible for the table node.
+    /// </summary>
+    public void ResetVisibleColumns() => SetVisibleColumns(_allColumns);
+
+    /// <summary>
+    /// Looks up a cached textual summary for the supplied column.
+    /// </summary>
+    /// <param name="column">Column to look up.</param>
+    /// <param name="summaries">Summary cache keyed by fully qualified column name.</param>
+    /// <returns>Cached summary, or an empty string.</returns>
     private static string LookupSummary(ColumnDefinition column, IReadOnlyDictionary<string, string>? summaries)
     {
         if (summaries is null)
@@ -100,11 +172,11 @@ public sealed class TableItemViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Exécute le traitement IsInSet.
+    /// Checks whether a column is present in a cached qualified-name set.
     /// </summary>
-    /// <param name="column">Paramètre column.</param>
-    /// <param name="values">Paramètre values.</param>
-    /// <returns>Résultat du traitement.</returns>
+    /// <param name="column">Column to test.</param>
+    /// <param name="values">Qualified-name set.</param>
+    /// <returns><c>true</c> when the set contains the column; otherwise <c>false</c>.</returns>
     private static bool IsInSet(ColumnDefinition column, IReadOnlySet<string>? values)
     {
         if (values is null)

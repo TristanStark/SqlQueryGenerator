@@ -157,8 +157,11 @@
                                       SelectedItemChanged="AvailableColumnsTree_SelectedItemChanged"
                                       PreviewMouseMove="ColumnsTree_PreviewMouseMove"
                                       MouseDoubleClick="ColumnsTree_MouseDoubleClick"
+                                      ScrollViewer.CanContentScroll="True"
                                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                      ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                      VirtualizingStackPanel.IsVirtualizing="True"
+                                      VirtualizingStackPanel.VirtualizationMode="Recycling">
                                 <TreeView.ItemContainerStyle>
                                     <Style TargetType="TreeViewItem">
                                         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />

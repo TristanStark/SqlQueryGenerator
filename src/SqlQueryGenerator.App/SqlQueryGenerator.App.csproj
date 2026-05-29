@@ -1,12 +1,16 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <UseAppHost>true</UseAppHost>
     <AssemblyName>SqlQueryGenerator.App</AssemblyName>
-    <RootNamespace>SqlQueryGenerator.App</RootNamespace>
+    <RootNamespace>SqlQueryGenerator</RootNamespace>
+    <ApplicationIcon>logo.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <Content Include="logo.ico" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\SqlQueryGenerator.Core\SqlQueryGenerator.Core.csproj" />
   </ItemGroup>
