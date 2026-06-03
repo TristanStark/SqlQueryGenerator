@@ -1857,7 +1857,7 @@ public sealed class SqlQueryGeneratorEngine
         if (valueKind == FilterValueKind.Parameter)
         {
             string placeholder = string.IsNullOrWhiteSpace(raw) ? "?" : raw.Trim();
-            if (!placeholder.StartsWith(':') && !placeholder.StartsWith('@') && !placeholder.StartsWith('?'))
+            if (!placeholder.StartsWith(':') && !placeholder.StartsWith('@') && !placeholder.StartsWith('?') && !placeholder.StartsWith('&'))
             {
                 placeholder = ":" + placeholder;
             }
