@@ -111,7 +111,7 @@ public sealed record QueryParameterDefinition
     /// <value>Valeur de Placeholder.</value>
     public string Placeholder => string.IsNullOrWhiteSpace(Name)
         ? "?"
-        : Name.StartsWith(':') || Name.StartsWith('@') || Name.StartsWith('?')
+        : Name.StartsWith(':') || Name.StartsWith('@') || Name.StartsWith('?') || Name.StartsWith('&')
             ? Name
             : ":" + Name;
 }

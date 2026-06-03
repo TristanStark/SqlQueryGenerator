@@ -2,6 +2,12 @@
 
 All release notes are centralized here.
 
+## v30.1.0
+
+- Reverse SQL now supports Oracle legacy outer-join syntax using `(+)` and converts it to explicit `LEFT JOIN` in the query model.
+- Reverse SQL parameter detection now supports Oracle substitution variables such as `&1` and preserves them during regeneration.
+- Added regression/unit tests for legacy `(+)` parsing and `&` parameter round-trip generation.
+
 ## v30.0.0
 
 - Improved views support and subqueries with multiple `HAVING` conditions.
