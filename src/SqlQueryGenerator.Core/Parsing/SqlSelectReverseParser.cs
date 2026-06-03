@@ -565,18 +565,45 @@ public sealed class SqlSelectReverseParser
     private static IEnumerable<string> SplitTopLevelByKeyword(string text, string keyword)
     {
         int start = 0;
+        int searchStart = 0;
+        bool skippedBetweenSeparator = false;
         while (true)
         {
-            int index = FindTopLevelKeyword(text, keyword, start);
+            int index = FindTopLevelKeyword(text, keyword, searchStart);
             if (index < 0)
             {
                 yield return text[start..].Trim();
                 yield break;
             }
 
+            if (keyword.Equals("AND", StringComparison.OrdinalIgnoreCase)
+                && !skippedBetweenSeparator
+                && SegmentContainsTopLevelKeyword(text, start, index, "BETWEEN"))
+            {
+                skippedBetweenSeparator = true;
+                searchStart = index + keyword.Length;
+                continue;
+            }
+
             yield return text[start..index].Trim();
             start = index + keyword.Length;
+            searchStart = start;
+            skippedBetweenSeparator = false;
         }
+    }
+
+    /// <summary>
+    /// Checks whether a segment contains a top-level keyword before a candidate split point.
+    /// </summary>
+    /// <param name="text">Text being scanned.</param>
+    /// <param name="start">Segment start index.</param>
+    /// <param name="end">Exclusive end index.</param>
+    /// <param name="keyword">Keyword to locate.</param>
+    /// <returns><c>true</c> when the keyword appears outside strings and parentheses.</returns>
+    private static bool SegmentContainsTopLevelKeyword(string text, int start, int end, string keyword)
+    {
+        int index = FindTopLevelKeyword(text, keyword, start);
+        return index >= start && index < end;
     }
 
     /// <summary>
