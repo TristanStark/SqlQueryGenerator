@@ -1,0 +1,128 @@
+name: Feature request
+description: Suggest a new feature or improvement for SqlQueryGenerator.
+title: "[FEATURE] "
+labels: ["type: feature", "status: needs-design"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for new features, behavior changes, UI improvements, parser support, SQL generation improvements, or workflow enhancements.
+
+        A good feature request should describe the use case, expected behavior, and acceptance criteria.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: What problem does this feature solve?
+      placeholder: "Example: I often reuse raw SQL snippets, but presets only support queries built through the visual query builder."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: Describe the feature you want.
+      placeholder: |
+        Add a way to save raw SQL as a preset.
+        Raw SQL presets should be visible in the presets list and usable as subqueries.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Target area
+      description: Which part of the application is concerned?
+      multiple: true
+      options:
+        - UI
+        - Parser
+        - SQL generation
+        - Reverse SQL
+        - Presets
+        - Subqueries
+        - Joins
+        - Aggregates
+        - HAVING / GROUP BY
+        - DDL import
+        - Views
+        - Performance
+        - Packaging / executable
+        - Documentation
+        - CI/CD
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: List clear, testable conditions that must be true when the feature is done.
+      placeholder: |
+        - A raw SQL preset can be created.
+        - A raw SQL preset can be loaded.
+        - A raw SQL preset can be used as a subquery.
+        - Existing visual presets still work.
+        - Tests are added or updated.
+        - Documentation is updated.
+    validations:
+      required: true
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Example SQL / workflow
+      description: Add an example if this is related to SQL, DDL, presets, parsing, reverse SQL, or generation.
+      render: sql
+      placeholder: |
+        SELECT ...
+        FROM ...
+        WHERE ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Are there other ways to solve the problem?
+      placeholder: "Alternative: manually copy/paste SQL every time, but this is error-prone."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature?
+      options:
+        - P0 - Critical / blocking
+        - P1 - High
+        - P2 - Normal
+        - P3 - Nice to have
+    validations:
+      required: true
+
+  - type: textarea
+    id: technical-notes
+    attributes:
+      label: Technical notes
+      description: Optional implementation notes, risks, affected classes, or architecture constraints.
+      placeholder: "Potentially affects preset serialization, query model, subquery model, and documentation."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submit checklist
+      options:
+        - label: I searched existing issues before opening this one.
+          required: true
+        - label: I wrote acceptance criteria.
+          required: true
+        - label: I included examples or screenshots when useful.
+          required: false

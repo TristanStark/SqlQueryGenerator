@@ -1,0 +1,43 @@
+changelog:
+  exclude:
+    labels:
+      - status: duplicate
+      - status: invalid
+      - status: wontfix
+      - skip-changelog
+    authors:
+      - dependabot
+  categories:
+    - title: Breaking changes
+      labels:
+        - breaking-change
+    - title: Added
+      labels:
+        - type: feature
+    - title: Fixed
+      labels:
+        - type: bug
+    - title: Performance
+      labels:
+        - type: perf
+        - area: performance
+    - title: Parser / SQL generation
+      labels:
+        - area: parser
+        - area: sql-generation
+        - area: reverse-sql
+    - title: UI / UX
+      labels:
+        - area: ui
+    - title: Documentation
+      labels:
+        - type: docs
+        - area: docs
+    - title: CI/CD and packaging
+      labels:
+        - type: ci
+        - type: release
+        - area: packaging
+    - title: Other changes
+      labels:
+        - "*"

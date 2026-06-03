@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build release package
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore .\SqlQueryGenerator.sln
+
+      - name: Test
+        run: dotnet test .\SqlQueryGenerator.sln --configuration Release --verbosity normal
+
+      - name: Build portable ZIP
+        shell: pwsh
+        run: .\package-portable-win-x64.ps1
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SqlQueryGenerator-${{ github.ref_name }}-win-x64
+          path: artifacts/**/*.zip
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" artifacts/**/*.zip `
+            --title "SqlQueryGenerator ${{ github.ref_name }}" `
+            --generate-notes

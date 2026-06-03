@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/TristanStark/SqlQueryGenerator/tree/master/docs
+    about: Read the technical documentation before opening an issue.
+  - name: Releases
+    url: https://github.com/TristanStark/SqlQueryGenerator/releases
+    about: Download the latest stable release and read release notes.

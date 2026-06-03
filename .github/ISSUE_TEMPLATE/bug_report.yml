@@ -1,0 +1,147 @@
+name: Bug report
+description: Report a reproducible bug in SqlQueryGenerator.
+title: "[BUG] "
+labels: ["type: bug", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug.
+
+        Please provide enough information to reproduce the issue reliably.
+        For UI bugs, screenshots are very useful. For parser/generation bugs, paste the smallest SQL or DDL sample that reproduces the problem.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is the bug?
+      placeholder: "Example: The app crashes when loading a DDL containing a CREATE VIEW with nested subqueries."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Which part of the application is affected?
+      multiple: true
+      options:
+        - UI
+        - Parser
+        - SQL generation
+        - Reverse SQL
+        - Presets
+        - Subqueries
+        - Joins
+        - Aggregates
+        - HAVING / GROUP BY
+        - DDL import
+        - Packaging / executable
+        - Documentation
+        - CI/CD
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide precise steps to reproduce the bug.
+      placeholder: |
+        1. Open the application
+        2. Import this DDL: ...
+        3. Click on ...
+        4. Observe the error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+      placeholder: "The schema should load and the view should appear in the left tree."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+      placeholder: "The application freezes, crashes, generates invalid SQL, or displays..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: Minimal SQL / DDL sample
+      description: Paste the smallest SQL, DDL, preset, or query sample that reproduces the issue.
+      render: sql
+      placeholder: |
+        CREATE TABLE ...
+        CREATE VIEW ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error message / logs / stack trace
+      description: Paste any exception, log, terminal output, or Visual Studio error.
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Application version / commit
+      description: Which release, tag, branch, or commit are you using?
+      placeholder: "v30.0.0 / master / commit SHA"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: How did you run the app?
+      options:
+        - Visual Studio
+        - Published portable ZIP
+        - Single-file executable
+        - dotnet run
+        - Other
+    validations:
+      required: false
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Windows 10 / Windows 11"
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or screen recording
+      description: Drag and drop screenshots here if relevant.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submit checklist
+      options:
+        - label: I searched existing issues before opening this one.
+          required: true
+        - label: I included a minimal reproduction sample when applicable.
+          required: false
+        - label: I included logs, stack traces, or screenshots when available.
+          required: false

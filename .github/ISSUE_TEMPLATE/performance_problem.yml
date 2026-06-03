@@ -1,0 +1,160 @@
+name: Performance problem
+description: Report slow execution, high memory usage, freezes, or scalability issues.
+title: "[PERF] "
+labels: ["type: perf", "area: performance", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for performance issues such as:
+        - high RAM usage
+        - slow schema search
+        - slow DDL import
+        - slow parser
+        - slow reverse SQL generation
+        - UI freezes
+        - poor behavior on production-sized schemas
+
+        Please include rough measurements whenever possible.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is slow or memory-heavy?
+      placeholder: "Example: Searching in the left schema tree is very slow and memory usage grows to 17 GB on production DDL."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      multiple: true
+      options:
+        - Startup
+        - DDL import
+        - Parser
+        - Schema indexing
+        - Left tree search
+        - UI rendering
+        - SQL generation
+        - Reverse SQL
+        - Presets
+        - Serialization
+        - Tests
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: dataset
+    attributes:
+      label: Dataset / schema size
+      description: Describe the input size as precisely as possible.
+      placeholder: |
+        - Tables:
+        - Views:
+        - Columns:
+        - Foreign keys:
+        - DDL file size:
+        - Number of presets:
+        - Production or synthetic schema:
+    validations:
+      required: false
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: How can this performance issue be reproduced?
+      placeholder: |
+        1. Open the application
+        2. Import production.ddl
+        3. Search for "CLIENT" in the left schema tree
+        4. Observe RAM / CPU / UI responsiveness
+    validations:
+      required: true
+
+  - type: input
+    id: current-time
+    attributes:
+      label: Current execution time
+      placeholder: "Example: 8 seconds per search / 3 minutes to import"
+    validations:
+      required: false
+
+  - type: input
+    id: expected-time
+    attributes:
+      label: Expected execution time
+      placeholder: "Example: < 200 ms per search / < 15 seconds to import"
+    validations:
+      required: false
+
+  - type: input
+    id: current-memory
+    attributes:
+      label: Current memory usage
+      placeholder: "Example: 17 GB RAM"
+    validations:
+      required: false
+
+  - type: input
+    id: expected-memory
+    attributes:
+      label: Expected memory usage
+      placeholder: "Example: < 1 GB RAM for this schema"
+    validations:
+      required: false
+
+  - type: textarea
+    id: profiler
+    attributes:
+      label: Profiling notes
+      description: Paste profiler observations, allocation hotspots, stack traces, or screenshots.
+      render: text
+      placeholder: |
+        Hot paths:
+        - ...
+        Allocations:
+        - ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: Minimal or anonymized sample
+      description: Paste a reduced/anonymized SQL or DDL sample if available.
+      render: sql
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Application version / commit
+      placeholder: "v30.0.0 / master / commit SHA"
+    validations:
+      required: false
+
+  - type: input
+    id: machine
+    attributes:
+      label: Machine specs
+      placeholder: "CPU, RAM, disk type, Windows version"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submit checklist
+      options:
+        - label: I included at least one measurement or rough estimate.
+          required: true
+        - label: I described the input size or schema size.
+          required: false
+        - label: I included profiler notes or screenshots if available.
+          required: false

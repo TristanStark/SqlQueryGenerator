@@ -1,0 +1,145 @@
+name: Release task
+description: Track a release, hotfix, packaging task, or version delivery checklist.
+title: "[RELEASE] "
+labels: ["type: release", "area: packaging", "status: ready"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to prepare a version release or hotfix.
+
+        This issue should be linked to a milestone such as `v30.0.0`, `v30.1.0`, or `v30.1.1`.
+
+  - type: input
+    id: version
+    attributes:
+      label: Target version
+      description: Release version to prepare.
+      placeholder: "v30.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: release-type
+    attributes:
+      label: Release type
+      options:
+        - Major feature release
+        - Minor feature release
+        - Patch / hotfix
+        - Pre-release
+        - Internal test build
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Release scope
+      description: What should be included in this release?
+      placeholder: |
+        - CREATE VIEW support
+        - Multiple HAVING support
+        - Raw SQL presets
+        - Reverse SQL improvements
+        - Performance improvements for large DDL search
+    validations:
+      required: true
+
+  - type: textarea
+    id: linked-issues
+    attributes:
+      label: Linked issues / pull requests
+      description: List the issues and PRs that must be included.
+      placeholder: |
+        - Closes #12
+        - Closes #13
+        - Includes #14
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: quality-checklist
+    attributes:
+      label: Quality checklist
+      options:
+        - label: All planned issues are closed or explicitly deferred.
+          required: true
+        - label: CI passes on the release branch or master.
+          required: true
+        - label: Unit tests pass.
+          required: true
+        - label: Manual WPF smoke test completed.
+          required: true
+        - label: Parser/regression tests were run on representative SQL/DDL samples.
+          required: false
+        - label: Performance-sensitive changes were checked on a large schema.
+          required: false
+        - label: Documentation was updated.
+          required: true
+        - label: CHANGELOG.md was updated.
+          required: true
+
+  - type: checkboxes
+    id: packaging-checklist
+    attributes:
+      label: Packaging checklist
+      options:
+        - label: Portable win-x64 package was generated.
+          required: true
+        - label: Single-file executable was generated if required.
+          required: false
+        - label: Generated artifacts were tested outside Visual Studio.
+          required: true
+        - label: Version number is visible or documented.
+          required: false
+        - label: Release assets are attached to the GitHub release.
+          required: true
+
+  - type: textarea
+    id: release-notes
+    attributes:
+      label: Draft release notes
+      description: Paste or link the release notes draft.
+      placeholder: |
+        ## Added
+        - ...
+
+        ## Changed
+        - ...
+
+        ## Fixed
+        - ...
+
+        ## Performance
+        - ...
+
+        ## Known limitations
+        - ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: known-limitations
+    attributes:
+      label: Known limitations / deferred work
+      description: What is intentionally not fixed or not included in this release?
+      placeholder: |
+        - Reverse SQL parsing remains heuristic for vendor-specific syntax.
+        - Some complex Oracle constructs are not fully supported yet.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: final-checklist
+    attributes:
+      label: Final release checklist
+      options:
+        - label: Tag was created with the expected version.
+          required: false
+        - label: GitHub Release was created.
+          required: false
+        - label: Release notes were reviewed.
+          required: false
+        - label: Release was downloaded and tested from GitHub.
+          required: false
