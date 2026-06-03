@@ -675,7 +675,7 @@ public sealed class ForeignKeyInferer
     /// <returns>Résultat du traitement.</returns>
     private static IEnumerable<string> RemoveCommonTablePrefixes(string normalizedTableName)
     {
-        string[] prefixes = ["T_", "TB_", "TBL_", "REF_", "DIM_", "D_", "R_"];
+        string[] prefixes = new[] { "T_", "TB_", "TBL_", "REF_", "DIM_", "D_", "R_" };
         foreach (string? prefix in prefixes)
         {
             if (normalizedTableName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && normalizedTableName.Length > prefix.Length)
@@ -735,7 +735,7 @@ public sealed class ForeignKeyInferer
             return string.Empty;
         }
 
-        string[] prefixes = ["FK_", "ID_", "IDEN_", "IDENT_"];
+        string[] prefixes = new[] { "FK_", "ID_", "IDEN_", "IDENT_" };
         foreach (string? prefix in prefixes)
         {
             if (normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && normalized.Length > prefix.Length)
@@ -745,7 +745,7 @@ public sealed class ForeignKeyInferer
             }
         }
 
-        string[] suffixes = ["_IDEN", "_IDENT", "_ID", "_CODE"];
+        string[] suffixes = new[] { "_IDEN", "_IDENT", "_ID", "_CODE" };
         foreach (string? suffix in suffixes)
         {
             if (normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) && normalized.Length > suffix.Length)

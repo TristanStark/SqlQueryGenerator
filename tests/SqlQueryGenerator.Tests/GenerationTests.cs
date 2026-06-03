@@ -687,3 +687,66 @@ public sealed class GenerationV26Tests
         Assert.DoesNotContain("PNJ.\"*\"", result.Sql);
     }
 }
+
+/// <summary>
+/// Contient les tests de génération SQL ajoutés pour la v30.
+/// </summary>
+public sealed class GenerationV30Tests
+{
+    /// <summary>
+    /// Vérifie qu'une sous-requête structurée peut contenir plusieurs conditions HAVING.
+    /// </summary>
+    [Fact]
+    public void Generate_SubqueryWithMultipleHaving_EmitsEveryHavingPredicate()
+    {
+        const string sql = @"CREATE TABLE SALES (category TEXT, amount INTEGER, id INTEGER);";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+
+        QueryDefinition subquery = new() { BaseTable = "SALES" };
+        subquery.SelectedColumns.Add(new ColumnReference { Table = "SALES", Column = "category" });
+        subquery.GroupBy.Add(new ColumnReference { Table = "SALES", Column = "category" });
+        subquery.Aggregates.Add(new AggregateSelection { Function = AggregateFunction.Count, Column = new ColumnReference { Table = "SALES", Column = "id" }, Alias = "nb" });
+        subquery.Aggregates.Add(new AggregateSelection { Function = AggregateFunction.Sum, Column = new ColumnReference { Table = "SALES", Column = "amount" }, Alias = "total" });
+        subquery.Filters.Add(new FilterCondition { FieldKind = QueryFieldKind.Aggregate, FieldAlias = "nb", Operator = ">", Value = "1" });
+        subquery.Filters.Add(new FilterCondition { FieldKind = QueryFieldKind.Aggregate, FieldAlias = "total", Operator = ">", Value = "100" });
+
+        QueryDefinition query = new() { BaseTable = "SALES" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "SALES", Column = "id" });
+        query.Filters.Add(new FilterCondition
+        {
+            Column = new ColumnReference { Table = "SALES", Column = "category" },
+            Operator = "IN",
+            ValueKind = FilterValueKind.Subquery,
+            SubqueryName = "categories_importantes",
+            Subquery = subquery
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
+
+        Assert.Matches(@"HAVING COUNT\(SALES\.id\) > '?1'?", result.Sql);
+        Assert.Matches(@"AND SUM\(SALES\.amount\) > '?100'?", result.Sql);
+    }
+
+    /// <summary>
+    /// Vérifie que le reverse parser conserve plusieurs HAVING écrits comme expressions d'agrégat brutes.
+    /// </summary>
+    [Fact]
+    public void ReverseParser_MultipleHavingPredicates_AreRegenerated()
+    {
+        const string schemaSql = @"CREATE TABLE SALES (category TEXT, amount INTEGER, id INTEGER);";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(schemaSql);
+        const string querySql = @"
+SELECT SALES.category,
+       COUNT(SALES.id) AS nb,
+       SUM(SALES.amount) AS total
+FROM SALES
+GROUP BY SALES.category
+HAVING COUNT(SALES.id) > 1 AND SUM(SALES.amount) > 100";
+
+        QueryDefinition query = new SqlSelectReverseParser().Parse(querySql);
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
+
+        Assert.Matches(@"HAVING COUNT\(SALES\.id\) > '?1'?", result.Sql);
+        Assert.Matches(@"AND SUM\(SALES\.amount\) > '?100'?", result.Sql);
+    }
+}

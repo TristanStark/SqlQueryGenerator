@@ -744,7 +744,7 @@ public sealed class SqlQueryGeneratorEngine
             score += 0.25;
         }
 
-        string[] suspiciousTokens = ["focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests"];
+        string[] suspiciousTokens = new[] { "focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests" };
         if (tokens.Any(t => suspiciousTokens.Contains(t, StringComparer.OrdinalIgnoreCase)))
         {
             score -= 1.20;
@@ -1134,6 +1134,17 @@ public sealed class SqlQueryGeneratorEngine
     }
 
     /// <summary>
+    /// Exécute le traitement RelationshipConfidence.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="join">Paramètre join.</param>
+    /// <returns>Résultat du traitement.</returns>
+    private static double RelationshipConfidence(DatabaseSchema schema, JoinDefinition join)
+    {
+        return FindRelationship(schema, join)?.Confidence ?? 0.50;
+    }
+
+    /// <summary>
     /// Exécute le traitement JunctionBridgeScore.
     /// </summary>
     /// <param name="schema">Paramètre schema.</param>
@@ -1189,7 +1200,7 @@ public sealed class SqlQueryGeneratorEngine
             score += 0.15;
         }
 
-        string[] suspiciousTokens = ["focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests"];
+        string[] suspiciousTokens = new[] { "focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests" };
         if (tokens.Any(t => suspiciousTokens.Contains(t, StringComparer.OrdinalIgnoreCase)))
         {
             score -= 0.95;
@@ -1658,13 +1669,40 @@ public sealed class SqlQueryGeneratorEngine
     private static string ResolveAggregateExpressionByAlias(QueryDefinition query, string alias, SqlGeneratorOptions options, List<string> warnings)
     {
         AggregateSelection? aggregate = query.Aggregates.FirstOrDefault(a => string.Equals(a.Alias, alias, StringComparison.OrdinalIgnoreCase));
-        if (aggregate is null)
+        if (aggregate is not null)
         {
-            warnings.Add($"Filtre d'agrégat ignoré: l'alias '{alias}' n'existe plus.");
-            return string.Empty;
+            return BuildAggregateExpression(aggregate, options, warnings);
         }
 
-        return BuildAggregateExpression(aggregate, options, warnings);
+        // Reverse-loaded SQL can contain HAVING predicates written directly with aggregate
+        // expressions, for example HAVING COUNT(*) > 1 AND SUM(T.AMOUNT) > 100. In that case
+        // FieldAlias stores the raw aggregate expression rather than a visual aggregate alias.
+        if (LooksLikeRawAggregateExpression(alias))
+        {
+            SqlSafety.EnsureSelectExpressionIsSafe(alias);
+            return alias;
+        }
+
+        warnings.Add($"Filtre d'agrégat ignoré: l'alias ou l'expression '{alias}' n'existe plus.");
+        return string.Empty;
+    }
+
+
+    /// <summary>
+    /// Determines whether a reverse-loaded HAVING expression is a raw aggregate expression that can be emitted safely.
+    /// </summary>
+    /// <param name="expression">Expression captured from a HAVING clause.</param>
+    /// <returns><c>true</c> when the expression looks like an aggregate function call.</returns>
+    private static bool LooksLikeRawAggregateExpression(string expression)
+    {
+        string trimmed = expression.Trim();
+        return trimmed.Contains('(')
+            && trimmed.Contains(')')
+            && (trimmed.StartsWith("COUNT", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("SUM", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("AVG", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("MIN", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("MAX", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -1868,7 +1906,7 @@ public sealed class SqlQueryGeneratorEngine
     private static string IndentSql(string sql, int spaces)
     {
         string prefix = new(' ', spaces);
-        return string.Join(Environment.NewLine, sql.Split(["\r\n", "\n"], StringSplitOptions.None).Select(line => prefix + line));
+        return string.Join(Environment.NewLine, sql.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None).Select(line => prefix + line));
     }
 
     /// <summary>

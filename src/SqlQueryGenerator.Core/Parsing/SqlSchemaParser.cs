@@ -124,7 +124,7 @@ public sealed partial class SqlSchemaParser
     {
         string rawViewName = viewMatch.Groups["name"].Value.Trim();
         (string? schemaName, string? viewName) = SplitQualifiedName(rawViewName);
-        int asIndex = Regex.Match(statement, @"\bAS\b", RegexOptions.IgnoreCase).Index;
+        int asIndex = FindTopLevelKeyword(statement, "AS", viewMatch.Index + viewMatch.Length);
         if (asIndex <= 0)
         {
             schema.Warnings.Add($"Vue {rawViewName} détectée mais clause AS introuvable.");
@@ -155,16 +155,9 @@ public sealed partial class SqlSchemaParser
         }
         else
         {
-            foreach (string column in InferViewColumnsFromSelect(statement))
+            foreach (ColumnDefinition column in InferViewColumnsFromSelect(statement, view.FullName, schema, asIndex))
             {
-                view.Columns.Add(new ColumnDefinition
-                {
-                    TableName = view.FullName,
-                    Name = column,
-                    DataType = "VIEW_EXPR",
-                    Comment = "Colonne inférée depuis le SELECT de la vue",
-                    IsNullable = true
-                });
+                view.Columns.Add(column);
             }
         }
 
@@ -211,7 +204,7 @@ public sealed partial class SqlSchemaParser
 
         return SplitTopLevelComma(statement[(afterName + 1)..close])
             .Select(CleanIdentifier)
-            .Where(c => Regex.IsMatch(c, @"^[A-Za-z_][A-Za-z0-9_$#]*$", RegexOptions.IgnoreCase))
+            .Where(IsReasonableViewColumnName)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
@@ -221,28 +214,233 @@ public sealed partial class SqlSchemaParser
     /// </summary>
     /// <param name="statement">Paramètre statement.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static IReadOnlyList<string> InferViewColumnsFromSelect(string statement)
+    private static IReadOnlyList<ColumnDefinition> InferViewColumnsFromSelect(string statement, string viewFullName, DatabaseSchema schema, int viewAsIndex)
     {
-        Match selectMatch = Regex.Match(statement, @"\bSELECT\b", RegexOptions.IgnoreCase);
-        if (!selectMatch.Success)
+        int selectIndex = FindTopLevelKeyword(statement, "SELECT", viewAsIndex + 2);
+        if (selectIndex < 0)
         {
-            return Array.Empty<string>();
+            return Array.Empty<ColumnDefinition>();
         }
 
-        int fromIndex = FindTopLevelKeyword(statement, "FROM", selectMatch.Index + selectMatch.Length);
-        if (fromIndex <= selectMatch.Index)
+        int fromIndex = FindTopLevelKeyword(statement, "FROM", selectIndex + 6);
+        if (fromIndex <= selectIndex)
         {
-            return Array.Empty<string>();
+            return Array.Empty<ColumnDefinition>();
         }
 
-        string selectList = statement[(selectMatch.Index + selectMatch.Length)..fromIndex];
-        return SplitTopLevelComma(selectList)
-            .Select(TryInferSelectAlias)
-            .Where(c => !string.IsNullOrWhiteSpace(c))
-            .Cast<string>()
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(512)
-            .ToArray();
+        string selectList = statement[(selectIndex + 6)..fromIndex];
+        string fromClause = ExtractViewFromClause(statement, fromIndex);
+        IReadOnlyDictionary<string, string> aliases = ExtractViewTableAliases(fromClause);
+        List<ColumnDefinition> columns = [];
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string selectItem in SplitTopLevelComma(selectList))
+        {
+            string expression = selectItem.Trim();
+            if (expression.Length == 0)
+            {
+                continue;
+            }
+
+            if (TryExpandViewWildcard(expression, aliases, schema, viewFullName, columns, seen))
+            {
+                continue;
+            }
+
+            string? inferredName = TryInferSelectAlias(expression);
+            if (string.IsNullOrWhiteSpace(inferredName) || !seen.Add(inferredName))
+            {
+                continue;
+            }
+
+            ColumnDefinition? sourceColumn = TryResolveViewSourceColumn(expression, aliases, schema);
+            columns.Add(new ColumnDefinition
+            {
+                TableName = viewFullName,
+                Name = inferredName,
+                DataType = sourceColumn?.DataType ?? "VIEW_EXPR",
+                Comment = sourceColumn is null
+                    ? "Expression inférée depuis le SELECT de la vue"
+                    : $"Colonne de vue mappée sur {sourceColumn.TableName}.{sourceColumn.Name}",
+                IsNullable = sourceColumn?.IsNullable ?? true,
+                IsPrimaryKey = sourceColumn?.IsPrimaryKey ?? false
+            });
+        }
+
+        return columns.Take(512).ToArray();
+    }
+
+    /// <summary>
+    /// Extracts the FROM/JOIN part of a view query, stopping before following top-level clauses.
+    /// </summary>
+    /// <param name="statement">Full CREATE VIEW statement.</param>
+    /// <param name="fromIndex">Index of the top-level FROM keyword.</param>
+    /// <returns>FROM clause content without the FROM keyword.</returns>
+    private static string ExtractViewFromClause(string statement, int fromIndex)
+    {
+        int end = FirstPositiveAfter(fromIndex,
+            FindTopLevelKeyword(statement, "WHERE", fromIndex + 4),
+            FindTopLevelKeyword(statement, "GROUP BY", fromIndex + 4),
+            FindTopLevelKeyword(statement, "HAVING", fromIndex + 4),
+            FindTopLevelKeyword(statement, "ORDER BY", fromIndex + 4),
+            FindTopLevelKeyword(statement, "UNION", fromIndex + 4),
+            statement.Length);
+        return statement[(fromIndex + 4)..end].Trim();
+    }
+
+    /// <summary>
+    /// Returns the first candidate index located after a reference point.
+    /// </summary>
+    /// <param name="startIndex">Reference index.</param>
+    /// <param name="candidates">Candidate indexes.</param>
+    /// <returns>The first valid index, or the final fallback value.</returns>
+    private static int FirstPositiveAfter(int startIndex, params int[] candidates)
+    {
+        return candidates.Where(c => c > startIndex).DefaultIfEmpty(candidates.LastOrDefault()).Min();
+    }
+
+    /// <summary>
+    /// Extracts table aliases from a view FROM/JOIN clause for wildcard expansion and simple source-column mapping.
+    /// </summary>
+    /// <param name="fromClause">FROM clause content.</param>
+    /// <returns>Alias-to-table mapping.</returns>
+    private static IReadOnlyDictionary<string, string> ExtractViewTableAliases(string fromClause)
+    {
+        Dictionary<string, string> aliases = new(StringComparer.OrdinalIgnoreCase);
+        foreach (Match match in Regex.Matches(fromClause, @"(?is)(?:^|\bJOIN\b|,)\s*(?<table>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)(?:\s+(?:AS\s+)?(?<alias>[`""\[]?\w+[`""\]]?))?"))
+        {
+            string table = CleanQualifiedIdentifier(match.Groups["table"].Value);
+            if (string.IsNullOrWhiteSpace(table) || IsSqlKeyword(table))
+            {
+                continue;
+            }
+
+            aliases[table] = table;
+            aliases[SqlObjectTail(table)] = table;
+            if (match.Groups["alias"].Success)
+            {
+                string alias = CleanIdentifier(match.Groups["alias"].Value);
+                if (!IsSqlKeyword(alias))
+                {
+                    aliases[alias] = table;
+                }
+            }
+        }
+
+        return aliases;
+    }
+
+    /// <summary>
+    /// Expands <c>*</c> and <c>alias.*</c> projections when the source table is known in the loaded schema.
+    /// </summary>
+    /// <param name="expression">Projection expression.</param>
+    /// <param name="aliases">Alias-to-table mapping from the view FROM clause.</param>
+    /// <param name="schema">Loaded schema.</param>
+    /// <param name="viewFullName">Full view name receiving inferred columns.</param>
+    /// <param name="columns">Target column list.</param>
+    /// <param name="seen">Set of already-emitted view column names.</param>
+    /// <returns><c>true</c> when the expression was a wildcard projection.</returns>
+    private static bool TryExpandViewWildcard(string expression, IReadOnlyDictionary<string, string> aliases, DatabaseSchema schema, string viewFullName, ICollection<ColumnDefinition> columns, ISet<string> seen)
+    {
+        string cleaned = expression.Trim();
+        string? sourceTableName = null;
+        if (cleaned == "*")
+        {
+            sourceTableName = aliases.Values.Distinct(StringComparer.OrdinalIgnoreCase).Count() == 1
+                ? aliases.Values.First()
+                : null;
+        }
+        else if (cleaned.EndsWith(".*", StringComparison.Ordinal))
+        {
+            string prefix = CleanQualifiedIdentifier(cleaned[..^2]);
+            sourceTableName = aliases.TryGetValue(prefix, out string? resolved) ? resolved : prefix;
+        }
+        else
+        {
+            return false;
+        }
+
+        TableDefinition? sourceTable = string.IsNullOrWhiteSpace(sourceTableName) ? null : schema.FindTable(sourceTableName);
+        if (sourceTable is null)
+        {
+            return true;
+        }
+
+        foreach (ColumnDefinition sourceColumn in sourceTable.Columns)
+        {
+            if (!seen.Add(sourceColumn.Name))
+            {
+                continue;
+            }
+
+            columns.Add(sourceColumn with
+            {
+                TableName = viewFullName,
+                Comment = $"Colonne exposée par la vue depuis {sourceTable.FullName}.{sourceColumn.Name}"
+            });
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Resolves a simple view projection to its source column when possible.
+    /// </summary>
+    /// <param name="expression">Projection expression.</param>
+    /// <param name="aliases">Alias-to-table mapping.</param>
+    /// <param name="schema">Loaded schema.</param>
+    /// <returns>The source column, or <c>null</c> for expressions.</returns>
+    private static ColumnDefinition? TryResolveViewSourceColumn(string expression, IReadOnlyDictionary<string, string> aliases, DatabaseSchema schema)
+    {
+        (string rawExpression, _) = SplitViewAlias(expression);
+        string cleaned = CleanQualifiedIdentifier(rawExpression);
+        if (cleaned.Contains('(') || cleaned.Contains(' ') || cleaned.Contains('+') || cleaned.Contains('-') || cleaned.Contains('/') || cleaned.Contains('*'))
+        {
+            return null;
+        }
+
+        string[] parts = cleaned.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 1)
+        {
+            ColumnDefinition[] matches = aliases.Values
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(table => schema.FindColumn(table, parts[0]))
+                .Where(column => column is not null)
+                .Cast<ColumnDefinition>()
+                .Take(2)
+                .ToArray();
+            return matches.Length == 1 ? matches[0] : null;
+        }
+
+        string prefix = string.Join('.', parts[..^1]);
+        string table = aliases.TryGetValue(prefix, out string? resolved) ? resolved : prefix;
+        return schema.FindColumn(table, parts[^1]);
+    }
+
+    /// <summary>
+    /// Splits a view projection expression and its optional alias.
+    /// </summary>
+    /// <param name="expression">Projection expression.</param>
+    /// <returns>Raw expression and optional alias.</returns>
+    private static (string Expression, string? Alias) SplitViewAlias(string expression)
+    {
+        Match asMatch = Regex.Match(expression.Trim(), @"(?is)^(.+?)\s+AS\s+(?<alias>(?:`[^`]+`|""[^""]+""|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_$#]*))\s*$");
+        if (asMatch.Success)
+        {
+            return (asMatch.Groups[1].Value.Trim(), CleanIdentifier(asMatch.Groups["alias"].Value));
+        }
+
+        IReadOnlyList<string> tokens = TokenizeDefinition(expression.Trim());
+        if (tokens.Count >= 2)
+        {
+            string last = CleanIdentifier(tokens[^1]);
+            if (IsReasonableViewColumnName(last) && !IsSqlKeyword(last))
+            {
+                return (string.Join(' ', tokens.Take(tokens.Count - 1)), last);
+            }
+        }
+
+        return (expression.Trim(), null);
     }
 
     /// <summary>
@@ -295,33 +493,46 @@ public sealed partial class SqlSchemaParser
             return null;
         }
 
-        Match asMatch = Regex.Match(cleaned, @"\bAS\s+(?<alias>[`""\[]?\w+[`""\]]?)\s*$", RegexOptions.IgnoreCase);
-        if (asMatch.Success)
+        (string rawExpression, string? alias) = SplitViewAlias(cleaned);
+        if (!string.IsNullOrWhiteSpace(alias))
         {
-            return CleanIdentifier(asMatch.Groups["alias"].Value);
+            return alias;
         }
 
-        IReadOnlyList<string> tokens = TokenizeDefinition(cleaned);
-        if (tokens.Count >= 2)
-        {
-            string last = CleanIdentifier(tokens[^1]);
-            if (!string.Equals(last, "DESC", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(last, "ASC", StringComparison.OrdinalIgnoreCase)
-                && Regex.IsMatch(last, @"^[A-Za-z_][A-Za-z0-9_$#]*$", RegexOptions.IgnoreCase))
-            {
-                return last;
-            }
-        }
-
-        string[] dotParts = cleaned.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        string[] dotParts = rawExpression.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         string candidate = CleanIdentifier(dotParts[^1]);
-        if (Regex.IsMatch(candidate, @"^[A-Za-z_][A-Za-z0-9_$#]*$", RegexOptions.IgnoreCase))
-        {
-            return candidate;
-        }
-
-        return null;
+        return IsReasonableViewColumnName(candidate) ? candidate : null;
     }
+
+    /// <summary>
+    /// Determines whether a view column name is usable in the application model.
+    /// </summary>
+    /// <param name="columnName">Column name candidate.</param>
+    /// <returns><c>true</c> when the name is non-empty and not an obvious SQL expression.</returns>
+    private static bool IsReasonableViewColumnName(string columnName)
+    {
+        string cleaned = CleanIdentifier(columnName);
+        return cleaned.Length > 0
+            && !cleaned.Contains('(')
+            && !cleaned.Contains(')')
+            && !cleaned.Contains(',')
+            && !cleaned.Contains(';')
+            && !IsSqlKeyword(cleaned);
+    }
+
+    /// <summary>
+    /// Returns the last segment of a possibly schema-qualified SQL object name.
+    /// </summary>
+    /// <param name="name">Object name.</param>
+    /// <returns>Last object segment.</returns>
+    private static string SqlObjectTail(string name) => CleanIdentifier(name.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault() ?? name);
+
+    /// <summary>
+    /// Determines whether a token is a clause keyword rather than a table alias or column name.
+    /// </summary>
+    /// <param name="token">Token to test.</param>
+    /// <returns><c>true</c> for common SQL keywords.</returns>
+    private static bool IsSqlKeyword(string token) => CleanIdentifier(token).ToUpperInvariant() is "AS" or "ON" or "WHERE" or "GROUP" or "BY" or "HAVING" or "ORDER" or "INNER" or "LEFT" or "RIGHT" or "FULL" or "JOIN" or "OUTER" or "CROSS" or "UNION" or "SELECT" or "FROM" or "DESC" or "ASC";
 
     /// <summary>
     /// Exécute le traitement TryParseCreateIndex.

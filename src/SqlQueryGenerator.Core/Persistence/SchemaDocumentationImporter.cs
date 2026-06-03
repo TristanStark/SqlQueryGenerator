@@ -199,7 +199,7 @@ public sealed class SchemaDocumentationImporter
     /// <returns>Résultat du traitement.</returns>
     private static char DetectDelimiter(string headerLine)
     {
-        char[] candidates = ['\t', ';', ',', '|'];
+        char[] candidates = new[] { '\t', ';', ',', '|' };
         return candidates
             .OrderByDescending(c => headerLine.Count(ch => ch == c))
             .First();

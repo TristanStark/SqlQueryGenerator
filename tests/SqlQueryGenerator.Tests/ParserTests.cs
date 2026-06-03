@@ -125,3 +125,51 @@ GROUP BY age;
         Assert.NotNull(view.FindColumn("nb_pnj"));
     }
 }
+
+/// <summary>
+/// Contient les tests de parsing de vues ajoutés pour la v30.
+/// </summary>
+public sealed class ParserV30Tests
+{
+    /// <summary>
+    /// Vérifie que les vues avec SELECT * exposent les colonnes de la table source connue.
+    /// </summary>
+    [Fact]
+    public void Parse_ViewSelectStar_ExpandsSourceTableColumns()
+    {
+        const string sql = @"
+CREATE TABLE pnj (id INTEGER PRIMARY KEY, nom TEXT, age INTEGER);
+CREATE VIEW v_pnj AS SELECT * FROM pnj;
+";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        TableDefinition view = schema.FindTable("v_pnj")!;
+
+        Assert.True(view.IsView);
+        Assert.NotNull(view.FindColumn("id"));
+        Assert.NotNull(view.FindColumn("nom"));
+        Assert.NotNull(view.FindColumn("age"));
+    }
+
+    /// <summary>
+    /// Vérifie que les vues avec CTE et alias explicites lisent le SELECT final plutôt que le SELECT interne du CTE.
+    /// </summary>
+    [Fact]
+    public void Parse_ViewWithCte_UsesFinalSelectColumns()
+    {
+        const string sql = @"
+CREATE TABLE pnj (id INTEGER PRIMARY KEY, age INTEGER);
+CREATE VIEW v_age AS
+WITH src AS (SELECT id, age FROM pnj)
+SELECT age AS age_final, COUNT(id) AS nb_pnj
+FROM src
+GROUP BY age
+HAVING COUNT(id) > 1 AND MAX(id) > 10;
+";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        TableDefinition view = schema.FindTable("v_age")!;
+
+        Assert.NotNull(view.FindColumn("age_final"));
+        Assert.NotNull(view.FindColumn("nb_pnj"));
+        Assert.Null(view.FindColumn("id"));
+    }
+}
