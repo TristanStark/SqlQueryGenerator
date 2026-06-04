@@ -9,6 +9,7 @@ using SqlQueryGenerator.Core.Validation;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
@@ -29,7 +30,9 @@ public sealed class MainViewModel : ObservableObject
     /// Reverse-engineers pasted SELECT SQL into the visual query model when possible.
     /// </summary>
     /// <value>Reusable best-effort SQL reverse parser.</value>
-    private readonly SqlSelectReverseParser _reverseParser = new();
+    private readonly ReverseSqlImportService _reverseImportService = new();
+    private readonly SqlRewriteSuggestionService _rewriteSuggestionService = new();
+    private readonly DdlCommandExportService _ddlCommandExportService = new();
     /// <summary>
     /// Exécute le traitement new.
     /// </summary>
@@ -112,6 +115,8 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Raw SQL text pasted or loaded by the user.</value>
     private string _rawSqlText = string.Empty;
+    private string _ddlSchemaName = "main";
+    private string _ddlExportSql = string.Empty;
     /// <summary>
     /// Stocke la valeur interne  selectedSavedQuery.
     /// </summary>
@@ -205,6 +210,8 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de _columnNamesByTable.</value>
     private IReadOnlyDictionary<string, IReadOnlyList<string>> _columnNamesByTable = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _tableAliases = new(StringComparer.OrdinalIgnoreCase);
+    private DdlExportDialect _ddlExportDialect = DdlExportDialect.SQLite;
 
     /// <summary>
     /// Maximum number of column rows rendered by a search to keep WPF memory usage bounded on large schemas.
@@ -291,7 +298,10 @@ public sealed class MainViewModel : ObservableObject
         SaveRawSqlPresetCommand = new RelayCommand(SaveRawSqlPreset);
         LoadSelectedRawSqlCommand = new RelayCommand(_ => LoadSelectedRawSqlPreset(), _ => SelectedSavedQuery is not null);
         ReverseEngineerRawSqlCommand = new RelayCommand(ReverseEngineerRawSql);
+        RewriteRawSqlCommand = new RelayCommand(RewriteRawSql);
         UseGeneratedSqlAsRawInputCommand = new RelayCommand(() => RawSqlText = GeneratedSql);
+        GenerateDdlExportCommand = new RelayCommand(GenerateDdlExportSql);
+        OpenHelpCommand = new RelayCommand(OpenHelpDocumentation);
         ReloadSavedQueriesCommand = new RelayCommand(ReloadSavedQueries);
         LoadSelectedQueryCommand = new RelayCommand(_ => LoadSelectedSavedQuery(), _ => SelectedSavedQuery is not null);
         AddSelectedSavedQueryAsSubqueryFilterCommand = new RelayCommand(_ => AddSelectedSavedQueryAsSubqueryFilter(), _ => SelectedSavedQuery is not null);
@@ -400,6 +410,7 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de Dialects.</value>
     public Array Dialects => Enum.GetValues(typeof(SqlDialect));
+    public Array DdlExportDialects => Enum.GetValues(typeof(DdlExportDialect));
     /// <summary>
     /// Obtient ou définit JoinTypes.
     /// </summary>
@@ -582,10 +593,25 @@ public sealed class MainViewModel : ObservableObject
     /// <value>Command bound to the reverse SQL button.</value>
     public RelayCommand ReverseEngineerRawSqlCommand { get; }
     /// <summary>
+    /// Rewrites the raw SQL editor content into a cleaner SQL statement without loading it into the builder.
+    /// </summary>
+    /// <value>Command bound to the SQL rewrite button.</value>
+    public RelayCommand RewriteRawSqlCommand { get; }
+    /// <summary>
     /// Copies the currently generated SQL into the raw SQL editor.
     /// </summary>
     /// <value>Command bound to the generated-to-raw helper button.</value>
     public RelayCommand UseGeneratedSqlAsRawInputCommand { get; }
+    /// <summary>
+    /// Builds and copies a DDL extraction helper command for Oracle or SQLite.
+    /// </summary>
+    /// <value>Command bound to the DDL helper button.</value>
+    public RelayCommand GenerateDdlExportCommand { get; }
+    /// <summary>
+    /// Opens the user documentation.
+    /// </summary>
+    /// <value>Command bound to the Help button.</value>
+    public RelayCommand OpenHelpCommand { get; }
     /// <summary>
     /// Stocke la valeur interne ReloadSavedQueriesCommand.
     /// </summary>
@@ -652,6 +678,25 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Raw SQL editor content.</value>
     public string RawSqlText { get => _rawSqlText; set => SetProperty(ref _rawSqlText, value); }
+    /// <summary>
+    /// Gets or sets the schema owner or database name used for DDL helper generation.
+    /// </summary>
+    /// <value>Oracle schema owner or SQLite attached database name.</value>
+    public string DdlSchemaName { get => _ddlSchemaName; set => SetProperty(ref _ddlSchemaName, value); }
+    /// <summary>
+    /// Gets or sets the source engine targeted by the DDL helper command.
+    /// </summary>
+    /// <value>DDL export dialect.</value>
+    public DdlExportDialect DdlExportDialect
+    {
+        get => _ddlExportDialect;
+        set => SetProperty(ref _ddlExportDialect, value);
+    }
+    /// <summary>
+    /// Gets or sets the generated DDL helper SQL.
+    /// </summary>
+    /// <value>Read-only helper SQL shown to the user and copied on demand.</value>
+    public string DdlExportSql { get => _ddlExportSql; set => SetProperty(ref _ddlExportSql, value); }
 
     /// <summary>
     /// Stocke la valeur interne SelectedSavedQuery.
@@ -1638,6 +1683,15 @@ public sealed class MainViewModel : ObservableObject
             LimitRows = LimitRows is > 0 ? LimitRows : null
         };
 
+        foreach ((string table, string alias) in _tableAliases.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            query.TableAliases.Add(new TableAliasDefinition
+            {
+                Table = table,
+                Alias = alias
+            });
+        }
+
         foreach (SelectColumnRowViewModel row in SelectedColumns)
         {
             query.SelectedColumns.Add(new ColumnReference { Table = row.Table, Column = row.Column, Alias = BlankToNull(row.Alias) });
@@ -1865,10 +1919,10 @@ public sealed class MainViewModel : ObservableObject
         string value = raw.Trim();
         if (kind == FilterValueKind.Parameter)
         {
-            return value.StartsWith(':') || value.StartsWith('@') || value.StartsWith('?') ? value : ":" + value;
+            return value.StartsWith(':') || value.StartsWith('@') || value.StartsWith('?') || value.StartsWith('&') ? value : ":" + value;
         }
 
-        return value.StartsWith(':') || value.StartsWith('@') || value.StartsWith('?') ? value : null;
+        return value.StartsWith(':') || value.StartsWith('@') || value.StartsWith('?') || value.StartsWith('&') ? value : null;
     }
 
     /// <summary>
@@ -1887,6 +1941,7 @@ public sealed class MainViewModel : ObservableObject
             Joins.Clear();
             CustomColumns.Clear();
             Parameters.Clear();
+            _tableAliases.Clear();
         }
         finally
         {
@@ -1999,15 +2054,83 @@ public sealed class MainViewModel : ObservableObject
     {
         try
         {
-            QueryDefinition query = _reverseParser.Parse(RawSqlText);
+            ReverseSqlImportResult imported = _reverseImportService.Import(RawSqlText);
+            QueryDefinition query = imported.Query;
             query.Name = BlankToNull(QueryName) ?? "requete_reverse";
             query.Description = BlankToNull(QueryDescription) ?? "Requête reconstruite depuis du SQL brut.";
             LoadQueryDefinition(query, query.Name, query.Description);
             Status = "Reverse SQL terminé: les clauses reconnues ont été replacées dans le constructeur visuel.";
+            Warnings = imported.Warnings.Count == 0
+                ? "Reverse SQL termine sans avertissement."
+                : string.Join(Environment.NewLine, imported.Warnings);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
             Warnings = "Reverse SQL impossible: " + ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Rewrites the raw SQL editor content into a cleaner canonical SQL statement.
+    /// </summary>
+    private void RewriteRawSql()
+    {
+        try
+        {
+            SqlRewriteResult result = _rewriteSuggestionService.Rewrite(RawSqlText, new SqlGeneratorOptions
+            {
+                Dialect = Dialect,
+                QuoteIdentifiers = QuoteIdentifiers,
+                AutoGroupSelectedColumnsWhenAggregating = AutoGroupSelectedColumns,
+                EmitOptimizationComments = false
+            });
+
+            GeneratedSql = result.RewrittenSql;
+            Status = $"Réécriture SQL terminée: {result.AppliedTransformations.Count} transformation(s) appliquée(s).";
+            Warnings = result.Warnings.Count == 0
+                ? "Réécriture SQL terminée sans avertissement."
+                : string.Join(Environment.NewLine, result.Warnings);
+            QueryPurpose = "SQL réécrit sans modifier l'éditeur brut. Compare le SQL source et la version modernisée.";
+            PerformanceReport = result.AppliedTransformations.Count == 0
+                ? "Aucune transformation conservatrice n'a été appliquée."
+                : string.Join(", ", result.AppliedTransformations);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            Warnings = "Réécriture SQL impossible: " + ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Builds and copies a helper SQL command that extracts DDL from Oracle or SQLite.
+    /// </summary>
+    private void GenerateDdlExportSql()
+    {
+        DdlExportSql = _ddlCommandExportService.BuildCommand(DdlExportDialect, DdlSchemaName);
+        Clipboard.SetText(DdlExportSql);
+        Status = "Commande de récupération du DDL générée et copiée dans le presse-papier.";
+        Warnings = "Vérifie le nom de schéma/base avant exécution dans ton client SQL.";
+    }
+
+    /// <summary>
+    /// Opens the documentation used by the Help button.
+    /// </summary>
+    private void OpenHelpDocumentation()
+    {
+        try
+        {
+            string localPath = Path.Combine(Environment.CurrentDirectory, ApplicationDocumentation.LocalHelpRelativePath);
+            string target = File.Exists(localPath) ? localPath : ApplicationDocumentation.RemoteHelpUrl;
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = target,
+                UseShellExecute = true
+            });
+            Status = "Documentation ouverte.";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or FileNotFoundException)
+        {
+            Warnings = "Impossible d'ouvrir la documentation: " + ex.Message;
         }
     }
 
@@ -2117,6 +2240,12 @@ public sealed class MainViewModel : ObservableObject
             Joins.Clear();
             CustomColumns.Clear();
             Parameters.Clear();
+            _tableAliases.Clear();
+
+            foreach (TableAliasDefinition alias in query.TableAliases)
+            {
+                _tableAliases[alias.Table] = alias.Alias;
+            }
 
             foreach (ColumnReference c in query.SelectedColumns) SelectedColumns.Add(new SelectColumnRowViewModel { Table = c.Table, Column = c.Column, Alias = c.Alias ?? string.Empty });
             foreach (FilterCondition f in query.Filters)

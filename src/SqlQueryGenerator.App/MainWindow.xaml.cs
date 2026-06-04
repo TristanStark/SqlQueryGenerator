@@ -23,6 +23,7 @@ public partial class MainWindow : Window
     /// </summary>
     /// <value>Colonne d'ancrage utilisée par Shift+clic, ou <c>null</c> si aucune colonne n'a encore été choisie.</value>
     private ColumnItemViewModel? _bulkSelectionAnchor;
+    private DdlExportWindow? _ddlExportWindow;
 
     /// <summary>
     /// Initialise une nouvelle instance de MainWindow.
@@ -126,6 +127,27 @@ public partial class MainWindow : Window
     private void CopySql_Click(object sender, RoutedEventArgs e)
     {
         Clipboard.SetText(ViewModel.GeneratedSql ?? string.Empty);
+    }
+
+    /// <summary>
+    /// Opens the dedicated DDL export popup and reuses it when already visible.
+    /// </summary>
+    /// <param name="sender">Event source.</param>
+    /// <param name="e">Event arguments.</param>
+    private void OpenDdlExportWindow_Click(object sender, RoutedEventArgs e)
+    {
+        if (_ddlExportWindow is not null)
+        {
+            _ddlExportWindow.Activate();
+            return;
+        }
+
+        _ddlExportWindow = new DdlExportWindow(DataContext)
+        {
+            Owner = this
+        };
+        _ddlExportWindow.Closed += (_, _) => _ddlExportWindow = null;
+        _ddlExportWindow.Show();
     }
 
     /// <summary>

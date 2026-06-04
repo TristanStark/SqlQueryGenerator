@@ -45,6 +45,7 @@ public sealed class SqlSelectReverseParser
 
         ParseFromAndJoins(fromText, query, aliases);
         whereText = ExtractLegacyOracleJoinPredicates(whereText, query, aliases);
+        whereText = ExtractImplicitInnerJoinPredicates(whereText, query, aliases);
         ParseSelectItems(selectText, query, aliases);
         ParsePredicates(whereText, query, aliases, asHaving: false);
         ParseGroupBy(groupText, query, aliases);
@@ -91,12 +92,12 @@ public sealed class SqlSelectReverseParser
         Match firstJoin = Regex.Match(fromText, @"\b(?:INNER\s+|LEFT\s+|LEFT\s+OUTER\s+)?JOIN\b", RegexOptions.IgnoreCase);
         string basePart = firstJoin.Success ? fromText[..firstJoin.Index].Trim() : fromText.Trim();
         string[] baseTables = SplitTopLevelComma(basePart).Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
-        string baseTable = ParseTableReference(baseTables.FirstOrDefault() ?? basePart, aliases);
+        string baseTable = ParseTableReference(baseTables.FirstOrDefault() ?? basePart, aliases, query);
         query.BaseTable = baseTable;
 
         foreach (string extraTable in baseTables.Skip(1))
         {
-            ParseTableReference(extraTable, aliases);
+            ParseTableReference(extraTable, aliases, query);
         }
 
         if (!firstJoin.Success)
@@ -109,7 +110,7 @@ public sealed class SqlSelectReverseParser
         foreach (Match joinMatch in joinRegex.Matches(joinsText))
         {
             JoinType joinType = joinMatch.Groups[1].Value.StartsWith("LEFT", StringComparison.OrdinalIgnoreCase) ? JoinType.Left : JoinType.Inner;
-            string toTable = ParseTableReference(joinMatch.Groups[2].Value.Trim(), aliases);
+            string toTable = ParseTableReference(joinMatch.Groups[2].Value.Trim(), aliases, query);
             string onClause = joinMatch.Groups[3].Value.Trim();
             string[] predicates = SplitTopLevelByKeyword(onClause, "AND").ToArray();
             JoinDefinition? join = null;
@@ -256,6 +257,37 @@ public sealed class SqlSelectReverseParser
     }
 
     /// <summary>
+    /// Converts implicit inner join predicates written in WHERE into explicit join definitions.
+    /// Converted predicates are removed from the returned WHERE text.
+    /// </summary>
+    /// <param name="whereText">Raw WHERE clause text.</param>
+    /// <param name="query">Query model being populated.</param>
+    /// <param name="aliases">Alias-to-table map.</param>
+    /// <returns>WHERE text without extracted join predicates.</returns>
+    private static string ExtractImplicitInnerJoinPredicates(string whereText, QueryDefinition query, Dictionary<string, string> aliases)
+    {
+        if (string.IsNullOrWhiteSpace(whereText))
+        {
+            return whereText;
+        }
+
+        List<string> keptPredicates = [];
+        foreach (string predicate in SplitTopLevelByKeyword(whereText, "AND"))
+        {
+            string trimmed = predicate.Trim();
+            if (!TryParseImplicitInnerJoinPredicate(trimmed, query, aliases, out JoinDefinition? join))
+            {
+                keptPredicates.Add(trimmed);
+                continue;
+            }
+
+            AddOrMergeJoin(query, join!);
+        }
+
+        return string.Join(" AND ", keptPredicates.Where(p => !string.IsNullOrWhiteSpace(p)));
+    }
+
+    /// <summary>
     /// Parses one Oracle legacy outer-join equality predicate, for example <c>A.ID = B.A_ID(+)</c>.
     /// </summary>
     /// <param name="predicate">Predicate text.</param>
@@ -310,6 +342,86 @@ public sealed class SqlSelectReverseParser
         string cleaned = Regex.Replace(trimmed, @"\(\+\)\s*$", string.Empty).Trim();
         column = ParseColumnReference(cleaned, aliases);
         return column is not null;
+    }
+
+    /// <summary>
+    /// Parses one implicit inner join predicate such as <c>C.ID = O.CLIENT_ID</c>.
+    /// </summary>
+    /// <param name="predicate">Predicate text.</param>
+    /// <param name="query">Query model being populated.</param>
+    /// <param name="aliases">Alias-to-table map.</param>
+    /// <param name="join">Parsed join when successful.</param>
+    /// <returns><c>true</c> when the predicate is safely interpreted as a join.</returns>
+    private static bool TryParseImplicitInnerJoinPredicate(string predicate, QueryDefinition query, Dictionary<string, string> aliases, out JoinDefinition? join)
+    {
+        join = null;
+        if (predicate.Contains("(+)", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        Match eq = Regex.Match(predicate, @"(?is)^(.+?)\s*=\s*(.+?)$");
+        if (!eq.Success)
+        {
+            return false;
+        }
+
+        ColumnReference? left = ParseColumnReference(eq.Groups[1].Value.Trim(), aliases);
+        ColumnReference? right = ParseColumnReference(eq.Groups[2].Value.Trim(), aliases);
+        if (left is null || right is null || string.Equals(left.Table, right.Table, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        (ColumnReference From, ColumnReference To) oriented = OrientImplicitJoin(query, left, right);
+        join = new JoinDefinition
+        {
+            FromTable = oriented.From.Table,
+            FromColumn = oriented.From.Column,
+            ToTable = oriented.To.Table,
+            ToColumn = oriented.To.Column,
+            JoinType = JoinType.Inner
+        };
+        return true;
+    }
+
+    /// <summary>
+    /// Chooses a deterministic join orientation so the generated SQL starts from the current base table when possible.
+    /// </summary>
+    /// <param name="query">Query model being populated.</param>
+    /// <param name="left">Left column from the predicate.</param>
+    /// <param name="right">Right column from the predicate.</param>
+    /// <returns>Oriented join endpoints.</returns>
+    private static (ColumnReference From, ColumnReference To) OrientImplicitJoin(QueryDefinition query, ColumnReference left, ColumnReference right)
+    {
+        if (string.Equals(query.BaseTable, left.Table, StringComparison.OrdinalIgnoreCase))
+        {
+            return (left, right);
+        }
+
+        if (string.Equals(query.BaseTable, right.Table, StringComparison.OrdinalIgnoreCase))
+        {
+            return (right, left);
+        }
+
+        bool leftAlreadyConnected = query.Joins.Any(j =>
+            string.Equals(j.FromTable, left.Table, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(j.ToTable, left.Table, StringComparison.OrdinalIgnoreCase));
+        bool rightAlreadyConnected = query.Joins.Any(j =>
+            string.Equals(j.FromTable, right.Table, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(j.ToTable, right.Table, StringComparison.OrdinalIgnoreCase));
+
+        if (leftAlreadyConnected && !rightAlreadyConnected)
+        {
+            return (left, right);
+        }
+
+        if (rightAlreadyConnected && !leftAlreadyConnected)
+        {
+            return (right, left);
+        }
+
+        return (left, right);
     }
 
     /// <summary>
@@ -485,7 +597,7 @@ public sealed class SqlSelectReverseParser
     /// <param name="raw">Raw table reference.</param>
     /// <param name="aliases">Alias-to-table map to update.</param>
     /// <returns>Resolved table name.</returns>
-    private static string ParseTableReference(string raw, Dictionary<string, string> aliases)
+    private static string ParseTableReference(string raw, Dictionary<string, string> aliases, QueryDefinition? query = null)
     {
         string[] parts = raw.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         string table = TrimIdentifierQuotes(parts.FirstOrDefault() ?? string.Empty);
@@ -493,11 +605,40 @@ public sealed class SqlSelectReverseParser
         {
             string alias = parts[^1].Equals("AS", StringComparison.OrdinalIgnoreCase) ? table : TrimIdentifierQuotes(parts[^1]);
             aliases[alias] = table;
+            if (!string.Equals(alias, table, StringComparison.OrdinalIgnoreCase))
+            {
+                RegisterTableAlias(query, table, alias);
+            }
         }
 
         aliases[table] = table;
         aliases[SqlObjectTail(table)] = table;
         return table;
+    }
+
+    /// <summary>
+    /// Stores one table alias on the query if it is not already registered.
+    /// </summary>
+    /// <param name="query">Query being populated.</param>
+    /// <param name="table">Real table name.</param>
+    /// <param name="alias">SQL alias.</param>
+    private static void RegisterTableAlias(QueryDefinition? query, string table, string alias)
+    {
+        if (query is null || string.IsNullOrWhiteSpace(alias))
+        {
+            return;
+        }
+
+        if (query.TableAliases.Any(a => string.Equals(a.Table, table, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        query.TableAliases.Add(new TableAliasDefinition
+        {
+            Table = table,
+            Alias = alias
+        });
     }
 
     /// <summary>

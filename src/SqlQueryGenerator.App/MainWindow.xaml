@@ -93,6 +93,8 @@
                     <Button Content="Coller schéma" Click="PasteSchema_Click" ToolTip="Colle un schéma depuis le presse-papier." />
                     <Button Content="Copier SQL" Click="CopySql_Click" ToolTip="Copie la requête générée dans le presse-papier." />
                     <Button Content="Vider requête" Command="{Binding ClearQueryCommand}" />
+                    <Button Content="Générer l'export DDL" Click="OpenDdlExportWindow_Click" ToolTip="Ouvre la fenêtre dédiée à l'export DDL Oracle/SQLite." />
+                    <Button Content="Aide" Command="{Binding OpenHelpCommand}" ToolTip="Ouvre la documentation." />
                 </WrapPanel>
 
                 <TextBlock Grid.Column="1"
@@ -106,6 +108,7 @@
                 <Border Grid.Column="2" Background="#1F2937" CornerRadius="6" Padding="10,6" VerticalAlignment="Center">
                     <TextBlock Text="{Binding SchemaSummary}" Foreground="#E5E7EB" FontWeight="SemiBold" />
                 </Border>
+
             </Grid>
         </Border>
 
@@ -620,7 +623,6 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="1.15*" MinHeight="150" />
                                         <RowDefinition Height="*" />
                                     </Grid.RowDefinitions>
 
@@ -661,28 +663,8 @@
                                         </DockPanel>
                                     </GroupBox>
 
-                                    <GroupBox Grid.Row="2" Header="SQL brut / reverse engineering" Margin="4">
-                                        <DockPanel LastChildFill="True">
-                                            <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                                                <Button Content="Importer fichier SQL brut" Click="OpenRawSql_Click" ToolTip="Charge un fichier .sql/.txt dans l'éditeur SQL brut." />
-                                                <Button Content="Depuis SQL généré" Command="{Binding UseGeneratedSqlAsRawInputCommand}" ToolTip="Copie la requête générée actuelle dans l'éditeur SQL brut." />
-                                                <Button Content="Sauvegarder SQL brut" Command="{Binding SaveRawSqlPresetCommand}" ToolTip="Sauvegarde le SQL brut comme preset réutilisable en sous-requête." />
-                                                <Button Content="Charger SQL brut sélectionné" Command="{Binding LoadSelectedRawSqlCommand}" ToolTip="Charge le preset sélectionné dans l'éditeur SQL brut." />
-                                                <Button Content="Reverse SQL → constructeur" Command="{Binding ReverseEngineerRawSqlCommand}" ToolTip="Analyse le SELECT collé et remplit automatiquement sélection, jointures, filtres, groupes, agrégats et tris quand c'est possible." />
-                                            </WrapPanel>
-                                            <TextBox Text="{Binding RawSqlText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}"
-                                                     FontFamily="Consolas"
-                                                     FontSize="13"
-                                                     AcceptsReturn="True"
-                                                     AcceptsTab="True"
-                                                     VerticalScrollBarVisibility="Auto"
-                                                     HorizontalScrollBarVisibility="Auto"
-                                                     TextWrapping="NoWrap"
-                                                     ToolTip="Colle ici un SELECT existant. Il peut être sauvegardé tel quel ou converti en constructeur visuel." />
-                                        </DockPanel>
-                                    </GroupBox>
 
-                                    <GroupBox Grid.Row="3" Header="Bibliothèque de requêtes sauvegardées" Margin="4">
+                                    <GroupBox Grid.Row="2" Header="Bibliothèque de requêtes sauvegardées" Margin="4">
                                         <DataGrid ItemsSource="{Binding SavedQueries}" SelectedItem="{Binding SelectedSavedQuery, Mode=TwoWay}">
                                             <DataGrid.Columns>
                                                 <DataGridTextColumn Header="Type" Binding="{Binding Kind}" Width="110" MinWidth="100" />
@@ -695,6 +677,31 @@
                                         </DataGrid>
                                     </GroupBox>
                                 </Grid>
+                            </TabItem>
+
+                            <TabItem Header="Rétro-ingénierie SQL">
+                                <DockPanel Margin="8" LastChildFill="True">
+                                    <TextBlock DockPanel.Dock="Top"
+                                               Text="Charge un SELECT existant, réécris-le de manière conservatrice ou importe-le dans le constructeur visuel pour continuer l'édition."
+                                               Style="{StaticResource SectionHint}" />
+                                    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                        <Button Content="Importer fichier SQL brut" Click="OpenRawSql_Click" ToolTip="Charge un fichier .sql/.txt dans l'éditeur SQL brut." />
+                                        <Button Content="Depuis SQL généré" Command="{Binding UseGeneratedSqlAsRawInputCommand}" ToolTip="Copie la requête générée actuelle dans l'éditeur SQL brut." />
+                                        <Button Content="Sauvegarder SQL brut" Command="{Binding SaveRawSqlPresetCommand}" ToolTip="Sauvegarde le SQL brut comme preset réutilisable en sous-requête." />
+                                        <Button Content="Charger SQL brut sélectionné" Command="{Binding LoadSelectedRawSqlCommand}" ToolTip="Charge le preset sélectionné dans l'éditeur SQL brut." />
+                                        <Button Content="Réécrire SQL" Command="{Binding RewriteRawSqlCommand}" ToolTip="Génère une version modernisée du SQL brut sans modifier l'éditeur, avec jointures explicites et dédoublonnage conservateur." />
+                                        <Button Content="Charger dans le constructeur" Command="{Binding ReverseEngineerRawSqlCommand}" ToolTip="Analyse le SELECT collé, remplit le constructeur visuel et permet de continuer l'édition dans les onglets SELECT/JOIN/WHERE/GROUP BY/HAVING/ORDER BY." />
+                                    </WrapPanel>
+                                    <TextBox Text="{Binding RawSqlText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}"
+                                             FontFamily="Consolas"
+                                             FontSize="13"
+                                             AcceptsReturn="True"
+                                             AcceptsTab="True"
+                                             VerticalScrollBarVisibility="Auto"
+                                             HorizontalScrollBarVisibility="Auto"
+                                             TextWrapping="NoWrap"
+                                             ToolTip="Colle ici un SELECT existant. Il peut être sauvegardé tel quel, réécrit en SQL plus moderne ou rechargé dans le constructeur visuel." />
+                                </DockPanel>
                             </TabItem>
                         </TabControl>
                     </Grid>
