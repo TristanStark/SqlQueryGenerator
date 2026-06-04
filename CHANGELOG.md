@@ -2,6 +2,14 @@
 
 All release notes are centralized here.
 
+## v31.0.0
+
+- Added a conservative SQL rewrite flow for imported `SELECT` statements, including implicit join modernization, duplicate clause cleanup, alias preservation, and warnings for advanced constructs.
+- Added a top-bar DDL export helper that generates copy-ready Oracle `DBMS_METADATA.GET_DDL` and SQLite `sqlite_master` queries.
+- Added a visible `Help` button that opens the local v31 workflow guide or falls back to the GitHub documentation page.
+- Improved reverse SQL continuity so imported queries remain editable in the visual builder with preserved joins, filters, grouping, ordering, parameters, and table aliases.
+- Added regression/unit tests for rewrite behavior, reverse-builder continuity, import warnings, and DDL export command generation.
+
 ## v30.1.0
 
 - Reverse SQL now supports Oracle legacy outer-join syntax using `(+)` and converts it to explicit `LEFT JOIN` in the query model.
