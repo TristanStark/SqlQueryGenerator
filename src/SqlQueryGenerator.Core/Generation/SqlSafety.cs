@@ -83,6 +83,39 @@ public static partial class SqlSafety
     }
 
     /// <summary>
+    /// Normalizes a raw SELECT for reverse engineering after comment preprocessing.
+    /// </summary>
+    /// <param name="sql">Raw SQL already preprocessed for reverse parsing.</param>
+    /// <returns>Trimmed SQL without a trailing semicolon.</returns>
+    public static string NormalizeRawSelectQueryForReverse(string sql)
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+        {
+            throw new InvalidOperationException("RequÃªte SQL vide.");
+        }
+
+        string trimmed = sql.Trim();
+        if (!trimmed.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase)
+            && !trimmed.StartsWith("WITH", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("RequÃªte SQL refusÃ©e: seuls SELECT et WITH ... SELECT sont autorisÃ©s.");
+        }
+
+        string withoutTrailingSemicolon = trimmed.EndsWith(';') ? trimmed[..^1].TrimEnd() : trimmed;
+        if (withoutTrailingSemicolon.Contains(';', StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("RequÃªte SQL refusÃ©e: un preset SQL brut doit contenir une seule requÃªte SELECT.");
+        }
+
+        if (DangerousSqlRegex().IsMatch(withoutTrailingSemicolon))
+        {
+            throw new InvalidOperationException("RequÃªte SQL refusÃ©e: mots-clÃ©s DDL/DML interdits. Ce gÃ©nÃ©rateur ne produit que des SELECT.");
+        }
+
+        return withoutTrailingSemicolon;
+    }
+
+    /// <summary>
     /// Exécute le traitement DangerousSqlRegex.
     /// </summary>
     /// <returns>Résultat du traitement.</returns>

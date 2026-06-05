@@ -1,4 +1,5 @@
 using SqlQueryGenerator.Core.Models;
+using SqlQueryGenerator.Core.Parsing;
 using SqlQueryGenerator.Core.Query;
 using System.Text;
 
@@ -1863,6 +1864,11 @@ public sealed class SqlQueryGeneratorEngine
         if (valueKind == FilterValueKind.Parameter)
         {
             string placeholder = string.IsNullOrWhiteSpace(raw) ? "?" : raw.Trim();
+            if (SqlSelectReverseParser.IsCognosPromptExpression(placeholder))
+            {
+                return placeholder;
+            }
+
             if (!placeholder.StartsWith(':') && !placeholder.StartsWith('@') && !placeholder.StartsWith('?') && !placeholder.StartsWith('&'))
             {
                 placeholder = ":" + placeholder;
