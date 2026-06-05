@@ -21,6 +21,7 @@ public sealed class SqlQueryGeneratorEngine
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(schema);
         options ??= new SqlGeneratorOptions();
+        IReadOnlyDictionary<string, string> tableAliases = BuildTableAliasLookup(query);
 
         List<string> warnings = [];
         string? baseTable = ResolveBaseTable(query, warnings);
@@ -33,7 +34,7 @@ public sealed class SqlQueryGeneratorEngine
         usedTables.Add(baseTable);
         IReadOnlyList<JoinDefinition> joins = BuildJoinPlan(query, schema, baseTable, usedTables, warnings);
 
-        List<string> selectItems = BuildSelectItems(query, options, warnings);
+        List<string> selectItems = BuildSelectItems(query, options, warnings, tableAliases);
         if (selectItems.Count == 0)
         {
             selectItems.Add("*");
@@ -57,14 +58,14 @@ public sealed class SqlQueryGeneratorEngine
             sb.Append("DISTINCT ");
         }
         sb.AppendLine(string.Join(",\n       ", selectItems));
-        sb.Append("FROM ").AppendLine(Q(baseTable, options));
+        sb.Append("FROM ").AppendLine(TableSourceSql(baseTable, tableAliases, options));
 
         foreach (JoinDefinition join in joins)
         {
             sb.Append(join.JoinType == JoinType.Left ? "LEFT JOIN " : "INNER JOIN ");
-            sb.Append(Q(join.ToTable, options));
+            sb.Append(TableSourceSql(join.ToTable, tableAliases, options));
             sb.Append(" ON ");
-            sb.Append(BuildJoinOnClause(join, options));
+            sb.Append(BuildJoinOnClause(join, options, tableAliases));
             if (join.AutoInferred && options.EmitOptimizationComments)
             {
                 sb.Append(" /* jointure inférée */");
@@ -73,10 +74,10 @@ public sealed class SqlQueryGeneratorEngine
         }
 
         List<FilterCondition> whereFilters = query.Filters.Where(f => f.FieldKind != QueryFieldKind.Aggregate).ToList();
-        List<(string Predicate, LogicalConnector Connector)> where = BuildFilterPredicates(query, whereFilters, schema, options, warnings);
+        List<(string Predicate, LogicalConnector Connector)> where = BuildFilterPredicates(query, whereFilters, schema, options, warnings, tableAliases);
         AppendPredicateBlock(sb, "WHERE", where);
 
-        List<string> groupBy = BuildGroupBy(query, options);
+        List<string> groupBy = BuildGroupBy(query, options, tableAliases);
         if (query.Aggregates.Count > 0 && options.AutoGroupSelectedColumnsWhenAggregating)
         {
             foreach (ColumnReference selected in query.SelectedColumns)
@@ -86,7 +87,7 @@ public sealed class SqlQueryGeneratorEngine
                     continue;
                 }
 
-                string expr = ColumnSql(selected, options, includeAlias: false);
+                string expr = ColumnSql(selected, options, includeAlias: false, tableAliases);
                 if (!groupBy.Contains(expr, StringComparer.OrdinalIgnoreCase))
                 {
                     groupBy.Add(expr);
@@ -100,7 +101,7 @@ public sealed class SqlQueryGeneratorEngine
         }
 
         List<FilterCondition> havingFilters = query.Filters.Where(f => f.FieldKind == QueryFieldKind.Aggregate).ToList();
-        List<(string Predicate, LogicalConnector Connector)> having = BuildFilterPredicates(query, havingFilters, schema, options, warnings);
+        List<(string Predicate, LogicalConnector Connector)> having = BuildFilterPredicates(query, havingFilters, schema, options, warnings, tableAliases);
         AppendPredicateBlock(sb, "HAVING", having);
 
         if (query.OrderBy.Count > 0)
@@ -108,7 +109,7 @@ public sealed class SqlQueryGeneratorEngine
             string[] orderItems = query.OrderBy
                 .Select(o =>
                 {
-                    string expression = BuildOrderExpression(query, o, options, warnings);
+                    string expression = BuildOrderExpression(query, o, options, warnings, tableAliases);
                     return string.IsNullOrWhiteSpace(expression)
                         ? string.Empty
                         : $"{expression} {(o.Direction == SortDirection.Descending ? "DESC" : "ASC")}";
@@ -146,18 +147,18 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="join">Paramètre join.</param>
     /// <param name="options">Paramètre options.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static string BuildJoinOnClause(JoinDefinition join, SqlGeneratorOptions options)
+    private static string BuildJoinOnClause(JoinDefinition join, SqlGeneratorOptions options, IReadOnlyDictionary<string, string> tableAliases)
     {
         List<string> predicates =
         [
-            $"{Q(join.FromTable, options)}.{Q(join.FromColumn, options)} = {Q(join.ToTable, options)}.{Q(join.ToColumn, options)}"
+            $"{TableReferenceSql(join.FromTable, tableAliases, options)}.{Q(join.FromColumn, options)} = {TableReferenceSql(join.ToTable, tableAliases, options)}.{Q(join.ToColumn, options)}"
         ];
 
         foreach (JoinColumnPair? pair in join.AdditionalColumnPairs.Where(p => p.Enabled
                      && !string.IsNullOrWhiteSpace(p.FromColumn)
                      && !string.IsNullOrWhiteSpace(p.ToColumn)))
         {
-            string predicate = $"{Q(join.FromTable, options)}.{Q(pair.FromColumn, options)} = {Q(join.ToTable, options)}.{Q(pair.ToColumn, options)}";
+            string predicate = $"{TableReferenceSql(join.FromTable, tableAliases, options)}.{Q(pair.FromColumn, options)} = {TableReferenceSql(join.ToTable, tableAliases, options)}.{Q(pair.ToColumn, options)}";
             if (!predicates.Contains(predicate, StringComparer.OrdinalIgnoreCase))
             {
                 predicates.Add(predicate);
@@ -749,7 +750,7 @@ public sealed class SqlQueryGeneratorEngine
             score += 0.25;
         }
 
-        string[] suspiciousTokens = ["focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests"];
+        string[] suspiciousTokens = new[] { "focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests" };
         if (tokens.Any(t => suspiciousTokens.Contains(t, StringComparer.OrdinalIgnoreCase)))
         {
             score -= 1.20;
@@ -1139,6 +1140,17 @@ public sealed class SqlQueryGeneratorEngine
     }
 
     /// <summary>
+    /// Exécute le traitement RelationshipConfidence.
+    /// </summary>
+    /// <param name="schema">Paramètre schema.</param>
+    /// <param name="join">Paramètre join.</param>
+    /// <returns>Résultat du traitement.</returns>
+    private static double RelationshipConfidence(DatabaseSchema schema, JoinDefinition join)
+    {
+        return FindRelationship(schema, join)?.Confidence ?? 0.50;
+    }
+
+    /// <summary>
     /// Exécute le traitement JunctionBridgeScore.
     /// </summary>
     /// <param name="schema">Paramètre schema.</param>
@@ -1194,7 +1206,7 @@ public sealed class SqlQueryGeneratorEngine
             score += 0.15;
         }
 
-        string[] suspiciousTokens = ["focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests"];
+        string[] suspiciousTokens = new[] { "focus", "tmp", "temp", "staging", "archive", "history", "historique", "log", "audit", "backup", "old", "lineage", "quest", "quests" };
         if (tokens.Any(t => suspiciousTokens.Contains(t, StringComparer.OrdinalIgnoreCase)))
         {
             score -= 0.95;
@@ -1398,13 +1410,13 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="options">Paramètre options.</param>
     /// <param name="warnings">Paramètre warnings.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static List<string> BuildSelectItems(QueryDefinition query, SqlGeneratorOptions options, List<string> warnings)
+    private static List<string> BuildSelectItems(QueryDefinition query, SqlGeneratorOptions options, List<string> warnings, IReadOnlyDictionary<string, string> tableAliases)
     {
-        List<string> result = [.. query.SelectedColumns.Select(c => ColumnSql(c, options, includeAlias: true))];
+        List<string> result = [.. query.SelectedColumns.Select(c => ColumnSql(c, options, includeAlias: true, tableAliases))];
 
         foreach (AggregateSelection aggregate in query.Aggregates)
         {
-            string item = BuildAggregateExpression(aggregate, options, warnings);
+            string item = BuildAggregateExpression(aggregate, options, warnings, tableAliases);
             if (string.IsNullOrWhiteSpace(item))
             {
                 continue;
@@ -1419,7 +1431,7 @@ public sealed class SqlQueryGeneratorEngine
 
         foreach (CustomColumnSelection custom in query.CustomColumns)
         {
-            string expression = BuildCustomExpression(custom, options);
+            string expression = BuildCustomExpression(custom, options, tableAliases);
             if (string.IsNullOrWhiteSpace(expression))
             {
                 warnings.Add("Colonne personnalisée ignorée: expression vide.");
@@ -1443,7 +1455,7 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="options">Paramètre options.</param>
     /// <param name="warnings">Paramètre warnings.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static string BuildAggregateExpression(AggregateSelection aggregate, SqlGeneratorOptions options, List<string> warnings)
+    private static string BuildAggregateExpression(AggregateSelection aggregate, SqlGeneratorOptions options, List<string> warnings, IReadOnlyDictionary<string, string> tableAliases)
     {
         string fn = aggregate.Function switch
         {
@@ -1455,8 +1467,8 @@ public sealed class SqlQueryGeneratorEngine
             _ => "COUNT"
         };
 
-        string target = aggregate.Column is null ? "*" : ColumnSql(aggregate.Column, options, includeAlias: false);
-        string condition = BuildAggregateCondition(aggregate, options, warnings);
+        string target = aggregate.Column is null ? "*" : ColumnSql(aggregate.Column, options, includeAlias: false, tableAliases);
+        string condition = BuildAggregateCondition(aggregate, options, warnings, tableAliases);
         if (string.IsNullOrWhiteSpace(condition))
         {
             if (aggregate.Distinct && aggregate.Column is not null)
@@ -1503,7 +1515,7 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="options">Paramètre options.</param>
     /// <param name="warnings">Paramètre warnings.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static string BuildAggregateCondition(AggregateSelection aggregate, SqlGeneratorOptions options, List<string> warnings)
+    private static string BuildAggregateCondition(AggregateSelection aggregate, SqlGeneratorOptions options, List<string> warnings, IReadOnlyDictionary<string, string> tableAliases)
     {
         if (aggregate.ConditionColumn is null)
         {
@@ -1515,7 +1527,7 @@ public sealed class SqlQueryGeneratorEngine
         }
 
         string op = NormalizeOperator(aggregate.ConditionOperator);
-        string column = ColumnSql(aggregate.ConditionColumn, options, includeAlias: false);
+        string column = ColumnSql(aggregate.ConditionColumn, options, includeAlias: false, tableAliases);
         return BuildLiteralPredicateSql(column, op, aggregate.ConditionValue, aggregate.ConditionSecondValue, aggregate.ConditionColumn.Key, warnings);
     }
 
@@ -1525,7 +1537,7 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="custom">Paramètre custom.</param>
     /// <param name="options">Paramètre options.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static string BuildCustomExpression(CustomColumnSelection custom, SqlGeneratorOptions options)
+    private static string BuildCustomExpression(CustomColumnSelection custom, SqlGeneratorOptions options, IReadOnlyDictionary<string, string> tableAliases)
     {
         if (!string.IsNullOrWhiteSpace(custom.RawExpression))
         {
@@ -1535,7 +1547,7 @@ public sealed class SqlQueryGeneratorEngine
         if (custom.CaseColumn is not null && !string.IsNullOrWhiteSpace(custom.CaseOperator))
         {
             string op = NormalizeOperator(custom.CaseOperator);
-            string column = ColumnSql(custom.CaseColumn, options, includeAlias: false);
+            string column = ColumnSql(custom.CaseColumn, options, includeAlias: false, tableAliases);
             string compare = op is "IS NULL" or "IS NOT NULL" ? string.Empty : " " + SqlLiteralFormatter.FormatValue(custom.CaseCompareValue);
             return $"CASE WHEN {column} {op}{compare} THEN {SqlLiteralFormatter.FormatValue(custom.CaseThenValue)} ELSE {SqlLiteralFormatter.FormatValue(custom.CaseElseValue)} END";
         }
@@ -1553,7 +1565,7 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="options">Paramètre options.</param>
     /// <param name="warnings">Paramètre warnings.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static List<(string Predicate, LogicalConnector Connector)> BuildFilterPredicates(QueryDefinition query, IReadOnlyList<FilterCondition> filters, DatabaseSchema schema, SqlGeneratorOptions options, List<string> warnings)
+    private static List<(string Predicate, LogicalConnector Connector)> BuildFilterPredicates(QueryDefinition query, IReadOnlyList<FilterCondition> filters, DatabaseSchema schema, SqlGeneratorOptions options, List<string> warnings, IReadOnlyDictionary<string, string> tableAliases)
     {
         List<(string Predicate, LogicalConnector Connector)> result = [];
         foreach (FilterCondition filter in filters)
@@ -1561,7 +1573,7 @@ public sealed class SqlQueryGeneratorEngine
             string op = NormalizeOperator(filter.Operator);
             string expression = op is "EXISTS" or "NOT EXISTS" && filter.ValueKind == FilterValueKind.Subquery
                 ? string.Empty
-                : BuildFilterExpression(query, filter, options, warnings);
+                : BuildFilterExpression(query, filter, options, warnings, tableAliases);
             if (string.IsNullOrWhiteSpace(expression) && op is not "EXISTS" and not "NOT EXISTS")
             {
                 continue;
@@ -1605,11 +1617,11 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="options">Paramètre options.</param>
     /// <param name="warnings">Paramètre warnings.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static string BuildFilterExpression(QueryDefinition query, FilterCondition filter, SqlGeneratorOptions options, List<string> warnings)
+    private static string BuildFilterExpression(QueryDefinition query, FilterCondition filter, SqlGeneratorOptions options, List<string> warnings, IReadOnlyDictionary<string, string> tableAliases)
     {
         if (filter.Column is not null)
         {
-            return ColumnSql(filter.Column, options, includeAlias: false);
+            return ColumnSql(filter.Column, options, includeAlias: false, tableAliases);
         }
 
         if (string.IsNullOrWhiteSpace(filter.FieldAlias))
@@ -1620,8 +1632,8 @@ public sealed class SqlQueryGeneratorEngine
 
         return filter.FieldKind switch
         {
-            QueryFieldKind.Aggregate => ResolveAggregateExpressionByAlias(query, filter.FieldAlias!, options, warnings),
-            QueryFieldKind.CustomColumn => ResolveCustomExpressionByAlias(query, filter.FieldAlias!, options, warnings),
+            QueryFieldKind.Aggregate => ResolveAggregateExpressionByAlias(query, filter.FieldAlias!, options, warnings, tableAliases),
+            QueryFieldKind.CustomColumn => ResolveCustomExpressionByAlias(query, filter.FieldAlias!, options, warnings, tableAliases),
             _ => string.Empty
         };
     }
@@ -1634,11 +1646,11 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="options">Paramètre options.</param>
     /// <param name="warnings">Paramètre warnings.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static string BuildOrderExpression(QueryDefinition query, OrderByItem order, SqlGeneratorOptions options, List<string> warnings)
+    private static string BuildOrderExpression(QueryDefinition query, OrderByItem order, SqlGeneratorOptions options, List<string> warnings, IReadOnlyDictionary<string, string> tableAliases)
     {
         if (order.Column is not null)
         {
-            return ColumnSql(order.Column, options, includeAlias: false);
+            return ColumnSql(order.Column, options, includeAlias: false, tableAliases);
         }
 
         if (string.IsNullOrWhiteSpace(order.FieldAlias))
@@ -1660,10 +1672,18 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="options">Paramètre options.</param>
     /// <param name="warnings">Paramètre warnings.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static string ResolveAggregateExpressionByAlias(QueryDefinition query, string alias, SqlGeneratorOptions options, List<string> warnings)
+    private static string ResolveAggregateExpressionByAlias(QueryDefinition query, string alias, SqlGeneratorOptions options, List<string> warnings, IReadOnlyDictionary<string, string> tableAliases)
     {
         AggregateSelection? aggregate = query.Aggregates.FirstOrDefault(a => string.Equals(a.Alias, alias, StringComparison.OrdinalIgnoreCase));
-        if (aggregate is null)
+        if (aggregate is not null)
+        {
+            return BuildAggregateExpression(aggregate, options, warnings, tableAliases);
+        }
+
+        // Reverse-loaded SQL can contain HAVING predicates written directly with aggregate
+        // expressions, for example HAVING COUNT(*) > 1 AND SUM(T.AMOUNT) > 100. In that case
+        // FieldAlias stores the raw aggregate expression rather than a visual aggregate alias.
+        if (LooksLikeRawAggregateExpression(alias))
         {
             if (LooksLikeAggregateExpression(alias))
             {
@@ -1675,7 +1695,22 @@ public sealed class SqlQueryGeneratorEngine
             return string.Empty;
         }
 
-        return BuildAggregateExpression(aggregate, options, warnings);
+
+    /// <summary>
+    /// Determines whether a reverse-loaded HAVING expression is a raw aggregate expression that can be emitted safely.
+    /// </summary>
+    /// <param name="expression">Expression captured from a HAVING clause.</param>
+    /// <returns><c>true</c> when the expression looks like an aggregate function call.</returns>
+    private static bool LooksLikeRawAggregateExpression(string expression)
+    {
+        string trimmed = expression.Trim();
+        return trimmed.Contains('(')
+            && trimmed.Contains(')')
+            && (trimmed.StartsWith("COUNT", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("SUM", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("AVG", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("MIN", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("MAX", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -1686,7 +1721,7 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="options">Paramètre options.</param>
     /// <param name="warnings">Paramètre warnings.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static string ResolveCustomExpressionByAlias(QueryDefinition query, string alias, SqlGeneratorOptions options, List<string> warnings)
+    private static string ResolveCustomExpressionByAlias(QueryDefinition query, string alias, SqlGeneratorOptions options, List<string> warnings, IReadOnlyDictionary<string, string> tableAliases)
     {
         CustomColumnSelection? custom = query.CustomColumns.FirstOrDefault(c => string.Equals(c.Alias, alias, StringComparison.OrdinalIgnoreCase));
         if (custom is null)
@@ -1695,7 +1730,7 @@ public sealed class SqlQueryGeneratorEngine
             return string.Empty;
         }
 
-        string expression = BuildCustomExpression(custom, options);
+        string expression = BuildCustomExpression(custom, options, tableAliases);
         if (string.IsNullOrWhiteSpace(expression))
         {
             warnings.Add($"Filtre sur colonne calculée ignoré: l'alias '{alias}' n'a pas d'expression utilisable.");
@@ -1879,7 +1914,7 @@ public sealed class SqlQueryGeneratorEngine
     private static string IndentSql(string sql, int spaces)
     {
         string prefix = new(' ', spaces);
-        return string.Join(Environment.NewLine, sql.Split(["\r\n", "\n"], StringSplitOptions.None).Select(line => prefix + line));
+        return string.Join(Environment.NewLine, sql.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None).Select(line => prefix + line));
     }
 
     /// <summary>
@@ -1888,9 +1923,9 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="query">Paramètre query.</param>
     /// <param name="options">Paramètre options.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static List<string> BuildGroupBy(QueryDefinition query, SqlGeneratorOptions options)
+    private static List<string> BuildGroupBy(QueryDefinition query, SqlGeneratorOptions options, IReadOnlyDictionary<string, string> tableAliases)
     {
-        return query.GroupBy.Select(c => ColumnSql(c, options, includeAlias: false)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return query.GroupBy.Select(c => ColumnSql(c, options, includeAlias: false, tableAliases)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     /// <summary>
@@ -1936,11 +1971,12 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="options">Paramètre options.</param>
     /// <param name="includeAlias">Paramètre includeAlias.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static string ColumnSql(ColumnReference reference, SqlGeneratorOptions options, bool includeAlias)
+    private static string ColumnSql(ColumnReference reference, SqlGeneratorOptions options, bool includeAlias, IReadOnlyDictionary<string, string> tableAliases)
     {
+        string tableSql = TableReferenceSql(reference.Table, tableAliases, options);
         string sql = IsWildcardColumn(reference)
-            ? $"{Q(reference.Table, options)}.*"
-            : $"{Q(reference.Table, options)}.{Q(reference.Column, options)}";
+            ? $"{tableSql}.*"
+            : $"{tableSql}.{Q(reference.Column, options)}";
         if (includeAlias && !IsWildcardColumn(reference) && !string.IsNullOrWhiteSpace(reference.Alias))
         {
             sql += " AS " + Q(reference.Alias, options);
@@ -1961,6 +1997,34 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="identifier">Paramètre identifier.</param>
     /// <param name="options">Paramètre options.</param>
     /// <returns>Résultat du traitement.</returns>
+    private static IReadOnlyDictionary<string, string> BuildTableAliasLookup(QueryDefinition query)
+    {
+        Dictionary<string, string> lookup = new(StringComparer.OrdinalIgnoreCase);
+        foreach (TableAliasDefinition alias in query.TableAliases.Where(a => !string.IsNullOrWhiteSpace(a.Table) && !string.IsNullOrWhiteSpace(a.Alias)))
+        {
+            lookup[alias.Table] = alias.Alias;
+        }
+
+        return lookup;
+    }
+
+    private static string TableReferenceSql(string table, IReadOnlyDictionary<string, string> tableAliases, SqlGeneratorOptions options)
+    {
+        return tableAliases.TryGetValue(table, out string? alias) && !string.IsNullOrWhiteSpace(alias)
+            ? Q(alias, options)
+            : Q(table, options);
+    }
+
+    private static string TableSourceSql(string table, IReadOnlyDictionary<string, string> tableAliases, SqlGeneratorOptions options)
+    {
+        if (tableAliases.TryGetValue(table, out string? alias) && !string.IsNullOrWhiteSpace(alias))
+        {
+            return $"{Q(table, options)} {Q(alias, options)}";
+        }
+
+        return Q(table, options);
+    }
+
     private static string Q(string identifier, SqlGeneratorOptions options)
     {
         return SqlIdentifierQuoter.Quote(identifier, options.Dialect, options.QuoteIdentifiers);

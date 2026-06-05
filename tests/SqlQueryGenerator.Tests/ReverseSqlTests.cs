@@ -60,4 +60,59 @@ ORDER BY count_id DESC";
         Assert.Equal(FilterValueKind.Parameter, query.Filters[0].ValueKind);
         Assert.Equal(":age_min", query.Parameters[0].Placeholder);
     }
+
+    /// <summary>
+    /// Ensures Oracle legacy (+) join syntax is reverse-loaded into explicit LEFT JOIN.
+    /// </summary>
+    [Fact]
+    public void ReverseParser_ParseLegacyOracleOuterJoin_ConvertsToLeftJoin()
+    {
+        const string schemaSql = @"
+CREATE TABLE pnj (id INTEGER PRIMARY KEY, job_id INTEGER, status TEXT);
+CREATE TABLE jobs (id INTEGER PRIMARY KEY, label TEXT);
+";
+        const string sql = @"
+SELECT pnj.id, jobs.label
+FROM pnj, jobs
+WHERE pnj.job_id = jobs.id(+)
+  AND pnj.status = 'ACTIVE'";
+
+        QueryDefinition query = new SqlSelectReverseParser().Parse(sql);
+        SqlGenerationResult generated = new SqlQueryGeneratorEngine().Generate(query, new SqlSchemaParser().Parse(schemaSql));
+
+        Assert.Equal("pnj", query.BaseTable);
+        Assert.Single(query.Joins);
+        Assert.Equal(JoinType.Left, query.Joins[0].JoinType);
+        Assert.Equal("pnj", query.Joins[0].FromTable);
+        Assert.Equal("job_id", query.Joins[0].FromColumn);
+        Assert.Equal("jobs", query.Joins[0].ToTable);
+        Assert.Equal("id", query.Joins[0].ToColumn);
+        Assert.Single(query.Filters);
+        Assert.Contains("LEFT JOIN jobs ON pnj.job_id = jobs.id", generated.Sql);
+        Assert.Contains("WHERE pnj.status = 'ACTIVE'", generated.Sql);
+        Assert.DoesNotContain("(+)", generated.Sql);
+    }
+
+    /// <summary>
+    /// Ensures reverse SQL preserves Oracle substitution parameters such as &1.
+    /// </summary>
+    [Fact]
+    public void ReverseParser_ParseParameterAmpersand_IsDetectedAndRegenerated()
+    {
+        const string schemaSql = @"CREATE TABLE pnj (id INTEGER PRIMARY KEY, age INTEGER);";
+        const string sql = @"
+SELECT pnj.id
+FROM pnj
+WHERE pnj.age > &1";
+
+        QueryDefinition query = new SqlSelectReverseParser().Parse(sql);
+        SqlGenerationResult generated = new SqlQueryGeneratorEngine().Generate(query, new SqlSchemaParser().Parse(schemaSql));
+
+        Assert.Single(query.Parameters);
+        Assert.Equal("&1", query.Parameters[0].Placeholder);
+        Assert.Single(query.Filters);
+        Assert.Equal(FilterValueKind.Parameter, query.Filters[0].ValueKind);
+        Assert.Equal("&1", query.Filters[0].Value);
+        Assert.Contains("WHERE pnj.age > &1", generated.Sql);
+    }
 }

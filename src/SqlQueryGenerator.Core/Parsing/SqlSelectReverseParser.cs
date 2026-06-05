@@ -57,6 +57,8 @@ public sealed class SqlSelectReverseParser
         string fetchText = SliceClause(normalized, fetchStart, alternateFetchIndex);
 
         ParseFromAndJoins(fromText, query, aliases);
+        whereText = ExtractLegacyOracleJoinPredicates(whereText, query, aliases);
+        whereText = ExtractImplicitInnerJoinPredicates(whereText, query, aliases);
         ParseSelectItems(selectText, query, aliases);
         ParsePredicates(whereText, query, aliases, asHaving: false);
         ParseGroupBy(groupText, query, aliases);
@@ -76,7 +78,7 @@ public sealed class SqlSelectReverseParser
     {
         List<QueryParameterDefinition> parameters = [];
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        foreach (Match match in Regex.Matches(sql, @"(?<![\w])([:@][A-Za-z_][A-Za-z0-9_]*|\?|&&?[A-Za-z0-9_]+)"))
+        foreach (Match match in Regex.Matches(sql, @"(?<![\w])([:@][A-Za-z_][A-Za-z0-9_]*|\?|&&?[A-Za-z_][A-Za-z0-9_]*|&\d+)"))
         {
             string placeholder = match.Groups[1].Value;
             if (seen.Add(placeholder))
@@ -108,8 +110,14 @@ public sealed class SqlSelectReverseParser
 
         Match firstJoin = Regex.Match(fromText, @"\b(?:INNER\s+|LEFT\s+|LEFT\s+OUTER\s+)?JOIN\b", RegexOptions.IgnoreCase);
         string basePart = firstJoin.Success ? fromText[..firstJoin.Index].Trim() : fromText.Trim();
-        string baseTable = ParseTableReference(basePart, aliases);
+        string[] baseTables = SplitTopLevelComma(basePart).Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
+        string baseTable = ParseTableReference(baseTables.FirstOrDefault() ?? basePart, aliases, query);
         query.BaseTable = baseTable;
+
+        foreach (string extraTable in baseTables.Skip(1))
+        {
+            ParseTableReference(extraTable, aliases, query);
+        }
 
         if (!firstJoin.Success)
         {
@@ -121,7 +129,7 @@ public sealed class SqlSelectReverseParser
         foreach (Match joinMatch in joinRegex.Matches(joinsText))
         {
             JoinType joinType = joinMatch.Groups[1].Value.StartsWith("LEFT", StringComparison.OrdinalIgnoreCase) ? JoinType.Left : JoinType.Inner;
-            string toTable = ParseTableReference(joinMatch.Groups[2].Value.Trim(), aliases);
+            string toTable = ParseTableReference(joinMatch.Groups[2].Value.Trim(), aliases, query);
             string onClause = joinMatch.Groups[3].Value.Trim();
             string[] predicates = SplitTopLevelByKeyword(onClause, "AND").ToArray();
             JoinDefinition? join = null;
@@ -245,6 +253,245 @@ public sealed class SqlSelectReverseParser
                 query.Filters.Add(condition);
             }
         }
+    }
+
+    /// <summary>
+    /// Converts Oracle legacy outer-join predicates using <c>(+)</c> into explicit join definitions.
+    /// Converted predicates are removed from the returned WHERE text.
+    /// </summary>
+    /// <param name="whereText">Raw WHERE clause text.</param>
+    /// <param name="query">Query model being populated.</param>
+    /// <param name="aliases">Alias-to-table map.</param>
+    /// <returns>WHERE text without legacy join predicates.</returns>
+    private static string ExtractLegacyOracleJoinPredicates(string whereText, QueryDefinition query, Dictionary<string, string> aliases)
+    {
+        if (string.IsNullOrWhiteSpace(whereText) || !whereText.Contains("(+)", StringComparison.Ordinal))
+        {
+            return whereText;
+        }
+
+        List<string> keptPredicates = [];
+        foreach (string predicate in SplitTopLevelByKeyword(whereText, "AND"))
+        {
+            string trimmed = predicate.Trim();
+            if (!TryParseLegacyOracleOuterJoinPredicate(trimmed, aliases, out JoinDefinition? join))
+            {
+                keptPredicates.Add(trimmed);
+                continue;
+            }
+
+            AddOrMergeJoin(query, join!);
+            if (string.Equals(query.BaseTable, join!.ToTable, StringComparison.OrdinalIgnoreCase))
+            {
+                query.BaseTable = join.FromTable;
+            }
+        }
+
+        return string.Join(" AND ", keptPredicates.Where(p => !string.IsNullOrWhiteSpace(p)));
+    }
+
+    /// <summary>
+    /// Converts implicit inner join predicates written in WHERE into explicit join definitions.
+    /// Converted predicates are removed from the returned WHERE text.
+    /// </summary>
+    /// <param name="whereText">Raw WHERE clause text.</param>
+    /// <param name="query">Query model being populated.</param>
+    /// <param name="aliases">Alias-to-table map.</param>
+    /// <returns>WHERE text without extracted join predicates.</returns>
+    private static string ExtractImplicitInnerJoinPredicates(string whereText, QueryDefinition query, Dictionary<string, string> aliases)
+    {
+        if (string.IsNullOrWhiteSpace(whereText))
+        {
+            return whereText;
+        }
+
+        List<string> keptPredicates = [];
+        foreach (string predicate in SplitTopLevelByKeyword(whereText, "AND"))
+        {
+            string trimmed = predicate.Trim();
+            if (!TryParseImplicitInnerJoinPredicate(trimmed, query, aliases, out JoinDefinition? join))
+            {
+                keptPredicates.Add(trimmed);
+                continue;
+            }
+
+            AddOrMergeJoin(query, join!);
+        }
+
+        return string.Join(" AND ", keptPredicates.Where(p => !string.IsNullOrWhiteSpace(p)));
+    }
+
+    /// <summary>
+    /// Parses one Oracle legacy outer-join equality predicate, for example <c>A.ID = B.A_ID(+)</c>.
+    /// </summary>
+    /// <param name="predicate">Predicate text.</param>
+    /// <param name="aliases">Alias-to-table map.</param>
+    /// <param name="join">Parsed join when successful.</param>
+    /// <returns><c>true</c> when the predicate is a supported legacy outer join.</returns>
+    private static bool TryParseLegacyOracleOuterJoinPredicate(string predicate, Dictionary<string, string> aliases, out JoinDefinition? join)
+    {
+        join = null;
+        Match eq = Regex.Match(predicate, @"(?is)^(.+?)\s*=\s*(.+?)$");
+        if (!eq.Success)
+        {
+            return false;
+        }
+
+        if (!TryParseLegacyJoinSide(eq.Groups[1].Value, aliases, out ColumnReference? leftColumn, out bool leftOptional)
+            || !TryParseLegacyJoinSide(eq.Groups[2].Value, aliases, out ColumnReference? rightColumn, out bool rightOptional))
+        {
+            return false;
+        }
+
+        if (leftOptional == rightOptional)
+        {
+            return false;
+        }
+
+        ColumnReference mandatory = leftOptional ? rightColumn! : leftColumn!;
+        ColumnReference optional = leftOptional ? leftColumn! : rightColumn!;
+        join = new JoinDefinition
+        {
+            FromTable = mandatory.Table,
+            FromColumn = mandatory.Column,
+            ToTable = optional.Table,
+            ToColumn = optional.Column,
+            JoinType = JoinType.Left
+        };
+        return true;
+    }
+
+    /// <summary>
+    /// Parses one side of a legacy outer-join predicate and detects whether it carries the <c>(+)</c> marker.
+    /// </summary>
+    /// <param name="raw">Raw side expression.</param>
+    /// <param name="aliases">Alias-to-table map.</param>
+    /// <param name="column">Parsed column reference.</param>
+    /// <param name="optionalSide">Whether this side has the legacy optional marker.</param>
+    /// <returns><c>true</c> when parsing succeeds.</returns>
+    private static bool TryParseLegacyJoinSide(string raw, Dictionary<string, string> aliases, out ColumnReference? column, out bool optionalSide)
+    {
+        string trimmed = raw.Trim();
+        optionalSide = Regex.IsMatch(trimmed, @"\(\+\)\s*$");
+        string cleaned = Regex.Replace(trimmed, @"\(\+\)\s*$", string.Empty).Trim();
+        column = ParseColumnReference(cleaned, aliases);
+        return column is not null;
+    }
+
+    /// <summary>
+    /// Parses one implicit inner join predicate such as <c>C.ID = O.CLIENT_ID</c>.
+    /// </summary>
+    /// <param name="predicate">Predicate text.</param>
+    /// <param name="query">Query model being populated.</param>
+    /// <param name="aliases">Alias-to-table map.</param>
+    /// <param name="join">Parsed join when successful.</param>
+    /// <returns><c>true</c> when the predicate is safely interpreted as a join.</returns>
+    private static bool TryParseImplicitInnerJoinPredicate(string predicate, QueryDefinition query, Dictionary<string, string> aliases, out JoinDefinition? join)
+    {
+        join = null;
+        if (predicate.Contains("(+)", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        Match eq = Regex.Match(predicate, @"(?is)^(.+?)\s*=\s*(.+?)$");
+        if (!eq.Success)
+        {
+            return false;
+        }
+
+        ColumnReference? left = ParseColumnReference(eq.Groups[1].Value.Trim(), aliases);
+        ColumnReference? right = ParseColumnReference(eq.Groups[2].Value.Trim(), aliases);
+        if (left is null || right is null || string.Equals(left.Table, right.Table, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        (ColumnReference From, ColumnReference To) oriented = OrientImplicitJoin(query, left, right);
+        join = new JoinDefinition
+        {
+            FromTable = oriented.From.Table,
+            FromColumn = oriented.From.Column,
+            ToTable = oriented.To.Table,
+            ToColumn = oriented.To.Column,
+            JoinType = JoinType.Inner
+        };
+        return true;
+    }
+
+    /// <summary>
+    /// Chooses a deterministic join orientation so the generated SQL starts from the current base table when possible.
+    /// </summary>
+    /// <param name="query">Query model being populated.</param>
+    /// <param name="left">Left column from the predicate.</param>
+    /// <param name="right">Right column from the predicate.</param>
+    /// <returns>Oriented join endpoints.</returns>
+    private static (ColumnReference From, ColumnReference To) OrientImplicitJoin(QueryDefinition query, ColumnReference left, ColumnReference right)
+    {
+        if (string.Equals(query.BaseTable, left.Table, StringComparison.OrdinalIgnoreCase))
+        {
+            return (left, right);
+        }
+
+        if (string.Equals(query.BaseTable, right.Table, StringComparison.OrdinalIgnoreCase))
+        {
+            return (right, left);
+        }
+
+        bool leftAlreadyConnected = query.Joins.Any(j =>
+            string.Equals(j.FromTable, left.Table, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(j.ToTable, left.Table, StringComparison.OrdinalIgnoreCase));
+        bool rightAlreadyConnected = query.Joins.Any(j =>
+            string.Equals(j.FromTable, right.Table, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(j.ToTable, right.Table, StringComparison.OrdinalIgnoreCase));
+
+        if (leftAlreadyConnected && !rightAlreadyConnected)
+        {
+            return (left, right);
+        }
+
+        if (rightAlreadyConnected && !leftAlreadyConnected)
+        {
+            return (right, left);
+        }
+
+        return (left, right);
+    }
+
+    /// <summary>
+    /// Adds a join definition or merges it as an additional composite pair when the same table pair already exists.
+    /// </summary>
+    /// <param name="query">Query model being populated.</param>
+    /// <param name="join">Join to add or merge.</param>
+    private static void AddOrMergeJoin(QueryDefinition query, JoinDefinition join)
+    {
+        JoinDefinition? existing = query.Joins.FirstOrDefault(j =>
+            j.JoinType == join.JoinType
+            && string.Equals(j.FromTable, join.FromTable, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(j.ToTable, join.ToTable, StringComparison.OrdinalIgnoreCase));
+
+        if (existing is null)
+        {
+            query.Joins.Add(join);
+            return;
+        }
+
+        bool samePrimaryPair = string.Equals(existing.FromColumn, join.FromColumn, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(existing.ToColumn, join.ToColumn, StringComparison.OrdinalIgnoreCase);
+        bool alreadyInAdditional = existing.AdditionalColumnPairs.Any(p =>
+            string.Equals(p.FromColumn, join.FromColumn, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(p.ToColumn, join.ToColumn, StringComparison.OrdinalIgnoreCase));
+        if (samePrimaryPair || alreadyInAdditional)
+        {
+            return;
+        }
+
+        existing.AdditionalColumnPairs.Add(new JoinColumnPair
+        {
+            FromColumn = join.FromColumn,
+            ToColumn = join.ToColumn,
+            Enabled = true
+        });
     }
 
     /// <summary>
@@ -404,7 +651,7 @@ public sealed class SqlSelectReverseParser
     /// <param name="raw">Raw table reference.</param>
     /// <param name="aliases">Alias-to-table map to update.</param>
     /// <returns>Resolved table name.</returns>
-    private static string ParseTableReference(string raw, Dictionary<string, string> aliases)
+    private static string ParseTableReference(string raw, Dictionary<string, string> aliases, QueryDefinition? query = null)
     {
         string[] parts = raw.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         string table = TrimIdentifierQuotes(parts.FirstOrDefault() ?? string.Empty);
@@ -412,11 +659,40 @@ public sealed class SqlSelectReverseParser
         {
             string alias = parts[^1].Equals("AS", StringComparison.OrdinalIgnoreCase) ? table : TrimIdentifierQuotes(parts[^1]);
             aliases[alias] = table;
+            if (!string.Equals(alias, table, StringComparison.OrdinalIgnoreCase))
+            {
+                RegisterTableAlias(query, table, alias);
+            }
         }
 
         aliases[table] = table;
         aliases[SqlObjectTail(table)] = table;
         return table;
+    }
+
+    /// <summary>
+    /// Stores one table alias on the query if it is not already registered.
+    /// </summary>
+    /// <param name="query">Query being populated.</param>
+    /// <param name="table">Real table name.</param>
+    /// <param name="alias">SQL alias.</param>
+    private static void RegisterTableAlias(QueryDefinition? query, string table, string alias)
+    {
+        if (query is null || string.IsNullOrWhiteSpace(alias))
+        {
+            return;
+        }
+
+        if (query.TableAliases.Any(a => string.Equals(a.Table, table, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        query.TableAliases.Add(new TableAliasDefinition
+        {
+            Table = table,
+            Alias = alias
+        });
     }
 
     /// <summary>
@@ -502,7 +778,7 @@ public sealed class SqlSelectReverseParser
         }
 
         string value = valueText.Trim();
-        if (value == "?" || value.StartsWith(':') || value.StartsWith('@'))
+        if (value == "?" || value.StartsWith(':') || value.StartsWith('@') || value.StartsWith('&'))
         {
             return FilterValueKind.Parameter;
         }
@@ -644,18 +920,45 @@ public sealed class SqlSelectReverseParser
     private static IEnumerable<string> SplitTopLevelByKeyword(string text, string keyword)
     {
         int start = 0;
+        int searchStart = 0;
+        bool skippedBetweenSeparator = false;
         while (true)
         {
-            int index = FindTopLevelKeyword(text, keyword, start);
+            int index = FindTopLevelKeyword(text, keyword, searchStart);
             if (index < 0)
             {
                 yield return text[start..].Trim();
                 yield break;
             }
 
+            if (keyword.Equals("AND", StringComparison.OrdinalIgnoreCase)
+                && !skippedBetweenSeparator
+                && SegmentContainsTopLevelKeyword(text, start, index, "BETWEEN"))
+            {
+                skippedBetweenSeparator = true;
+                searchStart = index + keyword.Length;
+                continue;
+            }
+
             yield return text[start..index].Trim();
             start = index + keyword.Length;
+            searchStart = start;
+            skippedBetweenSeparator = false;
         }
+    }
+
+    /// <summary>
+    /// Checks whether a segment contains a top-level keyword before a candidate split point.
+    /// </summary>
+    /// <param name="text">Text being scanned.</param>
+    /// <param name="start">Segment start index.</param>
+    /// <param name="end">Exclusive end index.</param>
+    /// <param name="keyword">Keyword to locate.</param>
+    /// <returns><c>true</c> when the keyword appears outside strings and parentheses.</returns>
+    private static bool SegmentContainsTopLevelKeyword(string text, int start, int end, string keyword)
+    {
+        int index = FindTopLevelKeyword(text, keyword, start);
+        return index >= start && index < end;
     }
 
     /// <summary>

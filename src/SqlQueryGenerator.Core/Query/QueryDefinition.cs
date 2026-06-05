@@ -38,6 +38,11 @@ public sealed class QueryDefinition
     /// <value>Valeur de SelectedColumns.</value>
     public Collection<ColumnReference> SelectedColumns { get; set; } = [];
     /// <summary>
+    /// Stores optional table aliases detected from imported SQL.
+    /// </summary>
+    /// <value>Table aliases keyed by real table name.</value>
+    public Collection<TableAliasDefinition> TableAliases { get; set; } = [];
+    /// <summary>
     /// Stocke la valeur interne Joins.
     /// </summary>
     /// <value>Valeur de Joins.</value>
@@ -82,6 +87,24 @@ public sealed class QueryDefinition
     /// </summary>
     /// <value>Valeur de LimitRows.</value>
     public int? LimitRows { get; set; }
+}
+
+/// <summary>
+/// Represents one SQL table alias preserved from imported or rewritten SQL.
+/// </summary>
+public sealed record TableAliasDefinition
+{
+    /// <summary>
+    /// Gets or sets the real table name.
+    /// </summary>
+    /// <value>Real table name used by the internal query model.</value>
+    public required string Table { get; init; }
+
+    /// <summary>
+    /// Gets or sets the SQL alias used when rendering the query.
+    /// </summary>
+    /// <value>Alias to emit in FROM/JOIN clauses and column references.</value>
+    public required string Alias { get; init; }
 }
 
 /// <summary>
