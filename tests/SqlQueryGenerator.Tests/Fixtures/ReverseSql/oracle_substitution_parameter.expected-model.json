@@ -1,0 +1,43 @@
+{
+  "baseTable": "people",
+  "distinct": false,
+  "selectedColumns": [
+    {
+      "table": "people",
+      "column": "id"
+    }
+  ],
+  "joins": [],
+  "filters": [
+    {
+      "column": {
+        "table": "people",
+        "column": "age"
+      },
+      "fieldKind": "Column",
+      "operator": ">=",
+      "value": "&1",
+      "valueKind": "Parameter",
+      "connector": "And"
+    }
+  ],
+  "groupBy": [],
+  "orderBy": [
+    {
+      "column": {
+        "table": "people",
+        "column": "id"
+      },
+      "fieldKind": "Column",
+      "direction": "Ascending"
+    }
+  ],
+  "aggregates": [],
+  "customColumns": [],
+  "parameters": [
+    {
+      "name": "&1",
+      "placeholder": "&1"
+    }
+  ]
+}

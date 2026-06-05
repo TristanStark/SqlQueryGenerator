@@ -1,0 +1,5 @@
+SELECT a.id
+FROM a
+UNION
+SELECT b.id
+FROM b

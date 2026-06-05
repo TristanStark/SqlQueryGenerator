@@ -48,6 +48,11 @@ public sealed class SqlQueryGeneratorEngine
             sb.AppendLine("/* Requête générée sans sous-requête, avec jointures explicites lorsque possible. */");
         }
 
+        if (!string.IsNullOrWhiteSpace(query.WithClauseSql))
+        {
+            sb.AppendLine(query.WithClauseSql.Trim());
+        }
+
         sb.Append("SELECT ");
         if (query.Distinct)
         {
@@ -1944,6 +1949,23 @@ public sealed class SqlQueryGeneratorEngine
             "NOTEXISTS" => "NOT EXISTS",
             _ => value
         };
+    }
+
+    /// <summary>
+    /// Detects whether a filter expression is already a raw aggregate SQL fragment.
+    /// </summary>
+    /// <param name="expression">Expression text.</param>
+    /// <returns><c>true</c> when the text starts with a supported aggregate function.</returns>
+    private static bool LooksLikeAggregateExpression(string expression)
+    {
+        return expression.StartsWith("COUNT(", StringComparison.OrdinalIgnoreCase)
+            || expression.StartsWith("SUM(", StringComparison.OrdinalIgnoreCase)
+            || expression.StartsWith("AVG(", StringComparison.OrdinalIgnoreCase)
+            || expression.StartsWith("AVERAGE(", StringComparison.OrdinalIgnoreCase)
+            || expression.StartsWith("MIN(", StringComparison.OrdinalIgnoreCase)
+            || expression.StartsWith("MAX(", StringComparison.OrdinalIgnoreCase)
+            || expression.StartsWith("MINIMUM(", StringComparison.OrdinalIgnoreCase)
+            || expression.StartsWith("MAXIMUM(", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

@@ -1,0 +1,47 @@
+{
+  "baseTable": "customers",
+  "distinct": false,
+  "selectedColumns": [
+    {
+      "table": "customers",
+      "column": "id"
+    },
+    {
+      "table": "customers",
+      "column": "name"
+    }
+  ],
+  "joins": [],
+  "filters": [
+    {
+      "column": {
+        "table": "customers",
+        "column": "name"
+      },
+      "fieldKind": "Column",
+      "operator": "ILIKE",
+      "value": ":pattern",
+      "valueKind": "Parameter",
+      "connector": "And"
+    }
+  ],
+  "groupBy": [],
+  "orderBy": [
+    {
+      "column": {
+        "table": "customers",
+        "column": "name"
+      },
+      "fieldKind": "Column",
+      "direction": "Ascending"
+    }
+  ],
+  "aggregates": [],
+  "customColumns": [],
+  "parameters": [
+    {
+      "name": ":pattern",
+      "placeholder": ":pattern"
+    }
+  ]
+}

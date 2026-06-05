@@ -1,0 +1,48 @@
+{
+  "baseTable": "orders",
+  "distinct": false,
+  "limitRows": 5,
+  "selectedColumns": [
+    {
+      "table": "orders",
+      "column": "id"
+    },
+    {
+      "table": "orders",
+      "column": "status"
+    }
+  ],
+  "joins": [],
+  "filters": [
+    {
+      "column": {
+        "table": "orders",
+        "column": "status"
+      },
+      "fieldKind": "Column",
+      "operator": "=",
+      "value": "@status",
+      "valueKind": "Parameter",
+      "connector": "And"
+    }
+  ],
+  "groupBy": [],
+  "orderBy": [
+    {
+      "column": {
+        "table": "orders",
+        "column": "id"
+      },
+      "fieldKind": "Column",
+      "direction": "Descending"
+    }
+  ],
+  "aggregates": [],
+  "customColumns": [],
+  "parameters": [
+    {
+      "name": "@status",
+      "placeholder": "@status"
+    }
+  ]
+}

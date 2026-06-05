@@ -1,0 +1,49 @@
+{
+  "baseTable": "orders",
+  "distinct": false,
+  "selectedColumns": [
+    {
+      "table": "orders",
+      "column": "id"
+    }
+  ],
+  "joins": [],
+  "filters": [
+    {
+      "column": {
+        "table": "orders",
+        "column": "status"
+      },
+      "fieldKind": "Column",
+      "operator": "=",
+      "value": "PAID",
+      "valueKind": "Literal",
+      "connector": "And"
+    },
+    {
+      "column": {
+        "table": "orders",
+        "column": "status"
+      },
+      "fieldKind": "Column",
+      "operator": "=",
+      "value": "PAID",
+      "valueKind": "Literal",
+      "connector": "And"
+    }
+  ],
+  "groupBy": [],
+  "orderBy": [
+    {
+      "column": {
+        "table": "orders",
+        "column": "id"
+      },
+      "fieldKind": "Column",
+      "direction": "Ascending"
+    }
+  ],
+  "aggregates": [],
+  "customColumns": [],
+  "parameters": []
+}
