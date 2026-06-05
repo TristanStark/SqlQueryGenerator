@@ -103,11 +103,6 @@ public sealed class SqlSelectReverseParser
     /// <param name="aliases">Alias-to-table map filled while parsing tables.</param>
     private static void ParseFromAndJoins(string fromText, QueryDefinition query, Dictionary<string, string> aliases)
     {
-        if (ContainsTopLevelSeparator(fromText, ','))
-        {
-            throw new InvalidOperationException("Reverse SQL impossible: les jointures implicites via FROM a, b ne sont pas prises en charge.");
-        }
-
         Match firstJoin = Regex.Match(fromText, @"\b(?:INNER\s+|LEFT\s+|LEFT\s+OUTER\s+)?JOIN\b", RegexOptions.IgnoreCase);
         string basePart = firstJoin.Success ? fromText[..firstJoin.Index].Trim() : fromText.Trim();
         string[] baseTables = SplitTopLevelComma(basePart).Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
@@ -1100,11 +1095,6 @@ public sealed class SqlSelectReverseParser
     /// <param name="sql">Normalized SQL statement.</param>
     private static void ThrowIfUnsupported(string sql)
     {
-        if (sql.Contains("(+)", StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException("Reverse SQL impossible: les jointures Oracle legacy '(+)' ne sont pas prises en charge.");
-        }
-
         if (FindTopLevelKeyword(sql, "UNION", 0) >= 0
             || FindTopLevelKeyword(sql, "INTERSECT", 0) >= 0
             || FindTopLevelKeyword(sql, "EXCEPT", 0) >= 0)
@@ -1173,40 +1163,6 @@ public sealed class SqlSelectReverseParser
         }
 
         fieldKind = QueryFieldKind.Column;
-        return false;
-    }
-
-    /// <summary>
-    /// Detects a separator outside strings and parentheses.
-    /// </summary>
-    /// <param name="text">Text to scan.</param>
-    /// <param name="separator">Separator character.</param>
-    /// <returns><c>true</c> when the separator is found at top level.</returns>
-    private static bool ContainsTopLevelSeparator(string text, char separator)
-    {
-        int depth = 0;
-        bool inString = false;
-        foreach (char c in text)
-        {
-            if (c == '\'')
-            {
-                inString = !inString;
-            }
-            else if (!inString && c == '(')
-            {
-                depth++;
-            }
-            else if (!inString && c == ')')
-            {
-                depth = Math.Max(0, depth - 1);
-            }
-
-            if (!inString && depth == 0 && c == separator)
-            {
-                return true;
-            }
-        }
-
         return false;
     }
 

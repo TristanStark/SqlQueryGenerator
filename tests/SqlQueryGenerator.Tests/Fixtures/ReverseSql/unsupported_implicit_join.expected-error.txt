@@ -1,1 +1,0 @@
-Reverse SQL impossible: les jointures implicites via FROM a, b ne sont pas prises en charge.

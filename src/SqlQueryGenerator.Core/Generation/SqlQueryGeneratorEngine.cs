@@ -1685,15 +1685,13 @@ public sealed class SqlQueryGeneratorEngine
         // FieldAlias stores the raw aggregate expression rather than a visual aggregate alias.
         if (LooksLikeRawAggregateExpression(alias))
         {
-            if (LooksLikeAggregateExpression(alias))
-            {
-                SqlSafety.EnsureSelectExpressionIsSafe(alias);
-                return alias.Trim();
-            }
-
-            warnings.Add($"Filtre d'agrégat ignoré: l'alias '{alias}' n'existe plus.");
-            return string.Empty;
+            SqlSafety.EnsureSelectExpressionIsSafe(alias);
+            return alias;
         }
+
+        warnings.Add($"Filtre d'agrégat ignoré: l'alias ou l'expression '{alias}' n'existe plus.");
+        return string.Empty;
+    }
 
 
     /// <summary>

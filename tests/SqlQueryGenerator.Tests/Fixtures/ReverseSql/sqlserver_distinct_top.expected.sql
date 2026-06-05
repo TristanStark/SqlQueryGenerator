@@ -1,1 +1,1 @@
-SELECT DISTINCT customers.name FROM customers ORDER BY customers.name ASC LIMIT 3
+SELECT DISTINCT c.name FROM customers c ORDER BY c.name ASC LIMIT 3

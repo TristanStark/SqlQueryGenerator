@@ -1,1 +1,1 @@
-SELECT orders.id, orders.status FROM orders WHERE orders.status = @status ORDER BY orders.id DESC LIMIT 5
+SELECT o.id, o.status FROM orders o WHERE o.status = @status ORDER BY o.id DESC LIMIT 5
