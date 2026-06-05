@@ -1,0 +1,64 @@
+{
+  "baseTable": "orders",
+  "distinct": false,
+  "selectedColumns": [
+    {
+      "table": "orders",
+      "column": "customer_id"
+    }
+  ],
+  "joins": [],
+  "filters": [
+    {
+      "fieldKind": "Aggregate",
+      "fieldAlias": "order_count",
+      "operator": ">",
+      "value": "1",
+      "valueKind": "Literal",
+      "connector": "And"
+    },
+    {
+      "fieldKind": "Aggregate",
+      "fieldAlias": "total_amount",
+      "operator": ">=",
+      "value": "100",
+      "valueKind": "Literal",
+      "connector": "And"
+    }
+  ],
+  "groupBy": [
+    {
+      "table": "orders",
+      "column": "customer_id"
+    }
+  ],
+  "orderBy": [
+    {
+      "fieldKind": "Aggregate",
+      "fieldAlias": "total_amount",
+      "direction": "Descending"
+    }
+  ],
+  "aggregates": [
+    {
+      "function": "Count",
+      "column": {
+        "table": "orders",
+        "column": "id"
+      },
+      "distinct": false,
+      "alias": "order_count"
+    },
+    {
+      "function": "Sum",
+      "column": {
+        "table": "orders",
+        "column": "amount"
+      },
+      "distinct": false,
+      "alias": "total_amount"
+    }
+  ],
+  "customColumns": [],
+  "parameters": []
+}

@@ -1,0 +1,1 @@
+Reverse SQL impossible: les jointures Oracle legacy '(+)' ne sont pas prises en charge.

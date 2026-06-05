@@ -76,6 +76,30 @@ dotnet build .\SqlQueryGenerator.sln -c Release
 .\run-tests.ps1
 ```
 
+### Corpus de régression reverse/rewrite SQL
+
+Les cas de régression reverse SQL sont stockés dans :
+
+```text
+tests/SqlQueryGenerator.Tests/Fixtures/ReverseSql/
+```
+
+Chaque cas est piloté par un fichier `*.input.sql` et peut ajouter, selon le besoin :
+
+- `case.expected.sql` pour comparer le SQL réécrit après reverse puis génération ;
+- `case.expected-model.json` pour figer le modèle `QueryDefinition` reconstruit ;
+- `case.expected-warnings.txt` pour figer les avertissements de génération ;
+- `case.expected-error.txt` pour les syntaxes explicitement non prises en charge ;
+- `case.schema.sql` si une génération a besoin d'un schéma de support.
+
+Pour ajouter un nouveau cas :
+
+1. crée `nom_du_cas.input.sql` ;
+2. ajoute seulement les fichiers d'attente utiles pour ce scénario ;
+3. lance `dotnet test tests\SqlQueryGenerator.Tests\SqlQueryGenerator.Tests.csproj`.
+
+Le helper de test normalise les différences de whitespace SQL non significatives afin d'éviter des faux positifs sur le formatage seul.
+
 ## Utilisation
 
 1. Lance `SqlQueryGenerator.App`.

@@ -1,0 +1,10 @@
+WITH recent_orders AS (
+    SELECT customer_id, id
+    FROM orders
+    WHERE created_at >= :cutoff_date
+)
+SELECT recent_orders.customer_id,
+       COUNT(recent_orders.id) AS order_count
+FROM recent_orders
+GROUP BY recent_orders.customer_id
+ORDER BY order_count DESC

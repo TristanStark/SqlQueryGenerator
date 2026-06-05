@@ -46,6 +46,11 @@ public sealed class SqlQueryGeneratorEngine
             sb.AppendLine("/* Requête générée sans sous-requête, avec jointures explicites lorsque possible. */");
         }
 
+        if (!string.IsNullOrWhiteSpace(query.WithClauseSql))
+        {
+            sb.AppendLine(query.WithClauseSql.Trim());
+        }
+
         sb.Append("SELECT ");
         if (query.Distinct)
         {
@@ -1660,6 +1665,12 @@ public sealed class SqlQueryGeneratorEngine
         AggregateSelection? aggregate = query.Aggregates.FirstOrDefault(a => string.Equals(a.Alias, alias, StringComparison.OrdinalIgnoreCase));
         if (aggregate is null)
         {
+            if (LooksLikeAggregateExpression(alias))
+            {
+                SqlSafety.EnsureSelectExpressionIsSafe(alias);
+                return alias.Trim();
+            }
+
             warnings.Add($"Filtre d'agrégat ignoré: l'alias '{alias}' n'existe plus.");
             return string.Empty;
         }
@@ -1819,7 +1830,7 @@ public sealed class SqlQueryGeneratorEngine
         if (valueKind == FilterValueKind.Parameter)
         {
             string placeholder = string.IsNullOrWhiteSpace(raw) ? "?" : raw.Trim();
-            if (!placeholder.StartsWith(':') && !placeholder.StartsWith('@') && !placeholder.StartsWith('?'))
+            if (!placeholder.StartsWith(':') && !placeholder.StartsWith('@') && !placeholder.StartsWith('?') && !placeholder.StartsWith('&'))
             {
                 placeholder = ":" + placeholder;
             }
@@ -1899,6 +1910,23 @@ public sealed class SqlQueryGeneratorEngine
             "NOTEXISTS" => "NOT EXISTS",
             _ => value
         };
+    }
+
+    /// <summary>
+    /// Detects whether a filter expression is already a raw aggregate SQL fragment.
+    /// </summary>
+    /// <param name="expression">Expression text.</param>
+    /// <returns><c>true</c> when the text starts with a supported aggregate function.</returns>
+    private static bool LooksLikeAggregateExpression(string expression)
+    {
+        return expression.StartsWith("COUNT(", StringComparison.OrdinalIgnoreCase)
+            || expression.StartsWith("SUM(", StringComparison.OrdinalIgnoreCase)
+            || expression.StartsWith("AVG(", StringComparison.OrdinalIgnoreCase)
+            || expression.StartsWith("AVERAGE(", StringComparison.OrdinalIgnoreCase)
+            || expression.StartsWith("MIN(", StringComparison.OrdinalIgnoreCase)
+            || expression.StartsWith("MAX(", StringComparison.OrdinalIgnoreCase)
+            || expression.StartsWith("MINIMUM(", StringComparison.OrdinalIgnoreCase)
+            || expression.StartsWith("MAXIMUM(", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

@@ -28,6 +28,11 @@ public sealed class QueryDefinition
     /// <value>Valeur de Distinct.</value>
     public bool Distinct { get; set; }
     /// <summary>
+    /// Stores the raw WITH clause prefix captured during reverse parsing, when present.
+    /// </summary>
+    /// <value>Leading WITH ... clause, or <c>null</c>.</value>
+    public string? WithClauseSql { get; set; }
+    /// <summary>
     /// Stocke la valeur interne SelectedColumns.
     /// </summary>
     /// <value>Valeur de SelectedColumns.</value>
@@ -111,7 +116,7 @@ public sealed record QueryParameterDefinition
     /// <value>Valeur de Placeholder.</value>
     public string Placeholder => string.IsNullOrWhiteSpace(Name)
         ? "?"
-        : Name.StartsWith(':') || Name.StartsWith('@') || Name.StartsWith('?')
+        : Name.StartsWith(':') || Name.StartsWith('@') || Name.StartsWith('?') || Name.StartsWith('&')
             ? Name
             : ":" + Name;
 }

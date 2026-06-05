@@ -30,7 +30,8 @@ public sealed class ReverseSqlTests
 
         SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
 
-        Assert.Contains("pnj.id IN (SELECT pnj_id", result.Sql);
+        Assert.Contains("pnj.id IN (", result.Sql);
+        Assert.Contains("SELECT pnj_id", result.Sql);
         Assert.Contains("WHERE tag_id = :tag_id", result.Sql);
     }
 

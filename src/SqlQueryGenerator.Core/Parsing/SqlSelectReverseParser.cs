@@ -1,5 +1,6 @@
 using SqlQueryGenerator.Core.Generation;
 using SqlQueryGenerator.Core.Query;
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -21,6 +22,8 @@ public sealed class SqlSelectReverseParser
         Dictionary<string, string> aliases = new(StringComparer.OrdinalIgnoreCase);
         QueryDefinition query = new();
 
+        ThrowIfUnsupported(normalized);
+
         int selectIndex = FindTopLevelKeyword(normalized, "SELECT", 0);
         int fromIndex = FindTopLevelKeyword(normalized, "FROM", selectIndex + 6);
         if (selectIndex < 0 || fromIndex < 0)
@@ -34,14 +37,24 @@ public sealed class SqlSelectReverseParser
         int orderIndex = FindTopLevelKeyword(normalized, "ORDER BY", fromIndex + 4);
         int limitIndex = FindTopLevelKeyword(normalized, "LIMIT", fromIndex + 4);
         int fetchIndex = FindTopLevelKeyword(normalized, "FETCH FIRST", fromIndex + 4);
+        int fetchNextIndex = FindTopLevelKeyword(normalized, "FETCH NEXT", fromIndex + 4);
 
-        int fromEnd = FirstPositive(whereIndex, groupIndex, havingIndex, orderIndex, limitIndex, fetchIndex, normalized.Length);
+        int fromEnd = FirstPositive(whereIndex, groupIndex, havingIndex, orderIndex, limitIndex, fetchIndex, fetchNextIndex, normalized.Length);
+        if (selectIndex > 0 && normalized.StartsWith("WITH", StringComparison.OrdinalIgnoreCase))
+        {
+            query.WithClauseSql = normalized[..selectIndex].Trim();
+        }
+
         string selectText = normalized[(selectIndex + 6)..fromIndex].Trim();
         string fromText = normalized[(fromIndex + 4)..fromEnd].Trim();
-        string whereText = SliceClause(normalized, whereIndex, 5, groupIndex, havingIndex, orderIndex, limitIndex, fetchIndex);
-        string groupText = SliceClause(normalized, groupIndex, 8, havingIndex, orderIndex, limitIndex, fetchIndex);
-        string havingText = SliceClause(normalized, havingIndex, 6, orderIndex, limitIndex, fetchIndex);
-        string orderText = SliceClause(normalized, orderIndex, 8, limitIndex, fetchIndex);
+        string whereText = SliceClause(normalized, whereIndex, 5, groupIndex, havingIndex, orderIndex, limitIndex, fetchIndex, fetchNextIndex);
+        string groupText = SliceClause(normalized, groupIndex, 8, havingIndex, orderIndex, limitIndex, fetchIndex, fetchNextIndex);
+        string havingText = SliceClause(normalized, havingIndex, 6, orderIndex, limitIndex, fetchIndex, fetchNextIndex);
+        string orderText = SliceClause(normalized, orderIndex, 8, limitIndex, fetchIndex, fetchNextIndex);
+        string limitText = SliceClause(normalized, limitIndex, 5, fetchIndex, fetchNextIndex);
+        int fetchStart = fetchIndex >= 0 ? fetchIndex : fetchNextIndex;
+        int alternateFetchIndex = fetchStart == fetchIndex ? fetchNextIndex : fetchIndex;
+        string fetchText = SliceClause(normalized, fetchStart, alternateFetchIndex);
 
         ParseFromAndJoins(fromText, query, aliases);
         ParseSelectItems(selectText, query, aliases);
@@ -49,6 +62,7 @@ public sealed class SqlSelectReverseParser
         ParseGroupBy(groupText, query, aliases);
         ParsePredicates(havingText, query, aliases, asHaving: true);
         ParseOrderBy(orderText, query, aliases);
+        query.LimitRows ??= ParseLimit(limitText, fetchText);
         query.Parameters = new System.Collections.ObjectModel.Collection<QueryParameterDefinition>(ExtractParameters(normalized).ToList());
         return query;
     }
@@ -62,7 +76,7 @@ public sealed class SqlSelectReverseParser
     {
         List<QueryParameterDefinition> parameters = [];
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        foreach (Match match in Regex.Matches(sql, @"(?<![\w])([:@][A-Za-z_][A-Za-z0-9_]*|\?)"))
+        foreach (Match match in Regex.Matches(sql, @"(?<![\w])([:@][A-Za-z_][A-Za-z0-9_]*|\?|&&?[A-Za-z0-9_]+)"))
         {
             string placeholder = match.Groups[1].Value;
             if (seen.Add(placeholder))
@@ -87,6 +101,11 @@ public sealed class SqlSelectReverseParser
     /// <param name="aliases">Alias-to-table map filled while parsing tables.</param>
     private static void ParseFromAndJoins(string fromText, QueryDefinition query, Dictionary<string, string> aliases)
     {
+        if (ContainsTopLevelSeparator(fromText, ','))
+        {
+            throw new InvalidOperationException("Reverse SQL impossible: les jointures implicites via FROM a, b ne sont pas prises en charge.");
+        }
+
         Match firstJoin = Regex.Match(fromText, @"\b(?:INNER\s+|LEFT\s+|LEFT\s+OUTER\s+)?JOIN\b", RegexOptions.IgnoreCase);
         string basePart = firstJoin.Success ? fromText[..firstJoin.Index].Trim() : fromText.Trim();
         string baseTable = ParseTableReference(basePart, aliases);
@@ -153,10 +172,25 @@ public sealed class SqlSelectReverseParser
     /// <param name="aliases">Alias-to-table map.</param>
     private static void ParseSelectItems(string selectText, QueryDefinition query, Dictionary<string, string> aliases)
     {
-        if (selectText.StartsWith("DISTINCT ", StringComparison.OrdinalIgnoreCase))
+        bool changed = true;
+        while (changed)
         {
-            query.Distinct = true;
-            selectText = selectText[8..].Trim();
+            changed = false;
+
+            if (selectText.StartsWith("DISTINCT ", StringComparison.OrdinalIgnoreCase))
+            {
+                query.Distinct = true;
+                selectText = selectText[8..].Trim();
+                changed = true;
+            }
+
+            Match topMatch = Regex.Match(selectText, @"(?is)^TOP\s*\(?(\d+)\)?\s+");
+            if (topMatch.Success)
+            {
+                query.LimitRows = int.Parse(topMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+                selectText = selectText[topMatch.Length..].Trim();
+                changed = true;
+            }
         }
 
         foreach (string item in SplitTopLevelComma(selectText))
@@ -205,7 +239,7 @@ public sealed class SqlSelectReverseParser
 
         foreach (string predicate in SplitTopLevelByKeyword(text, "AND"))
         {
-            FilterCondition? condition = ParsePredicate(predicate.Trim(), aliases, asHaving);
+            FilterCondition? condition = ParsePredicate(predicate.Trim(), query, aliases, asHaving);
             if (condition is not null)
             {
                 query.Filters.Add(condition);
@@ -220,25 +254,25 @@ public sealed class SqlSelectReverseParser
     /// <param name="aliases">Alias-to-table map.</param>
     /// <param name="asHaving">Whether the predicate belongs to HAVING.</param>
     /// <returns>A filter condition, or <c>null</c> when the predicate cannot be understood.</returns>
-    private static FilterCondition? ParsePredicate(string predicate, Dictionary<string, string> aliases, bool asHaving)
+    private static FilterCondition? ParsePredicate(string predicate, QueryDefinition query, Dictionary<string, string> aliases, bool asHaving)
     {
         Match isNull = Regex.Match(predicate, @"(?is)^(.+?)\s+(IS\s+NOT\s+NULL|IS\s+NULL)$");
         if (isNull.Success)
         {
-            return BuildFilter(isNull.Groups[1].Value, isNull.Groups[2].Value, null, aliases, asHaving);
+            return BuildFilter(query, isNull.Groups[1].Value, isNull.Groups[2].Value, null, aliases, asHaving);
         }
 
         Match between = Regex.Match(predicate, @"(?is)^(.+?)\s+BETWEEN\s+(.+?)\s+AND\s+(.+)$");
         if (between.Success)
         {
-            FilterCondition? filter = BuildFilter(between.Groups[1].Value, "BETWEEN", between.Groups[2].Value, aliases, asHaving);
+            FilterCondition? filter = BuildFilter(query, between.Groups[1].Value, "BETWEEN", between.Groups[2].Value, aliases, asHaving);
             return filter is null ? null : filter with { SecondValue = UnquoteValue(between.Groups[3].Value.Trim()) };
         }
 
         Match inSubquery = Regex.Match(predicate, @"(?is)^(.+?)\s+(IN|NOT\s+IN)\s*\((\s*(?:SELECT|WITH)\b.+)\)$");
         if (inSubquery.Success)
         {
-            FilterCondition? filter = BuildFilter(inSubquery.Groups[1].Value, inSubquery.Groups[2].Value, null, aliases, asHaving);
+            FilterCondition? filter = BuildFilter(query, inSubquery.Groups[1].Value, inSubquery.Groups[2].Value, null, aliases, asHaving);
             return filter is null ? null : filter with
             {
                 ValueKind = FilterValueKind.Subquery,
@@ -247,10 +281,10 @@ public sealed class SqlSelectReverseParser
             };
         }
 
-        Match binary = Regex.Match(predicate, @"(?is)^(.+?)\s*(=|<>|!=|>=|<=|>|<|LIKE|NOT\s+LIKE|IN|NOT\s+IN)\s*(.+)$");
+        Match binary = Regex.Match(predicate, @"(?is)^(.+?)\s*(=|<>|!=|>=|<=|>|<|LIKE|NOT\s+LIKE|ILIKE|NOT\s+ILIKE|IN|NOT\s+IN)\s*(.+)$");
         if (binary.Success)
         {
-            return BuildFilter(binary.Groups[1].Value, binary.Groups[2].Value, binary.Groups[3].Value, aliases, asHaving);
+            return BuildFilter(query, binary.Groups[1].Value, binary.Groups[2].Value, binary.Groups[3].Value, aliases, asHaving);
         }
 
         return null;
@@ -265,12 +299,25 @@ public sealed class SqlSelectReverseParser
     /// <param name="aliases">Alias-to-table map.</param>
     /// <param name="asHaving">Whether the filter is a HAVING filter.</param>
     /// <returns>Filter condition.</returns>
-    private static FilterCondition? BuildFilter(string leftExpression, string operatorText, string? valueText, Dictionary<string, string> aliases, bool asHaving)
+    private static FilterCondition? BuildFilter(QueryDefinition query, string leftExpression, string operatorText, string? valueText, Dictionary<string, string> aliases, bool asHaving)
     {
         string normalizedOperator = Regex.Replace(operatorText.Trim(), @"\s+", " ").ToUpperInvariant();
-        ColumnReference? column = ParseColumnReference(leftExpression.Trim(), aliases);
         FilterValueKind valueKind = DetectValueKind(valueText);
         string? value = valueKind == FilterValueKind.Literal ? UnquoteValue(valueText?.Trim()) : valueText?.Trim();
+        string resolvedAlias = TrimIdentifierQuotes(leftExpression.Trim());
+        if (TryResolveFieldAlias(query, resolvedAlias, asHaving, out QueryFieldKind fieldKind))
+        {
+            return new FilterCondition
+            {
+                FieldKind = fieldKind,
+                FieldAlias = resolvedAlias,
+                Operator = normalizedOperator,
+                Value = value,
+                ValueKind = valueKind
+            };
+        }
+
+        ColumnReference? column = ParseColumnReference(leftExpression.Trim(), aliases);
         if (column is not null)
         {
             return new FilterCondition
@@ -332,6 +379,13 @@ public sealed class SqlSelectReverseParser
             SortDirection direction = match.Groups[2].Value.Equals("DESC", StringComparison.OrdinalIgnoreCase)
                 ? SortDirection.Descending
                 : SortDirection.Ascending;
+            string resolvedAlias = TrimIdentifierQuotes(expression);
+            if (TryResolveOrderByAlias(query, resolvedAlias, out QueryFieldKind fieldKind))
+            {
+                query.OrderBy.Add(new OrderByItem { FieldAlias = resolvedAlias, FieldKind = fieldKind, Direction = direction });
+                continue;
+            }
+
             ColumnReference? column = ParseColumnReference(expression, aliases);
             if (column is not null)
             {
@@ -453,6 +507,11 @@ public sealed class SqlSelectReverseParser
             return FilterValueKind.Parameter;
         }
 
+        if (value.StartsWith('&'))
+        {
+            return FilterValueKind.Parameter;
+        }
+
         if (value.StartsWith('(') && value.Contains("SELECT", StringComparison.OrdinalIgnoreCase))
         {
             return FilterValueKind.RawSql;
@@ -499,6 +558,26 @@ public sealed class SqlSelectReverseParser
 
         int end = FirstPositive(candidateEnds.Append(sql.Length).ToArray());
         return sql[(startIndex + keywordLength)..end].Trim();
+    }
+
+    /// <summary>
+    /// Extracts a FETCH FIRST/NEXT clause body while handling absent clauses.
+    /// </summary>
+    /// <param name="sql">Full SQL text.</param>
+    /// <param name="startIndex">Clause start index.</param>
+    /// <param name="otherFetchIndex">Alternate FETCH index.</param>
+    /// <returns>Clause content, or an empty string.</returns>
+    private static string SliceClause(string sql, int startIndex, int otherFetchIndex)
+    {
+        if (string.IsNullOrEmpty(sql) || startIndex < 0)
+        {
+            return string.Empty;
+        }
+
+        int keywordLength = string.Compare(sql, startIndex, "FETCH NEXT", 0, "FETCH NEXT".Length, StringComparison.OrdinalIgnoreCase) == 0
+            ? "FETCH NEXT".Length
+            : "FETCH FIRST".Length;
+        return SliceClause(sql, startIndex, keywordLength, otherFetchIndex);
     }
 
     /// <summary>
@@ -688,6 +767,145 @@ public sealed class SqlSelectReverseParser
     /// <param name="name">Object name.</param>
     /// <returns>Last name segment.</returns>
     private static string SqlObjectTail(string name) => name.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault() ?? name;
+
+    /// <summary>
+    /// Parses LIMIT or FETCH FIRST/NEXT into QueryDefinition.LimitRows.
+    /// </summary>
+    /// <param name="limitText">LIMIT clause content.</param>
+    /// <param name="fetchText">FETCH clause content.</param>
+    /// <returns>Parsed row limit when found.</returns>
+    private static int? ParseLimit(string limitText, string fetchText)
+    {
+        Match limitMatch = Regex.Match(limitText, @"(?is)^(\d+)\b");
+        if (limitMatch.Success)
+        {
+            return int.Parse(limitMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+        }
+
+        Match fetchMatch = Regex.Match(fetchText, @"(?is)^(\d+)\s+ROWS?\s+ONLY$");
+        if (fetchMatch.Success)
+        {
+            return int.Parse(fetchMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Rejects SQL constructs that reverse parsing does not support deterministically.
+    /// </summary>
+    /// <param name="sql">Normalized SQL statement.</param>
+    private static void ThrowIfUnsupported(string sql)
+    {
+        if (sql.Contains("(+)", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Reverse SQL impossible: les jointures Oracle legacy '(+)' ne sont pas prises en charge.");
+        }
+
+        if (FindTopLevelKeyword(sql, "UNION", 0) >= 0
+            || FindTopLevelKeyword(sql, "INTERSECT", 0) >= 0
+            || FindTopLevelKeyword(sql, "EXCEPT", 0) >= 0)
+        {
+            throw new InvalidOperationException("Reverse SQL impossible: UNION, INTERSECT et EXCEPT ne sont pas pris en charge.");
+        }
+
+        if (FindTopLevelKeyword(sql, "CONNECT BY", 0) >= 0
+            || FindTopLevelKeyword(sql, "START WITH", 0) >= 0)
+        {
+            throw new InvalidOperationException("Reverse SQL impossible: CONNECT BY / START WITH n'est pas pris en charge.");
+        }
+    }
+
+    /// <summary>
+    /// Determines whether a filter left-hand side should reference a known alias instead of a table column.
+    /// </summary>
+    /// <param name="query">Current query model.</param>
+    /// <param name="expression">Left expression to resolve.</param>
+    /// <param name="asHaving">Whether the predicate belongs to HAVING.</param>
+    /// <param name="fieldKind">Resolved field kind.</param>
+    /// <returns><c>true</c> when a known alias was found.</returns>
+    private static bool TryResolveFieldAlias(QueryDefinition query, string expression, bool asHaving, out QueryFieldKind fieldKind)
+    {
+        if (asHaving && query.Aggregates.Any(a => string.Equals(a.Alias, expression, StringComparison.OrdinalIgnoreCase)))
+        {
+            fieldKind = QueryFieldKind.Aggregate;
+            return true;
+        }
+
+        if (query.CustomColumns.Any(c => string.Equals(c.Alias, expression, StringComparison.OrdinalIgnoreCase)))
+        {
+            fieldKind = QueryFieldKind.CustomColumn;
+            return true;
+        }
+
+        fieldKind = QueryFieldKind.Column;
+        return false;
+    }
+
+    /// <summary>
+    /// Resolves ORDER BY aliases from known projection aliases before falling back to column parsing.
+    /// </summary>
+    /// <param name="query">Current query model.</param>
+    /// <param name="expression">ORDER BY expression.</param>
+    /// <param name="fieldKind">Resolved field kind.</param>
+    /// <returns><c>true</c> when the ORDER BY item targets a known alias.</returns>
+    private static bool TryResolveOrderByAlias(QueryDefinition query, string expression, out QueryFieldKind fieldKind)
+    {
+        if (query.Aggregates.Any(a => string.Equals(a.Alias, expression, StringComparison.OrdinalIgnoreCase)))
+        {
+            fieldKind = QueryFieldKind.Aggregate;
+            return true;
+        }
+
+        if (query.CustomColumns.Any(c => string.Equals(c.Alias, expression, StringComparison.OrdinalIgnoreCase)))
+        {
+            fieldKind = QueryFieldKind.CustomColumn;
+            return true;
+        }
+
+        if (query.SelectedColumns.Any(c => string.Equals(c.Alias, expression, StringComparison.OrdinalIgnoreCase)))
+        {
+            fieldKind = QueryFieldKind.Column;
+            return true;
+        }
+
+        fieldKind = QueryFieldKind.Column;
+        return false;
+    }
+
+    /// <summary>
+    /// Detects a separator outside strings and parentheses.
+    /// </summary>
+    /// <param name="text">Text to scan.</param>
+    /// <param name="separator">Separator character.</param>
+    /// <returns><c>true</c> when the separator is found at top level.</returns>
+    private static bool ContainsTopLevelSeparator(string text, char separator)
+    {
+        int depth = 0;
+        bool inString = false;
+        foreach (char c in text)
+        {
+            if (c == '\'')
+            {
+                inString = !inString;
+            }
+            else if (!inString && c == '(')
+            {
+                depth++;
+            }
+            else if (!inString && c == ')')
+            {
+                depth = Math.Max(0, depth - 1);
+            }
+
+            if (!inString && depth == 0 && c == separator)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// Determines whether a token is a SQL keyword that should not be treated as an alias.
