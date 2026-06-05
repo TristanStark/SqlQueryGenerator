@@ -32,6 +32,9 @@ public sealed class MainViewModel : ObservableObject
     /// <value>Reusable best-effort SQL reverse parser.</value>
     private readonly ReverseSqlImportService _reverseImportService = new();
     private readonly SqlRewriteSuggestionService _rewriteSuggestionService = new();
+    private readonly SqlComparisonService _sqlComparisonService = new();
+    private readonly QueryBuilderHistoryService _history = new();
+    private readonly SchemaAuxiliaryTableDetector _auxiliaryTableDetector = new();
     private readonly DdlCommandExportService _ddlCommandExportService = new();
     /// <summary>
     /// Exécute le traitement new.
@@ -115,6 +118,20 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Raw SQL text pasted or loaded by the user.</value>
     private string _rawSqlText = string.Empty;
+    private string _sqlComparisonSummary = "Aucune comparaison SQL active. Utilise Réécrire SQL ou Charger dans le constructeur.";
+    private string _sqlComparisonSourceLabel = "SQL source";
+    private string _sqlComparisonTargetLabel = "SQL résultat";
+    private string _sqlComparisonBaselineSql = string.Empty;
+    private string _lastRewrittenSql = string.Empty;
+    private bool _sqlComparisonTracksGeneratedSql;
+    private bool _ignoreSqlComparisonWhitespaceChanges;
+    private bool _ignoreSqlComparisonCaseChanges;
+    private string _reverseSqlCoverageReport = "Le rapport de couverture Reverse SQL apparaîtra ici.";
+    private string _reverseSqlDiagnosticsReport = "Les diagnostics Reverse SQL apparaîtront ici.";
+    private string _reverseSqlConfidenceSummary = "Confiance Reverse SQL : aucune analyse.";
+    private SourceSqlDialect _sourceSqlDialect = SourceSqlDialect.OracleLegacy;
+    private int _rawSqlSelectionStart;
+    private int _rawSqlSelectionLength;
     private string _ddlSchemaName = "main";
     private string _ddlExportSql = string.Empty;
     /// <summary>
@@ -177,6 +194,7 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de _columnSearchText.</value>
     private string _columnSearchText = string.Empty;
+    private bool _hideAuxiliaryTables;
     /// <summary>
     /// Stocke la valeur interne  lastAppliedColumnSearchText.
     /// </summary>
@@ -254,6 +272,12 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value><c>true</c> when not all matching columns are rendered.</value>
     private bool _isColumnSearchTruncated;
+    private int _hiddenAuxiliaryTableCount;
+    private int _detectedAuxiliaryTableCount;
+    private int _importDetectedBackupCandidateCount;
+    private int _importExcludedBackupTableCount;
+    private int _importKeptBackupCandidateCount;
+    private bool _isRestoringHistory;
 
     /// <summary>
     /// Initialise une nouvelle instance de MainViewModel.
@@ -267,6 +291,8 @@ public sealed class MainViewModel : ObservableObject
         _columnSearchDebounceTimer.Tick += ColumnSearchDebounceTimer_Tick;
 
         GenerateCommand = new RelayCommand(GenerateSql);
+        UndoCommand = new RelayCommand(UndoHistory, () => _history.CanUndo);
+        RedoCommand = new RelayCommand(RedoHistory, () => _history.CanRedo);
         ClearQueryCommand = new RelayCommand(ClearQuery);
         RemoveSelectedColumnCommand = new RelayCommand(obj => RemoveFromCollection(SelectedColumns, obj));
         RemoveFilterCommand = new RelayCommand(obj => RemoveFromCollection(Filters, obj));
@@ -283,7 +309,8 @@ public sealed class MainViewModel : ObservableObject
         AddSelectedGroupByCommand = new RelayCommand(_ => AddSelectedColumnTo("group"), _ => SelectedAvailableColumn is not null);
         AddSelectedOrderByCommand = new RelayCommand(_ => AddSelectedColumnTo("order"), _ => SelectedAvailableColumn is not null);
         AddSelectedAggregateCommand = new RelayCommand(_ => AddSelectedColumnTo("aggregate"), _ => SelectedAvailableColumn is not null);
-        AddJoinFromRelationshipCommand = new RelayCommand(_ => AddSelectedRelationshipAsJoin(), _ => SelectedRelationship is not null);
+        AddJoinFromRelationshipCommand = new RelayCommand(_ => AddSelectedRelationshipAsJoin(), _ => SelectedRelationship is not null && !SelectedRelationship.IsUsed);
+        AddRelationshipAsJoinCommand = new RelayCommand(obj => AddRelationshipAsJoin(obj as RelationshipItemViewModel), obj => obj is RelationshipItemViewModel relationship && !relationship.IsUsed);
         AddManualJoinCommand = new RelayCommand(AddManualJoin);
         AddJoinPairCommand = new RelayCommand(obj => AddJoinPair(obj as JoinRowViewModel));
         RemoveJoinPairCommand = new RelayCommand(obj => RemoveJoinPair(obj as JoinColumnPairRowViewModel));
@@ -299,7 +326,10 @@ public sealed class MainViewModel : ObservableObject
         LoadSelectedRawSqlCommand = new RelayCommand(_ => LoadSelectedRawSqlPreset(), _ => SelectedSavedQuery is not null);
         ReverseEngineerRawSqlCommand = new RelayCommand(ReverseEngineerRawSql);
         RewriteRawSqlCommand = new RelayCommand(RewriteRawSql);
-        UseGeneratedSqlAsRawInputCommand = new RelayCommand(() => RawSqlText = GeneratedSql);
+        UseGeneratedSqlAsRawInputCommand = new RelayCommand(UseGeneratedSqlAsRawInput);
+        CompareRawVsRewrittenSqlCommand = new RelayCommand(CompareRawVsRewrittenSql, () => !string.IsNullOrWhiteSpace(_lastRewrittenSql));
+        CompareRawVsBuilderSqlCommand = new RelayCommand(CompareRawVsBuilderSql);
+        CompareRewrittenVsBuilderSqlCommand = new RelayCommand(CompareRewrittenVsBuilderSql, () => !string.IsNullOrWhiteSpace(_lastRewrittenSql));
         GenerateDdlExportCommand = new RelayCommand(GenerateDdlExportSql);
         OpenHelpCommand = new RelayCommand(OpenHelpDocumentation);
         ReloadSavedQueriesCommand = new RelayCommand(ReloadSavedQueries);
@@ -318,6 +348,7 @@ public sealed class MainViewModel : ObservableObject
         WireAutoGenerate(Joins);
         WireAutoGenerate(CustomColumns);
         WireAutoGenerate(Parameters);
+        ResetHistoryToCurrentState();
     }
 
     /// <summary>
@@ -386,6 +417,11 @@ public sealed class MainViewModel : ObservableObject
     /// <value>Valeur de SavedQueries.</value>
     public ObservableCollection<SavedQueryItemViewModel> SavedQueries { get; } = [];
     /// <summary>
+    /// Stores the aligned SQL comparison rows shown in the reverse/rewrite workflow.
+    /// </summary>
+    /// <value>Line-by-line comparison between source and result SQL.</value>
+    public ObservableCollection<SqlComparisonLine> SqlComparisonLines { get; } = [];
+    /// <summary>
     /// Stocke la valeur interne TableNames.
     /// </summary>
     /// <value>Valeur de TableNames.</value>
@@ -410,6 +446,7 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de Dialects.</value>
     public Array Dialects => Enum.GetValues(typeof(SqlDialect));
+    public Array SourceSqlDialects => Enum.GetValues(typeof(SourceSqlDialect));
     public Array DdlExportDialects => Enum.GetValues(typeof(DdlExportDialect));
     /// <summary>
     /// Obtient ou définit JoinTypes.
@@ -437,6 +474,16 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de GenerateCommand.</value>
     public RelayCommand GenerateCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne UndoCommand.
+    /// </summary>
+    /// <value>Valeur de UndoCommand.</value>
+    public RelayCommand UndoCommand { get; }
+    /// <summary>
+    /// Stocke la valeur interne RedoCommand.
+    /// </summary>
+    /// <value>Valeur de RedoCommand.</value>
+    public RelayCommand RedoCommand { get; }
     /// <summary>
     /// Stocke la valeur interne ClearQueryCommand.
     /// </summary>
@@ -523,6 +570,11 @@ public sealed class MainViewModel : ObservableObject
     /// <value>Valeur de AddJoinFromRelationshipCommand.</value>
     public RelayCommand AddJoinFromRelationshipCommand { get; }
     /// <summary>
+    /// Adds one specific probable relationship into the current query joins.
+    /// </summary>
+    /// <value>Per-row join-add command used by the probable-joins list.</value>
+    public RelayCommand AddRelationshipAsJoinCommand { get; }
+    /// <summary>
     /// Stocke la valeur interne AddManualJoinCommand.
     /// </summary>
     /// <value>Valeur de AddManualJoinCommand.</value>
@@ -603,6 +655,18 @@ public sealed class MainViewModel : ObservableObject
     /// <value>Command bound to the generated-to-raw helper button.</value>
     public RelayCommand UseGeneratedSqlAsRawInputCommand { get; }
     /// <summary>
+    /// Compares the raw SQL editor content against the latest rewritten SQL.
+    /// </summary>
+    public RelayCommand CompareRawVsRewrittenSqlCommand { get; }
+    /// <summary>
+    /// Compares the raw SQL editor content against the current builder-generated SQL.
+    /// </summary>
+    public RelayCommand CompareRawVsBuilderSqlCommand { get; }
+    /// <summary>
+    /// Compares the latest rewritten SQL against the current builder-generated SQL.
+    /// </summary>
+    public RelayCommand CompareRewrittenVsBuilderSqlCommand { get; }
+    /// <summary>
     /// Builds and copies a DDL extraction helper command for Oracle or SQLite.
     /// </summary>
     /// <value>Command bound to the DDL helper button.</value>
@@ -653,6 +717,9 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de Warnings.</value>
     public string Warnings { get => _warnings; set => SetProperty(ref _warnings, value); }
+    public string ReverseSqlCoverageReport { get => _reverseSqlCoverageReport; set => SetProperty(ref _reverseSqlCoverageReport, value); }
+    public string ReverseSqlDiagnosticsReport { get => _reverseSqlDiagnosticsReport; set => SetProperty(ref _reverseSqlDiagnosticsReport, value); }
+    public string ReverseSqlConfidenceSummary { get => _reverseSqlConfidenceSummary; set => SetProperty(ref _reverseSqlConfidenceSummary, value); }
     /// <summary>
     /// Obtient ou définit QueryPurpose.
     /// </summary>
@@ -663,6 +730,32 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de PerformanceReport.</value>
     public string PerformanceReport { get => _performanceReport; set => SetProperty(ref _performanceReport, value); }
+    public string SqlComparisonSummary { get => _sqlComparisonSummary; set => SetProperty(ref _sqlComparisonSummary, value); }
+    public string SqlComparisonSourceLabel { get => _sqlComparisonSourceLabel; set => SetProperty(ref _sqlComparisonSourceLabel, value); }
+    public string SqlComparisonTargetLabel { get => _sqlComparisonTargetLabel; set => SetProperty(ref _sqlComparisonTargetLabel, value); }
+    public bool IgnoreSqlComparisonWhitespaceChanges
+    {
+        get => _ignoreSqlComparisonWhitespaceChanges;
+        set
+        {
+            if (SetProperty(ref _ignoreSqlComparisonWhitespaceChanges, value))
+            {
+                RefreshCurrentSqlComparison();
+            }
+        }
+    }
+
+    public bool IgnoreSqlComparisonCaseChanges
+    {
+        get => _ignoreSqlComparisonCaseChanges;
+        set
+        {
+            if (SetProperty(ref _ignoreSqlComparisonCaseChanges, value))
+            {
+                RefreshCurrentSqlComparison();
+            }
+        }
+    }
     /// <summary>
     /// Obtient ou définit QueryName.
     /// </summary>
@@ -678,6 +771,9 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Raw SQL editor content.</value>
     public string RawSqlText { get => _rawSqlText; set => SetProperty(ref _rawSqlText, value); }
+    public SourceSqlDialect SourceSqlDialect { get => _sourceSqlDialect; set => SetProperty(ref _sourceSqlDialect, value); }
+    public int RawSqlSelectionStart { get => _rawSqlSelectionStart; set => SetProperty(ref _rawSqlSelectionStart, Math.Max(0, value)); }
+    public int RawSqlSelectionLength { get => _rawSqlSelectionLength; set => SetProperty(ref _rawSqlSelectionLength, Math.Max(0, value)); }
     /// <summary>
     /// Gets or sets the schema owner or database name used for DDL helper generation.
     /// </summary>
@@ -830,6 +926,25 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    public bool HideAuxiliaryTables
+    {
+        get => _hideAuxiliaryTables;
+        set
+        {
+            if (SetProperty(ref _hideAuxiliaryTables, value))
+            {
+                if (_schema.Tables.Count > 0)
+                {
+                    ReloadSchemaViewModels();
+                    OnPropertyChanged(nameof(SchemaSummary));
+                    OnPropertyChanged(nameof(SchemaFilterSummary));
+                }
+            }
+        }
+    }
+    public string SchemaFilterSummary => _schema.Tables.Count == 0
+        ? "Charge un schema pour activer le filtrage."
+        : BuildSchemaFilterSummary();
     /// <summary>
     /// Obtient ou définit SchemaSummary.
     /// </summary>
@@ -911,6 +1026,8 @@ public sealed class MainViewModel : ObservableObject
 
         RawSqlText = File.ReadAllText(filePath);
         QueryName = Path.GetFileNameWithoutExtension(filePath);
+        ClearStoredRewrittenSql();
+        ClearSqlComparison("SQL brut chargé. Utilise Réécrire SQL ou Charger dans le constructeur pour comparer les versions.");
         Status = $"SQL brut chargé: {filePath}";
     }
 
@@ -938,6 +1055,30 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Parses a schema only to detect backup candidates before the final import.
+    /// </summary>
+    /// <param name="text">DDL text to inspect.</param>
+    /// <param name="candidates">Detected review candidates.</param>
+    /// <returns><c>true</c> when preview parsing succeeded.</returns>
+    public bool TryPreviewBackupTableCandidates(string text, out IReadOnlyList<BackupTableCandidate> candidates)
+    {
+        candidates = Array.Empty<BackupTableCandidate>();
+
+        try
+        {
+            DatabaseSchema previewSchema = _parser.Parse(text);
+            candidates = _auxiliaryTableDetector.DetectBackupCandidates(previewSchema);
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or IOException)
+        {
+            Status = "Erreur de chargement du schÃ©ma.";
+            Warnings = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Exécute le traitement ImportDocumentationFromFile.
     /// </summary>
     /// <param name="filePath">Paramètre filePath.</param>
@@ -954,6 +1095,7 @@ public sealed class MainViewModel : ObservableObject
             SchemaDocumentationImportResult result = _documentationImporter.ApplyFromFile(_schema, filePath);
             ReloadSchemaViewModels();
             OnPropertyChanged(nameof(SchemaSummary));
+            OnPropertyChanged(nameof(SchemaFilterSummary));
             Status = result.ToString();
             Warnings = result.Warnings.Count == 0 ? "Documentation importée sans avertissement." : string.Join(Environment.NewLine, result.Warnings);
             GenerateSql();
@@ -970,21 +1112,37 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <param name="text">Paramètre text.</param>
     /// <param name="sourceName">Paramètre sourceName.</param>
-    public void LoadSchemaFromText(string text, string? sourceName = null)
+    public void LoadSchemaFromText(string text, string? sourceName = null, IReadOnlyCollection<string>? excludedTables = null)
     {
         try
         {
-            _schema = _parser.Parse(text);
+            DatabaseSchema parsedSchema = _parser.Parse(text);
+            SchemaImportFilterResult importResult = _auxiliaryTableDetector.ApplyImportSelection(parsedSchema, excludedTables);
+            _schema = importResult.Schema;
+            _importDetectedBackupCandidateCount = importResult.DetectedCandidates.Count;
+            _importExcludedBackupTableCount = importResult.ExcludedCandidates.Count;
+            _importKeptBackupCandidateCount = importResult.KeptCandidates.Count;
             LoadedFile = sourceName ?? "Collé manuellement";
             ReloadSchemaViewModels();
             OnPropertyChanged(nameof(SchemaSummary));
+            OnPropertyChanged(nameof(SchemaFilterSummary));
             Status = $"Schéma chargé: {_schema.PhysicalTables.Count()} tables, {_schema.Views.Count()} vues, {_schema.Tables.Sum(t => t.Columns.Count)} colonnes, {_schema.Indexes.Count} index, {_schema.Relationships.Count} relations probables.";
+            if (_importDetectedBackupCandidateCount > 0)
+            {
+                Status += $" {_importDetectedBackupCandidateCount} candidats backup detectes, {_importExcludedBackupTableCount} exclus, {_importKeptBackupCandidateCount} conserves.";
+            }
+
+            if (_hiddenAuxiliaryTableCount > 0 && HideAuxiliaryTables)
+            {
+                Status += $" {_hiddenAuxiliaryTableCount} tables auxiliaires masquées.";
+            }
             Warnings = string.Join(Environment.NewLine, _schema.Warnings);
             if (string.IsNullOrWhiteSpace(BaseTable) && TableNames.Count > 0)
             {
                 BaseTable = TableNames[0];
             }
             GenerateSql();
+            ResetHistoryToCurrentState();
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or IOException)
         {
@@ -1271,12 +1429,61 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
+        AddRelationshipAsJoin(SelectedRelationship);
+    }
+
+    /// <summary>
+    /// Refreshes the probable-join list to show which candidates are already used.
+    /// </summary>
+    private void RefreshRelationshipUsage()
+    {
+        foreach (RelationshipItemViewModel relationship in Relationships)
+        {
+            relationship.IsUsed = IsRelationshipUsed(relationship);
+        }
+
+        AddJoinFromRelationshipCommand.RaiseCanExecuteChanged();
+        AddRelationshipAsJoinCommand.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Indicates whether one probable relationship is already present in the current joins.
+    /// </summary>
+    /// <param name="relationship">Candidate relationship.</param>
+    /// <returns><c>true</c> when a matching join exists.</returns>
+    private bool IsRelationshipUsed(RelationshipItemViewModel relationship)
+    {
+        return Joins.Any(join =>
+            SameJoinEndpoint(join.FromTable, relationship.FromTable)
+            && SameJoinEndpoint(join.FromColumn, relationship.FromColumn)
+            && SameJoinEndpoint(join.ToTable, relationship.ToTable)
+            && SameJoinEndpoint(join.ToColumn, relationship.ToColumn))
+            || Joins.Any(join =>
+                SameJoinEndpoint(join.FromTable, relationship.ToTable)
+                && SameJoinEndpoint(join.FromColumn, relationship.ToColumn)
+                && SameJoinEndpoint(join.ToTable, relationship.FromTable)
+                && SameJoinEndpoint(join.ToColumn, relationship.FromColumn));
+    }
+
+    private static bool SameJoinEndpoint(string left, string right) => string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Adds a probable relationship to the current query joins if it is not already present.
+    /// </summary>
+    /// <param name="relationship">Probable relationship selected from the candidate list.</param>
+    private void AddRelationshipAsJoin(RelationshipItemViewModel? relationship)
+    {
+        if (relationship is null || IsRelationshipUsed(relationship))
+        {
+            return;
+        }
+
         Joins.Add(new JoinRowViewModel
         {
-            FromTable = SelectedRelationship.FromTable,
-            FromColumn = SelectedRelationship.FromColumn,
-            ToTable = SelectedRelationship.ToTable,
-            ToColumn = SelectedRelationship.ToColumn,
+            FromTable = relationship.FromTable,
+            FromColumn = relationship.FromColumn,
+            ToTable = relationship.ToTable,
+            ToColumn = relationship.ToColumn,
             JoinType = JoinType.Inner
         });
         GenerateSql();
@@ -1292,6 +1499,7 @@ public sealed class MainViewModel : ObservableObject
     {
         if (e.NewItems is null)
         {
+            RefreshRelationshipUsage();
             return;
         }
 
@@ -1299,6 +1507,8 @@ public sealed class MainViewModel : ObservableObject
         {
             join.ColumnNamesProvider = GetColumnNamesForTable;
         }
+
+        RefreshRelationshipUsage();
     }
 
     /// <summary>
@@ -1332,6 +1542,10 @@ public sealed class MainViewModel : ObservableObject
         _cachedIndexSummaries = BuildIndexSummaries();
         _cachedUniqueIndexColumns = BuildUniqueIndexColumnSet();
         _sortedSchemaTables = _schema.Tables.OrderBy(t => t.FullName, StringComparer.OrdinalIgnoreCase).ToArray();
+        HashSet<string> pinnedTables = BuildPinnedSchemaTableNames();
+        HashSet<string> visibleTableNames = new(StringComparer.OrdinalIgnoreCase);
+        _hiddenAuxiliaryTableCount = 0;
+        _detectedAuxiliaryTableCount = 0;
 
         Dictionary<string, IReadOnlyList<string>> columnNamesByTable = new(StringComparer.OrdinalIgnoreCase);
         Dictionary<string, IReadOnlyList<ColumnItemViewModel>> columnViewModelsByTable = new(StringComparer.OrdinalIgnoreCase);
@@ -1340,7 +1554,21 @@ public sealed class MainViewModel : ObservableObject
 
         foreach (TableDefinition table in _sortedSchemaTables)
         {
+            bool isAuxiliaryCandidate = !table.IsView && _auxiliaryTableDetector.IsLikelyAuxiliaryTable(table.FullName);
+            if (isAuxiliaryCandidate)
+            {
+                _detectedAuxiliaryTableCount++;
+            }
+
+            if (ShouldHideAuxiliaryTable(table, pinnedTables))
+            {
+                _hiddenAuxiliaryTableCount++;
+                continue;
+            }
+
             TableNames.Add(table.FullName);
+            visibleTableNames.Add(table.FullName);
+            visibleTableNames.Add(table.Name);
             ColumnDefinition[] sortedColumns = table.Columns.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ToArray();
             ColumnItemViewModel[] columnViewModels = sortedColumns
                 .Select(col => new ColumnItemViewModel(
@@ -1377,8 +1605,13 @@ public sealed class MainViewModel : ObservableObject
         _columnSearchIndex = searchIndex;
         _lastAppliedColumnSearchText = "__schema_reloaded__";
         _isColumnSearchTruncated = false;
-        foreach (InferredRelationship? rel in _schema.Relationships.OrderByDescending(r => r.Confidence).Take(500))
+        foreach (InferredRelationship? rel in _schema.Relationships.OrderByDescending(r => r.Confidence))
         {
+            if (!visibleTableNames.Contains(rel.FromTable) || !visibleTableNames.Contains(rel.ToTable))
+            {
+                continue;
+            }
+
             RelationshipItemViewModel vm = new(rel);
             vm.PropertyChanged += Relationship_PropertyChanged;
             Relationships.Add(vm);
@@ -1395,6 +1628,90 @@ public sealed class MainViewModel : ObservableObject
         }
 
         ApplyColumnTreeFilter();
+        RefreshRelationshipUsage();
+        OnPropertyChanged(nameof(SchemaFilterSummary));
+    }
+
+    private HashSet<string> BuildPinnedSchemaTableNames()
+    {
+        HashSet<string> pinned = new(StringComparer.OrdinalIgnoreCase);
+
+        void Add(string? tableName)
+        {
+            if (!string.IsNullOrWhiteSpace(tableName)
+                && !string.Equals(tableName, "Agrégat", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(tableName, "Calculé", StringComparison.OrdinalIgnoreCase))
+            {
+                pinned.Add(tableName);
+            }
+        }
+
+        Add(BaseTable);
+        Add(SelectedAvailableTable?.Name);
+        Add(SelectedAvailableColumn?.Table);
+
+        foreach (SelectColumnRowViewModel row in SelectedColumns) Add(row.Table);
+        foreach (FilterRowViewModel row in Filters) Add(row.Table);
+        foreach (GroupByRowViewModel row in GroupBy) Add(row.Table);
+        foreach (OrderByRowViewModel row in OrderBy) Add(row.Table);
+        foreach (AggregateRowViewModel row in Aggregates)
+        {
+            Add(row.Table);
+            Add(row.ConditionTable);
+        }
+
+        foreach (JoinRowViewModel row in Joins)
+        {
+            Add(row.FromTable);
+            Add(row.ToTable);
+        }
+
+        foreach (CustomColumnRowViewModel row in CustomColumns) Add(row.CaseTable);
+
+        return pinned;
+    }
+
+    private bool ShouldHideAuxiliaryTable(TableDefinition table, IReadOnlySet<string> pinnedTables)
+    {
+        return HideAuxiliaryTables
+            && !table.IsView
+            && !pinnedTables.Contains(table.FullName)
+            && !pinnedTables.Contains(table.Name)
+            && _auxiliaryTableDetector.IsLikelyAuxiliaryTable(table.FullName);
+    }
+
+    private string BuildSchemaFilterSummary()
+    {
+        List<string> parts = [];
+
+        if (_importDetectedBackupCandidateCount > 0)
+        {
+            parts.Add($"{_importDetectedBackupCandidateCount} candidats backup detectes a l'import");
+            if (_importExcludedBackupTableCount > 0)
+            {
+                parts.Add($"{_importExcludedBackupTableCount} exclus");
+            }
+
+            if (_importKeptBackupCandidateCount > 0)
+            {
+                parts.Add($"{_importKeptBackupCandidateCount} conserves");
+            }
+        }
+
+        if (_detectedAuxiliaryTableCount == 0)
+        {
+            parts.Add("aucune table auxiliaire restante detectee");
+        }
+        else if (HideAuxiliaryTables)
+        {
+            parts.Add($"{_hiddenAuxiliaryTableCount} tables auxiliaires restantes masquees");
+        }
+        else
+        {
+            parts.Add($"{_detectedAuxiliaryTableCount} tables auxiliaires restantes visibles");
+        }
+
+        return string.Join(" Â· ", parts);
     }
 
     /// <summary>
@@ -1641,6 +1958,7 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     private void GenerateSql()
     {
+        TrackHistoryAfterMutation();
         try
         {
             QueryDefinition query = BuildQueryDefinition();
@@ -1653,7 +1971,9 @@ public sealed class MainViewModel : ObservableObject
                 EmitOptimizationComments = false
             });
 
+            RefreshRelationshipUsage();
             GeneratedSql = result.Sql;
+            RefreshTrackedSqlComparison();
             QueryPurpose = _purposeDescriber.Describe(query, _schema);
             PerformanceReport = _performanceAnalyzer.Analyze(query, _schema).ToString();
             string[] messages = validationErrors.Concat(result.Warnings).Concat(_schema.Warnings).Distinct().ToArray();
@@ -1664,6 +1984,7 @@ public sealed class MainViewModel : ObservableObject
             GeneratedSql = "-- Impossible de générer la requête. Corrige les champs signalés.";
             QueryPurpose = "Impossible d'expliquer le but tant que la requête contient des erreurs.";
             PerformanceReport = "Analyse performance indisponible tant que la requête contient des erreurs.";
+            SuspendTrackedSqlComparison("Comparaison SQL indisponible tant que la génération du constructeur échoue.");
             Warnings = ex.Message;
         }
     }
@@ -1919,10 +2240,15 @@ public sealed class MainViewModel : ObservableObject
         string value = raw.Trim();
         if (kind == FilterValueKind.Parameter)
         {
+            if (SqlSelectReverseParser.IsCognosPromptExpression(value))
+            {
+                return value;
+            }
+
             return value.StartsWith(':') || value.StartsWith('@') || value.StartsWith('?') || value.StartsWith('&') ? value : ":" + value;
         }
 
-        return value.StartsWith(':') || value.StartsWith('@') || value.StartsWith('?') || value.StartsWith('&') ? value : null;
+        return value.StartsWith(':') || value.StartsWith('@') || value.StartsWith('?') || value.StartsWith('&') || SqlSelectReverseParser.IsCognosPromptExpression(value) ? value : null;
     }
 
     /// <summary>
@@ -1952,6 +2278,8 @@ public sealed class MainViewModel : ObservableObject
         QueryPurpose = "Requête vidée.";
         PerformanceReport = "Requête vidée.";
         Warnings = "Aucun avertissement.";
+        ClearSqlComparison("Aucune comparaison SQL active. Utilise Réécrire SQL ou Charger dans le constructeur.");
+        TrackHistoryAfterMutation();
     }
 
     /// <summary>
@@ -2038,6 +2366,8 @@ public sealed class MainViewModel : ObservableObject
             : saved.LastGeneratedSql ?? string.Empty;
         QueryName = saved.Name;
         QueryDescription = saved.Description ?? string.Empty;
+        ClearStoredRewrittenSql();
+        ClearSqlComparison("Preset SQL brut chargé. Réécris-le ou recharge-le dans le constructeur pour afficher la comparaison.");
         if (!string.IsNullOrWhiteSpace(RawSqlText))
         {
             GeneratedSql = RawSqlText.TrimEnd() + Environment.NewLine;
@@ -2054,18 +2384,31 @@ public sealed class MainViewModel : ObservableObject
     {
         try
         {
-            ReverseSqlImportResult imported = _reverseImportService.Import(RawSqlText);
+            string sourceSql = RawSqlText;
+            ReverseSqlImportResult imported = _reverseImportService.Import(RawSqlText, SourceSqlDialect);
             QueryDefinition query = imported.Query;
             query.Name = BlankToNull(QueryName) ?? "requete_reverse";
             query.Description = BlankToNull(QueryDescription) ?? "Requête reconstruite depuis du SQL brut.";
             LoadQueryDefinition(query, query.Name, query.Description);
+            ApplyReverseSqlResult(imported);
+            CompareRawVsRewrittenSql();
+            StartGeneratedSqlComparison(sourceSql, "SQL brut source", "SQL régénéré depuis le constructeur");
             Status = "Reverse SQL terminé: les clauses reconnues ont été replacées dans le constructeur visuel.";
-            Warnings = imported.Warnings.Count == 0
+            Warnings = BuildReverseSqlFeedbackText(imported, imported.Warnings.Count == 0
                 ? "Reverse SQL termine sans avertissement."
-                : string.Join(Environment.NewLine, imported.Warnings);
+                : string.Join(Environment.NewLine, imported.Warnings));
+        }
+        catch (ReverseSqlImportException ex)
+        {
+            ClearStoredRewrittenSql();
+            ApplyReverseSqlFailure(ex.Diagnostic);
+            ClearSqlComparison("Comparaison SQL indisponible tant que le reverse échoue.");
+            Warnings = BuildReverseSqlFailureText(ex.Diagnostic);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
+            ClearStoredRewrittenSql();
+            ClearSqlComparison("Comparaison SQL indisponible tant que le reverse échoue.");
             Warnings = "Reverse SQL impossible: " + ex.Message;
         }
     }
@@ -2075,9 +2418,241 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     private void RewriteRawSql()
     {
+        ClearStoredRewrittenSql();
         try
         {
+            string sourceSql = RawSqlText;
+            ReverseSqlImportResult imported = _reverseImportService.Import(RawSqlText, SourceSqlDialect);
             SqlRewriteResult result = _rewriteSuggestionService.Rewrite(RawSqlText, new SqlGeneratorOptions
+            {
+                Dialect = Dialect,
+                QuoteIdentifiers = QuoteIdentifiers,
+                AutoGroupSelectedColumnsWhenAggregating = AutoGroupSelectedColumns,
+                EmitOptimizationComments = false
+            }, SourceSqlDialect);
+
+            GeneratedSql = result.RewrittenSql;
+            SetLastRewrittenSql(result.RewrittenSql);
+            ApplyReverseSqlResult(imported);
+            Status = $"Réécriture SQL terminée: {result.AppliedTransformations.Count} transformation(s) appliquée(s).";
+            CompareRawVsRewrittenSql();
+            Warnings = BuildReverseSqlFeedbackText(imported, result.Warnings.Count == 0
+                ? "Réécriture SQL terminée sans avertissement."
+                : string.Join(Environment.NewLine, result.Warnings));
+            QueryPurpose = "SQL réécrit sans modifier l'éditeur brut. Compare le SQL source et la version modernisée.";
+            PerformanceReport = result.AppliedTransformations.Count == 0
+                ? "Aucune transformation conservatrice n'a été appliquée."
+                : string.Join(", ", result.AppliedTransformations);
+        }
+        catch (ReverseSqlImportException ex)
+        {
+            ApplyReverseSqlFailure(ex.Diagnostic);
+            ClearSqlComparison("Comparaison SQL indisponible tant que la réécriture échoue.");
+            Warnings = BuildReverseSqlFailureText(ex.Diagnostic);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            ClearSqlComparison("Comparaison SQL indisponible tant que la réécriture échoue.");
+            Warnings = "Réécriture SQL impossible: " + ex.Message;
+        }
+    }
+
+    private void UseGeneratedSqlAsRawInput()
+    {
+        RawSqlText = GeneratedSql;
+        ClearStoredRewrittenSql();
+        ClearSqlComparison("SQL généré copié dans l'éditeur brut. Réécris-le ou recharge-le dans le constructeur pour comparer les versions.");
+    }
+
+    private QueryBuilderHistoryState CaptureHistoryState()
+    {
+        return new QueryBuilderHistoryState
+        {
+            Query = QueryDefinitionCloner.Clone(BuildQueryDefinition()),
+            Dialect = Dialect,
+            QuoteIdentifiers = QuoteIdentifiers,
+            AutoGroupSelectedColumns = AutoGroupSelectedColumns,
+            RawSqlText = RawSqlText,
+            SourceSqlDialect = SourceSqlDialect
+        };
+    }
+
+    private void TrackHistoryAfterMutation()
+    {
+        if (_suppressAutoGenerate || _isRestoringHistory)
+        {
+            return;
+        }
+
+        _history.Track(CaptureHistoryState());
+        UpdateHistoryCommands();
+    }
+
+    private void ResetHistoryToCurrentState()
+    {
+        _history.Reset(CaptureHistoryState());
+        UpdateHistoryCommands();
+    }
+
+    private void UndoHistory()
+    {
+        RestoreHistoryState(_history.Undo(), "Historique: annulation appliquée.");
+    }
+
+    private void RedoHistory()
+    {
+        RestoreHistoryState(_history.Redo(), "Historique: rétablissement appliqué.");
+    }
+
+    private void RestoreHistoryState(QueryBuilderHistoryState state, string status)
+    {
+        _isRestoringHistory = true;
+        try
+        {
+            _suppressAutoGenerate = true;
+            try
+            {
+                Dialect = state.Dialect;
+                QuoteIdentifiers = state.QuoteIdentifiers;
+                AutoGroupSelectedColumns = state.AutoGroupSelectedColumns;
+                RawSqlText = state.RawSqlText;
+                SourceSqlDialect = state.SourceSqlDialect;
+                ClearStoredRewrittenSql();
+                ClearSqlComparison("Historique restauré. Relance Reverse SQL ou Réécrire SQL pour recalculer une comparaison.");
+            }
+            finally
+            {
+                _suppressAutoGenerate = false;
+            }
+
+            LoadQueryDefinition(QueryDefinitionCloner.Clone(state.Query), state.Query.Name, state.Query.Description);
+            Status = status;
+        }
+        finally
+        {
+            _isRestoringHistory = false;
+            _history.ReplaceCurrent(CaptureHistoryState());
+            UpdateHistoryCommands();
+        }
+    }
+
+    private void UpdateHistoryCommands()
+    {
+        UndoCommand.RaiseCanExecuteChanged();
+        RedoCommand.RaiseCanExecuteChanged();
+    }
+
+    private void CompareRawVsRewrittenSql()
+    {
+        if (string.IsNullOrWhiteSpace(_lastRewrittenSql))
+        {
+            ClearSqlComparison("Comparaison indisponible: aucune réécriture SQL récente à comparer.");
+            return;
+        }
+
+        SqlComparisonReport comparison = _sqlComparisonService.Compare(RawSqlText, _lastRewrittenSql, BuildSqlComparisonOptions());
+        ApplySqlComparison(comparison, "SQL brut source", "SQL réécrit", RawSqlText, tracksGeneratedSql: false);
+    }
+
+    private void CompareRawVsBuilderSql()
+    {
+        StartGeneratedSqlComparison(RawSqlText, "SQL brut source", "SQL généré depuis le constructeur");
+    }
+
+    private void CompareRewrittenVsBuilderSql()
+    {
+        if (string.IsNullOrWhiteSpace(_lastRewrittenSql))
+        {
+            ClearSqlComparison("Comparaison indisponible: aucune réécriture SQL récente à comparer au constructeur.");
+            return;
+        }
+
+        StartGeneratedSqlComparison(_lastRewrittenSql, "SQL réécrit", "SQL généré depuis le constructeur");
+    }
+
+    private void StartGeneratedSqlComparison(string sourceSql, string sourceLabel, string targetLabel)
+    {
+        _sqlComparisonBaselineSql = sourceSql ?? string.Empty;
+        _sqlComparisonTracksGeneratedSql = true;
+        SqlComparisonSourceLabel = sourceLabel;
+        SqlComparisonTargetLabel = targetLabel;
+        RefreshTrackedSqlComparison();
+    }
+
+    private void RefreshCurrentSqlComparison()
+    {
+        if (_sqlComparisonTracksGeneratedSql)
+        {
+            RefreshTrackedSqlComparison();
+            return;
+        }
+
+        if (string.Equals(SqlComparisonTargetLabel, "SQL réécrit", StringComparison.Ordinal))
+        {
+            CompareRawVsRewrittenSql();
+        }
+    }
+
+    private void RefreshTrackedSqlComparison()
+    {
+        if (!_sqlComparisonTracksGeneratedSql)
+        {
+            return;
+        }
+
+        if (!TryBuildBuilderGeneratedSqlForComparison(out string builderSql, out string failureSummary))
+        {
+            SuspendTrackedSqlComparison(failureSummary);
+            return;
+        }
+
+        SqlComparisonReport report = _sqlComparisonService.Compare(_sqlComparisonBaselineSql, builderSql, BuildSqlComparisonOptions());
+        ApplySqlComparison(report, SqlComparisonSourceLabel, SqlComparisonTargetLabel, _sqlComparisonBaselineSql, tracksGeneratedSql: true);
+    }
+
+    private void SuspendTrackedSqlComparison(string summary)
+    {
+        if (_sqlComparisonTracksGeneratedSql)
+        {
+            SqlComparisonLines.Clear();
+            SqlComparisonSummary = summary;
+        }
+    }
+
+    private void ClearSqlComparison(string summary)
+    {
+        _sqlComparisonBaselineSql = string.Empty;
+        _sqlComparisonTracksGeneratedSql = false;
+        SqlComparisonSourceLabel = "SQL source";
+        SqlComparisonTargetLabel = "SQL résultat";
+        SqlComparisonLines.Clear();
+        SqlComparisonSummary = summary;
+    }
+
+    private void ApplySqlComparison(SqlComparisonReport comparison, string sourceLabel, string targetLabel, string sourceSql, bool tracksGeneratedSql)
+    {
+        _sqlComparisonBaselineSql = sourceSql ?? string.Empty;
+        _sqlComparisonTracksGeneratedSql = tracksGeneratedSql;
+        SqlComparisonSourceLabel = sourceLabel;
+        SqlComparisonTargetLabel = targetLabel;
+        SqlComparisonSummary = comparison.FormatSummary(sourceLabel, targetLabel);
+
+        SqlComparisonLines.Clear();
+        foreach (SqlComparisonLine line in comparison.Lines)
+        {
+            SqlComparisonLines.Add(line);
+        }
+    }
+
+    private bool TryBuildBuilderGeneratedSqlForComparison(out string sql, out string failureSummary)
+    {
+        sql = string.Empty;
+        failureSummary = "Comparaison SQL indisponible tant que le constructeur ne peut pas générer de SQL valide.";
+
+        try
+        {
+            QueryDefinition query = BuildQueryDefinition();
+            SqlGenerationResult result = _generator.Generate(query, _schema, new SqlGeneratorOptions
             {
                 Dialect = Dialect,
                 QuoteIdentifiers = QuoteIdentifiers,
@@ -2085,21 +2660,145 @@ public sealed class MainViewModel : ObservableObject
                 EmitOptimizationComments = false
             });
 
-            GeneratedSql = result.RewrittenSql;
-            Status = $"Réécriture SQL terminée: {result.AppliedTransformations.Count} transformation(s) appliquée(s).";
-            Warnings = result.Warnings.Count == 0
-                ? "Réécriture SQL terminée sans avertissement."
-                : string.Join(Environment.NewLine, result.Warnings);
-            QueryPurpose = "SQL réécrit sans modifier l'éditeur brut. Compare le SQL source et la version modernisée.";
-            PerformanceReport = result.AppliedTransformations.Count == 0
-                ? "Aucune transformation conservatrice n'a été appliquée."
-                : string.Join(", ", result.AppliedTransformations);
+            sql = result.Sql;
+            return true;
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
-            Warnings = "Réécriture SQL impossible: " + ex.Message;
+            failureSummary = "Comparaison SQL indisponible: le SQL du constructeur ne peut pas être régénéré actuellement. " + ex.Message;
+            return false;
         }
     }
+
+    private SqlComparisonOptions BuildSqlComparisonOptions()
+    {
+        return new SqlComparisonOptions
+        {
+            IgnoreWhitespaceChanges = IgnoreSqlComparisonWhitespaceChanges,
+            IgnoreCaseChanges = IgnoreSqlComparisonCaseChanges
+        };
+    }
+
+    private void SetLastRewrittenSql(string sql)
+    {
+        _lastRewrittenSql = sql ?? string.Empty;
+        UpdateSqlComparisonCommands();
+    }
+
+    private void ClearStoredRewrittenSql()
+    {
+        _lastRewrittenSql = string.Empty;
+        UpdateSqlComparisonCommands();
+    }
+
+    private void UpdateSqlComparisonCommands()
+    {
+        CompareRawVsRewrittenSqlCommand.RaiseCanExecuteChanged();
+        CompareRewrittenVsBuilderSqlCommand.RaiseCanExecuteChanged();
+    }
+
+    private void ApplyReverseSqlResult(ReverseSqlImportResult imported)
+    {
+        ReverseSqlCoverageReport = FormatReverseCoverage(imported.Coverage);
+        ReverseSqlDiagnosticsReport = FormatReverseDiagnostics(imported.Diagnostics);
+        ReverseSqlConfidenceSummary = $"Confiance Reverse SQL: {imported.Coverage.Confidence:P0} ({imported.SourceDialect}).";
+        RawSqlSelectionStart = 0;
+        RawSqlSelectionLength = 0;
+    }
+
+    private void ApplyReverseSqlFailure(ReverseSqlDiagnostic diagnostic)
+    {
+        ReverseSqlCoverageReport = "Import interrompu avant génération d'un rapport de couverture.";
+        ReverseSqlDiagnosticsReport = FormatReverseDiagnostics([diagnostic]);
+        ReverseSqlConfidenceSummary = "Confiance Reverse SQL: échec de l'import.";
+        RawSqlSelectionStart = diagnostic.StartOffset ?? 0;
+        RawSqlSelectionLength = diagnostic.Length ?? 0;
+        Status = "Reverse SQL interrompu: corrige le fragment signalé puis relance l'import.";
+    }
+
+    private static string FormatReverseCoverage(ReverseSqlCoverageReport coverage)
+    {
+        if (coverage.Clauses.Count == 0)
+        {
+            return "Aucune clause analysée.";
+        }
+
+        return string.Join(Environment.NewLine, coverage.Clauses.Select(clause =>
+            $"{clause.Clause,-14} {FormatCoverageStatus(clause.Status)} {clause.Message}"));
+    }
+
+    private static string FormatReverseDiagnostics(IReadOnlyList<ReverseSqlDiagnostic> diagnostics)
+    {
+        if (diagnostics.Count == 0)
+        {
+            return "Aucun diagnostic Reverse SQL.";
+        }
+
+        return string.Join(
+            Environment.NewLine + Environment.NewLine,
+            diagnostics.Select(diagnostic =>
+            {
+                List<string> lines =
+                [
+                    $"[{diagnostic.Severity}] {diagnostic.Message}"
+                ];
+
+                if (!string.IsNullOrWhiteSpace(diagnostic.Clause))
+                {
+                    lines.Add($"Clause: {diagnostic.Clause}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(diagnostic.Fragment))
+                {
+                    lines.Add($"Fragment: {diagnostic.Fragment}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(diagnostic.SuggestedFix))
+                {
+                    lines.Add($"Action suggérée: {diagnostic.SuggestedFix}");
+                }
+
+                return string.Join(Environment.NewLine, lines);
+            }));
+    }
+
+    private static string BuildReverseSqlFeedbackText(ReverseSqlImportResult imported, string headline)
+    {
+        string[] parts =
+        [
+            headline,
+            $"Confiance Reverse SQL: {imported.Coverage.Confidence:P0} ({imported.SourceDialect})",
+            FormatReverseCoverage(imported.Coverage),
+            FormatReverseDiagnostics(imported.Diagnostics)
+        ];
+
+        return string.Join(
+            Environment.NewLine + Environment.NewLine,
+            parts.Where(part => !string.IsNullOrWhiteSpace(part)));
+    }
+
+    private static string BuildReverseSqlFailureText(ReverseSqlDiagnostic diagnostic)
+    {
+        string[] parts =
+        [
+            diagnostic.Message,
+            FormatReverseDiagnostics([diagnostic])
+        ];
+
+        return string.Join(
+            Environment.NewLine + Environment.NewLine,
+            parts);
+    }
+
+    private static string FormatCoverageStatus(ReverseSqlCoverageStatus status) => status switch
+    {
+        ReverseSqlCoverageStatus.FullyImported => "OK",
+        ReverseSqlCoverageStatus.PartiallyImported => "WARN",
+        ReverseSqlCoverageStatus.Unsupported => "NO",
+        ReverseSqlCoverageStatus.Ignored => "SKIP",
+        ReverseSqlCoverageStatus.Unknown => "?",
+        _ => "-"
+    };
 
     /// <summary>
     /// Builds and copies a helper SQL command that extracts DDL from Oracle or SQLite.

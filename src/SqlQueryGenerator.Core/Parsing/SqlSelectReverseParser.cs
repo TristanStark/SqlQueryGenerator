@@ -15,9 +15,9 @@ public sealed class SqlSelectReverseParser
     /// </summary>
     /// <param name="sql">Raw SELECT statement pasted by the user.</param>
     /// <returns>A query definition filled with the clauses that could be recognized safely.</returns>
-    public QueryDefinition Parse(string sql)
+    public QueryDefinition Parse(string sql, SourceSqlDialect sourceDialect = SourceSqlDialect.GenericSql)
     {
-        string normalized = SqlSafety.NormalizeRawSelectQuery(sql);
+        string normalized = SqlSafety.NormalizeRawSelectQueryForReverse(sql);
         Dictionary<string, string> aliases = new(StringComparer.OrdinalIgnoreCase);
         QueryDefinition query = new();
 
@@ -43,6 +43,11 @@ public sealed class SqlSelectReverseParser
         string havingText = SliceClause(normalized, havingIndex, 6, orderIndex, limitIndex, fetchIndex);
         string orderText = SliceClause(normalized, orderIndex, 8, limitIndex, fetchIndex);
 
+        ValidateClauseContent(whereIndex, whereText, "WHERE", normalized);
+        ValidateClauseContent(groupIndex, groupText, "GROUP BY", normalized);
+        ValidateClauseContent(havingIndex, havingText, "HAVING", normalized);
+        ValidateClauseContent(orderIndex, orderText, "ORDER BY", normalized);
+
         ParseFromAndJoins(fromText, query, aliases);
         whereText = ExtractLegacyOracleJoinPredicates(whereText, query, aliases);
         whereText = ExtractImplicitInnerJoinPredicates(whereText, query, aliases);
@@ -51,7 +56,7 @@ public sealed class SqlSelectReverseParser
         ParseGroupBy(groupText, query, aliases);
         ParsePredicates(havingText, query, aliases, asHaving: true);
         ParseOrderBy(orderText, query, aliases);
-        query.Parameters = new System.Collections.ObjectModel.Collection<QueryParameterDefinition>(ExtractParameters(normalized).ToList());
+        query.Parameters = new System.Collections.ObjectModel.Collection<QueryParameterDefinition>(ExtractParameters(normalized, sourceDialect).ToList());
         return query;
     }
 
@@ -60,7 +65,7 @@ public sealed class SqlSelectReverseParser
     /// </summary>
     /// <param name="sql">Raw SQL text to scan.</param>
     /// <returns>Detected parameter definitions.</returns>
-    public static IReadOnlyList<QueryParameterDefinition> ExtractParameters(string sql)
+    public static IReadOnlyList<QueryParameterDefinition> ExtractParameters(string sql, SourceSqlDialect sourceDialect = SourceSqlDialect.GenericSql)
     {
         List<QueryParameterDefinition> parameters = [];
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
@@ -78,7 +83,41 @@ public sealed class SqlSelectReverseParser
             }
         }
 
+        foreach (Match match in Regex.Matches(sql, @"#prompt\s*\(\s*(?<quote>['""])(?<name>.*?)\k<quote>\s*,\s*(?<typeQuote>['""])(?<type>.*?)\k<typeQuote>\s*\)\s*#", RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            string rawExpression = match.Value.Trim();
+            if (!seen.Add(rawExpression))
+            {
+                continue;
+            }
+
+            parameters.Add(new QueryParameterDefinition
+            {
+                Name = match.Groups["name"].Value.Trim(),
+                Description = $"Paramètre Cognos détecté dans le SQL brut ({sourceDialect}).",
+                DeclaredType = match.Groups["type"].Value.Trim(),
+                RawExpression = rawExpression,
+                SourceKind = QueryParameterSourceKind.CognosPrompt,
+                Required = true
+            });
+        }
+
         return parameters;
+    }
+
+    /// <summary>
+    /// Detects whether a raw value is a Cognos prompt macro.
+    /// </summary>
+    /// <param name="value">Raw SQL fragment.</param>
+    /// <returns><c>true</c> when the value matches a Cognos prompt.</returns>
+    public static bool IsCognosPromptExpression(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return Regex.IsMatch(value.Trim(), @"^#prompt\s*\(\s*(['""]).*?\1\s*,\s*(['""]).*?\2\s*\)\s*#$", RegexOptions.IgnoreCase | RegexOptions.Singleline);
     }
 
     /// <summary>
@@ -724,6 +763,11 @@ public sealed class SqlSelectReverseParser
         }
 
         string value = valueText.Trim();
+        if (IsCognosPromptExpression(value))
+        {
+            return FilterValueKind.Parameter;
+        }
+
         if (value == "?" || value.StartsWith(':') || value.StartsWith('@') || value.StartsWith('&'))
         {
             return FilterValueKind.Parameter;
@@ -756,6 +800,16 @@ public sealed class SqlSelectReverseParser
         }
 
         return trimmed;
+    }
+
+    private static void ValidateClauseContent(int clauseIndex, string clauseText, string clauseName, string sql)
+    {
+        if (clauseIndex < 0 || !string.IsNullOrWhiteSpace(clauseText))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException($"{clauseName} clause is incomplete.");
     }
 
     /// <summary>

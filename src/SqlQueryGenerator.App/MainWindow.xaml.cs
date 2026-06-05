@@ -1,5 +1,7 @@
 using Microsoft.Win32;
 using SqlQueryGenerator.App.ViewModels;
+using System.ComponentModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -31,6 +33,10 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        if (DataContext is MainViewModel vm)
+        {
+            vm.PropertyChanged += ViewModel_PropertyChanged;
+        }
     }
 
     /// <summary>
@@ -38,6 +44,32 @@ public partial class MainWindow : Window
     /// </summary>
     /// <value>Valeur de ViewModel.</value>
     private MainViewModel ViewModel => (MainViewModel)DataContext;
+
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is not nameof(MainViewModel.RawSqlSelectionStart) and not nameof(MainViewModel.RawSqlSelectionLength))
+        {
+            return;
+        }
+
+        if (RawSqlEditorTextBox is null)
+        {
+            return;
+        }
+
+        int start = Math.Max(0, Math.Min(ViewModel.RawSqlSelectionStart, RawSqlEditorTextBox.Text.Length));
+        int maxLength = Math.Max(0, RawSqlEditorTextBox.Text.Length - start);
+        int length = Math.Max(0, Math.Min(ViewModel.RawSqlSelectionLength, maxLength));
+
+        if (length == 0)
+        {
+            return;
+        }
+
+        RawSqlEditorTextBox.Focus();
+        RawSqlEditorTextBox.Select(start, length);
+        RawSqlEditorTextBox.ScrollToLine(RawSqlEditorTextBox.GetLineIndexFromCharacterIndex(start));
+    }
 
     /// <summary>
     /// Exécute le traitement OpenSchema Click.
@@ -56,7 +88,10 @@ public partial class MainWindow : Window
 
         if (dialog.ShowDialog(this) == true)
         {
-            ViewModel.LoadSchemaFromFile(dialog.FileName);
+            if (TryReadSchemaFile(dialog.FileName, out string schemaText))
+            {
+                ImportSchemaTextWithReview(schemaText, dialog.FileName);
+            }
         }
     }
 
@@ -111,7 +146,7 @@ public partial class MainWindow : Window
     {
         if (Clipboard.ContainsText())
         {
-            ViewModel.LoadSchemaFromText(Clipboard.GetText(), "Presse-papier");
+            ImportSchemaTextWithReview(Clipboard.GetText(), "Presse-papier");
         }
         else
         {
@@ -127,6 +162,53 @@ public partial class MainWindow : Window
     private void CopySql_Click(object sender, RoutedEventArgs e)
     {
         Clipboard.SetText(ViewModel.GeneratedSql ?? string.Empty);
+    }
+
+    private void ImportSchemaTextWithReview(string schemaText, string sourceName)
+    {
+        if (!ViewModel.TryPreviewBackupTableCandidates(schemaText, out IReadOnlyList<SqlQueryGenerator.Core.Heuristics.BackupTableCandidate> candidates))
+        {
+            return;
+        }
+
+        IReadOnlyCollection<string>? excludedTables = null;
+        if (candidates.Count > 0)
+        {
+            SchemaImportReviewWindow reviewWindow = new(candidates)
+            {
+                Owner = this
+            };
+
+            if (reviewWindow.ShowDialog() != true)
+            {
+                ViewModel.Status = "Import du schema annule.";
+                return;
+            }
+
+            excludedTables = reviewWindow.ExcludedTableNames;
+        }
+
+        ViewModel.LoadSchemaFromText(schemaText, sourceName, excludedTables);
+    }
+
+    private bool TryReadSchemaFile(string filePath, out string schemaText)
+    {
+        schemaText = string.Empty;
+        if (!File.Exists(filePath))
+        {
+            ViewModel.Status = "Fichier introuvable.";
+            return false;
+        }
+
+        FileInfo info = new(filePath);
+        if (info.Length > 20_000_000)
+        {
+            MessageBox.Show(this, "Le fichier depasse 20 Mo. Pour eviter de bloquer l'interface, reduis le schema ou augmente la limite dans MainViewModel.", "Fichier trop volumineux", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        schemaText = File.ReadAllText(filePath);
+        return true;
     }
 
     /// <summary>

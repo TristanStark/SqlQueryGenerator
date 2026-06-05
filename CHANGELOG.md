@@ -2,6 +2,28 @@
 
 All release notes are centralized here.
 
+## Unreleased
+
+- Added reverse SQL source dialect profiles for import/rewrite workflows.
+- Added clause-level reverse SQL coverage with a confidence score and structured diagnostics.
+- Reverse SQL now ignores SQL comments before parsing and preserves Cognos `#prompt(...)#` parameters.
+- Reverse SQL failures now expose clearer clause/fragment diagnostics intended for UI localization.
+- Expanded heuristic performance analysis with index-aware warnings for `SELECT *`, leading-wildcard `LIKE`, expression filters, missing limits, fragile joins, and high-cardinality grouping/sorting.
+- The probable-relationships list now shows whether a candidate join is already used and lets you add a join directly from the row.
+- The reverse/rewrite tab now exposes a SQL comparison view with raw/rewrite/builder comparison modes, optional ignore-whitespace / ignore-case diffing, and visible reverse diagnostics panels.
+- Added undo/redo history for builder state with toolbar buttons, keyboard shortcuts, and tested snapshot restoration.
+- DDL import now reviews likely backup/history/tmp/staging tables before final load, lets the user exclude them explicitly, filters related metadata safely, and still offers a toggle for remaining auxiliary tables.
+- Improved the main window ergonomics for narrower/1080p screens with a dedicated status band, a persistent right-side diagnostics column, relaxed minimum sizes, and tabbed validation panels.
+- Rebalanced the reverse-SQL tab so the raw editor keeps usable height while detailed reverse diagnostics stay in the persistent right column.
+- Added documentation for documentation-file imports and the reverse SQL diagnostics/profile workflow.
+- Added documentation for the expanded performance hints and probable-join workflow.
+- Added documentation for the SQL comparison workflow in reverse/rewrite mode.
+- Added documentation for builder undo/redo history.
+- Strengthened undo/redo regression coverage for bounded history depth and full snapshot restoration.
+- Added app-level workflow regression coverage for join editing and undo after reverse/saved-query loads.
+- Added documentation for auxiliary-table filtering after DDL import.
+- Added documentation for the layout/ergonomics pass.
+
 ## v31.0.0
 
 - Added a conservative SQL rewrite flow for imported `SELECT` statements, including implicit join modernization, duplicate clause cleanup, alias preservation, and warnings for advanced constructs.

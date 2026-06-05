@@ -8,8 +8,8 @@
         Title="SQL Query Generator"
         Height="1040"
         Width="1920"
-        MinHeight="820"
-        MinWidth="1500"
+        MinHeight="740"
+        MinWidth="1240"
         WindowState="Maximized">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
@@ -77,53 +77,69 @@
     <Window.DataContext>
         <vm:MainViewModel />
     </Window.DataContext>
+    <Window.InputBindings>
+        <KeyBinding Key="Z" Modifiers="Ctrl" Command="{Binding UndoCommand}" />
+        <KeyBinding Key="Y" Modifiers="Ctrl" Command="{Binding RedoCommand}" />
+    </Window.InputBindings>
 
     <DockPanel LastChildFill="True" Background="#F8FAFC">
         <Border DockPanel.Dock="Top" Background="#111827" Padding="10">
             <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                <WrapPanel Grid.Row="0" Grid.Column="0" VerticalAlignment="Center">
                     <Button Content="Charger schéma SQL/TXT" Click="OpenSchema_Click" ToolTip="Charge un fichier .sql ou .txt contenant des CREATE TABLE et/ou COMMENT ON COLUMN." />
                     <Button Content="Importer doc CSV/TSV" Click="OpenDocumentation_Click" ToolTip="Importe une documentation table/colonne depuis un fichier CSV, TSV ou TXT exporté d'un tableau." />
                     <Button Content="Coller schéma" Click="PasteSchema_Click" ToolTip="Colle un schéma depuis le presse-papier." />
                     <Button Content="Copier SQL" Click="CopySql_Click" ToolTip="Copie la requête générée dans le presse-papier." />
+                    <Button Content="Annuler" Command="{Binding UndoCommand}" ToolTip="Annule la dernière modification du constructeur (`Ctrl+Z`)." />
+                    <Button Content="Rétablir" Command="{Binding RedoCommand}" ToolTip="Rétablit la dernière modification annulée (`Ctrl+Y`)." />
                     <Button Content="Vider requête" Command="{Binding ClearQueryCommand}" />
                     <Button Content="Générer l'export DDL" Click="OpenDdlExportWindow_Click" ToolTip="Ouvre la fenêtre dédiée à l'export DDL Oracle/SQLite." />
                     <Button Content="Aide" Command="{Binding OpenHelpCommand}" ToolTip="Ouvre la documentation." />
                 </WrapPanel>
 
-                <TextBlock Grid.Column="1"
-                           Text="{Binding Status}"
-                           Foreground="White"
-                           VerticalAlignment="Center"
-                           Margin="18,0"
-                           FontWeight="SemiBold"
-                           TextWrapping="Wrap" />
-
-                <Border Grid.Column="2" Background="#1F2937" CornerRadius="6" Padding="10,6" VerticalAlignment="Center">
+                <Border Grid.Row="0" Grid.Column="1" Background="#1F2937" CornerRadius="6" Padding="10,6" VerticalAlignment="Center" Margin="10,0,0,0">
                     <TextBlock Text="{Binding SchemaSummary}" Foreground="#E5E7EB" FontWeight="SemiBold" />
+                </Border>
+
+                <Border Grid.Row="1" Grid.ColumnSpan="2" Background="#1E293B" CornerRadius="6" Padding="10,8" Margin="0,10,0,0">
+                    <TextBlock Text="{Binding Status}"
+                               Foreground="#F8FAFC"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap" />
                 </Border>
 
             </Grid>
         </Border>
 
         <Grid Margin="8">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="2.2*" MinHeight="500" />
-                <RowDefinition Height="8" />
-                <RowDefinition Height="*" MinHeight="220" />
-            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="900" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="1.08*" MinWidth="330" />
+            </Grid.ColumnDefinitions>
 
-            <Grid Grid.Row="0">
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="2.1*" MinHeight="400" />
+                    <RowDefinition Height="8" />
+                    <RowDefinition Height="*" MinHeight="190" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="480" MinWidth="390" />
+                    <ColumnDefinition Width="360" MinWidth="285" />
                     <ColumnDefinition Width="8" />
-                    <ColumnDefinition Width="*" MinWidth="900" />
+                    <ColumnDefinition Width="*" MinWidth="600" />
                 </Grid.ColumnDefinitions>
 
                 <GroupBox Grid.Column="0" Header="1. Colonnes disponibles">
@@ -142,6 +158,13 @@
                                      ToolTip="Recherche dans table, colonne, type ou commentaire." />
                             <Button Grid.Column="1" Content="Effacer" Command="{Binding ClearColumnSearchCommand}" />
                         </Grid>
+
+                        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                            <CheckBox Content="Masquer tables auxiliaires restantes"
+                                      IsChecked="{Binding HideAuxiliaryTables, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      ToolTip="Masque les tables auxiliaires détectées dans le DDL importé : backup, history, archive, staging, tmp, audit, log, etc." />
+                            <TextBlock Text="{Binding SchemaFilterSummary}" VerticalAlignment="Center" Foreground="#475569" Margin="8,4,0,4" TextWrapping="Wrap" />
+                        </WrapPanel>
 
                         <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                             <Button Content="+ Sélection" Command="{Binding AddSelectedColumnCommand}" ToolTip="Ajoute la colonne au SELECT." />
@@ -364,10 +387,11 @@
                                                         <Grid Margin="0,2,0,2" ToolTip="{Binding Reason}">
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="78" />
-                                                                <ColumnDefinition Width="280" />
+                                                                <ColumnDefinition Width="250" />
                                                                 <ColumnDefinition Width="30" />
-                                                                <ColumnDefinition Width="280" />
+                                                                <ColumnDefinition Width="250" />
                                                                 <ColumnDefinition Width="80" />
+                                                                <ColumnDefinition Width="92" />
                                                                 <ColumnDefinition Width="*" />
                                                             </Grid.ColumnDefinitions>
                                                             <CheckBox Grid.Column="0" Content="Auto" IsChecked="{Binding IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Décoche pour empêcher cette relation auto-détectée d'être utilisée par le planificateur automatique." />
@@ -375,7 +399,14 @@
                                                             <TextBlock Grid.Column="2" Text="→" HorizontalAlignment="Center" Foreground="#64748B" />
                                                             <TextBlock Grid.Column="3" Text="{Binding ToDisplay}" FontWeight="SemiBold" />
                                                             <TextBlock Grid.Column="4" Text="{Binding Confidence, StringFormat=P0}" Foreground="#166534" FontWeight="SemiBold" />
-                                                            <TextBlock Grid.Column="5" Text="{Binding Reason}" Foreground="#475569" TextTrimming="CharacterEllipsis" />
+                                                            <Button Grid.Column="5"
+                                                                    Content="{Binding UsageText}"
+                                                                    MinWidth="84"
+                                                                    Padding="10,2"
+                                                                    HorizontalAlignment="Left"
+                                                                    Command="{Binding DataContext.AddRelationshipAsJoinCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                    CommandParameter="{Binding}" />
+                                                            <TextBlock Grid.Column="6" Text="{Binding Reason}" Foreground="#475569" TextTrimming="CharacterEllipsis" />
                                                         </Grid>
                                                     </DataTemplate>
                                                 </TreeView.Resources>
@@ -680,11 +711,21 @@
                             </TabItem>
 
                             <TabItem Header="Rétro-ingénierie SQL">
-                                <DockPanel Margin="8" LastChildFill="True">
-                                    <TextBlock DockPanel.Dock="Top"
+                                <Grid Margin="8">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="1.6*" MinHeight="210" />
+                                        <RowDefinition Height="8" />
+                                        <RowDefinition Height="*" MinHeight="180" />
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0"
                                                Text="Charge un SELECT existant, réécris-le de manière conservatrice ou importe-le dans le constructeur visuel pour continuer l'édition."
                                                Style="{StaticResource SectionHint}" />
-                                    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                    <WrapPanel Grid.Row="1" Margin="0,0,0,6">
+                                        <TextBlock Text="Profil source" VerticalAlignment="Center" Margin="8,4,4,4" FontWeight="SemiBold" />
+                                        <ComboBox Width="170" ItemsSource="{Binding SourceSqlDialects}" SelectedItem="{Binding SourceSqlDialect, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Profil de dialecte utilisé pendant la rétro-ingénierie et la réécriture." />
                                         <Button Content="Importer fichier SQL brut" Click="OpenRawSql_Click" ToolTip="Charge un fichier .sql/.txt dans l'éditeur SQL brut." />
                                         <Button Content="Depuis SQL généré" Command="{Binding UseGeneratedSqlAsRawInputCommand}" ToolTip="Copie la requête générée actuelle dans l'éditeur SQL brut." />
                                         <Button Content="Sauvegarder SQL brut" Command="{Binding SaveRawSqlPresetCommand}" ToolTip="Sauvegarde le SQL brut comme preset réutilisable en sous-requête." />
@@ -692,32 +733,83 @@
                                         <Button Content="Réécrire SQL" Command="{Binding RewriteRawSqlCommand}" ToolTip="Génère une version modernisée du SQL brut sans modifier l'éditeur, avec jointures explicites et dédoublonnage conservateur." />
                                         <Button Content="Charger dans le constructeur" Command="{Binding ReverseEngineerRawSqlCommand}" ToolTip="Analyse le SELECT collé, remplit le constructeur visuel et permet de continuer l'édition dans les onglets SELECT/JOIN/WHERE/GROUP BY/HAVING/ORDER BY." />
                                     </WrapPanel>
-                                    <TextBox Text="{Binding RawSqlText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}"
-                                             FontFamily="Consolas"
-                                             FontSize="13"
+                                     <TextBox Grid.Row="2"
+                                              x:Name="RawSqlEditorTextBox"
+                                              Text="{Binding RawSqlText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}"
+                                              FontFamily="Consolas"
+                                              FontSize="13"
                                              AcceptsReturn="True"
                                              AcceptsTab="True"
                                              VerticalScrollBarVisibility="Auto"
-                                             HorizontalScrollBarVisibility="Auto"
-                                             TextWrapping="NoWrap"
-                                             ToolTip="Colle ici un SELECT existant. Il peut être sauvegardé tel quel, réécrit en SQL plus moderne ou rechargé dans le constructeur visuel." />
-                                </DockPanel>
+                                              HorizontalScrollBarVisibility="Auto"
+                                              TextWrapping="NoWrap"
+                                              ToolTip="Colle ici un SELECT existant. Il peut être sauvegardé tel quel, réécrit en SQL plus moderne ou rechargé dans le constructeur visuel." />
+                                    <GridSplitter Grid.Row="3" Height="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
+
+                                    <Grid Grid.Row="4" Margin="6">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
+
+                                        <Border Grid.Row="0" Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding SqlComparisonSummary}" FontWeight="SemiBold" Foreground="#0F172A" TextWrapping="Wrap" />
+                                                <TextBlock Margin="0,6,0,0" Foreground="#475569" TextWrapping="Wrap">
+                                                    <Run Text="Lecture : " />
+                                                    <Run Text="{Binding SqlComparisonSourceLabel}" FontWeight="SemiBold" />
+                                                    <Run Text=" à gauche, " />
+                                                    <Run Text="{Binding SqlComparisonTargetLabel}" FontWeight="SemiBold" />
+                                                    <Run Text=" à droite." />
+                                                </TextBlock>
+                                                <TextBlock Margin="0,6,0,0"
+                                                           Foreground="#475569"
+                                                           TextWrapping="Wrap"
+                                                           Text="Les diagnostics détaillés de rétro-ingénierie restent visibles dans la colonne de droite, onglet Reverse SQL." />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <WrapPanel Grid.Row="1" Margin="0,0,0,8">
+                                            <Button Content="Brut / Réécrit"
+                                                    Command="{Binding CompareRawVsRewrittenSqlCommand}"
+                                                    ToolTip="Compare le SQL brut courant à la dernière version réécrite." />
+                                            <Button Content="Brut / Constructeur"
+                                                    Command="{Binding CompareRawVsBuilderSqlCommand}"
+                                                    ToolTip="Compare le SQL brut courant au SQL régénéré depuis le constructeur visuel." />
+                                            <Button Content="Réécrit / Constructeur"
+                                                    Command="{Binding CompareRewrittenVsBuilderSqlCommand}"
+                                                    ToolTip="Compare la dernière réécriture SQL au SQL régénéré depuis le constructeur visuel." />
+                                            <CheckBox Content="Ignorer espaces"
+                                                      IsChecked="{Binding IgnoreSqlComparisonWhitespaceChanges, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      Margin="14,4,0,4"
+                                                      VerticalAlignment="Center" />
+                                            <CheckBox Content="Ignorer casse"
+                                                      IsChecked="{Binding IgnoreSqlComparisonCaseChanges, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      Margin="8,4,0,4"
+                                                      VerticalAlignment="Center" />
+                                        </WrapPanel>
+
+                                        <DataGrid Grid.Row="2" ItemsSource="{Binding SqlComparisonLines}" IsReadOnly="True">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Δ" Binding="{Binding KindLabel}" Width="52" />
+                                                <DataGridTextColumn Header="Source #" Binding="{Binding SourceLineNumber}" Width="78" />
+                                                <DataGridTextColumn Header="SQL source" Binding="{Binding SourceText}" Width="2.3*" MinWidth="280" />
+                                                <DataGridTextColumn Header="Résultat #" Binding="{Binding TargetLineNumber}" Width="82" />
+                                                <DataGridTextColumn Header="SQL résultat" Binding="{Binding TargetText}" Width="2.3*" MinWidth="280" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </Grid>
+                                </Grid>
                             </TabItem>
                         </TabControl>
                     </Grid>
                 </GroupBox>
             </Grid>
 
-            <GridSplitter Grid.Row="1" Height="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
+                <GridSplitter Grid.Row="1" Height="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
 
-            <Grid Grid.Row="2">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="3*" MinWidth="900" />
-                    <ColumnDefinition Width="8" />
-                    <ColumnDefinition Width="*" MinWidth="360" />
-                </Grid.ColumnDefinitions>
-
-                <GroupBox Grid.Column="0" Header="3. SQL généré">
+                <GroupBox Grid.Row="2" Header="3. SQL généré">
                     <DockPanel LastChildFill="True">
                         <TextBlock DockPanel.Dock="Top" Text="Copie-colle dans SQLite Browser, Oracle SQL Developer, DBeaver, etc. L'outil ne lance jamais de DELETE/UPDATE." Style="{StaticResource SectionHint}" />
                         <TextBox Text="{Binding GeneratedSql, Mode=OneWay}"
@@ -731,45 +823,84 @@
                                  TextWrapping="NoWrap" />
                     </DockPanel>
                 </GroupBox>
-
-                <GridSplitter Grid.Column="1" Width="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
-
-                <GroupBox Grid.Column="2" Header="But / validation">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="1*" MinHeight="90" />
-                            <RowDefinition Height="8" />
-                            <RowDefinition Height="1*" MinHeight="90" />
-                            <RowDefinition Height="8" />
-                            <RowDefinition Height="1.2*" MinHeight="120" />
-                        </Grid.RowDefinitions>
-                        <Border Grid.Row="0" Background="#EFF6FF" BorderBrush="#93C5FD" BorderThickness="1" CornerRadius="6" Padding="8" Margin="4">
-                            <DockPanel LastChildFill="True">
-                                <TextBlock DockPanel.Dock="Top" Text="But probable de la requête" FontWeight="Bold" Foreground="#1E3A8A" Margin="0,0,0,4" />
-                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                    <TextBlock Text="{Binding QueryPurpose, Mode=OneWay}" TextWrapping="Wrap" Foreground="#1F2937" />
-                                </ScrollViewer>
-                            </DockPanel>
-                        </Border>
-                        <Border Grid.Row="2" Background="#F0FDF4" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="6" Padding="8" Margin="4">
-                            <DockPanel LastChildFill="True">
-                                <TextBlock DockPanel.Dock="Top" Text="Analyse performance heuristique" FontWeight="Bold" Foreground="#166534" Margin="0,0,0,4" />
-                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                    <TextBlock Text="{Binding PerformanceReport, Mode=OneWay}" TextWrapping="Wrap" Foreground="#1F2937" />
-                                </ScrollViewer>
-                            </DockPanel>
-                        </Border>
-                        <TextBox Grid.Row="4" Text="{Binding Warnings, Mode=OneWay}"
-                                 FontFamily="Consolas"
-                                 FontSize="12"
-                                 AcceptsReturn="True"
-                                 IsReadOnly="True"
-                                 VerticalScrollBarVisibility="Auto"
-                                 HorizontalScrollBarVisibility="Auto"
-                                 TextWrapping="Wrap" />
-                    </Grid>
-                </GroupBox>
             </Grid>
+
+            <GridSplitter Grid.Column="1" Width="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
+
+            <GroupBox Grid.Column="2" Header="4. Diagnostics / validation">
+                <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="Zone de lecture persistante pour le but, les risques, les avertissements et le suivi Reverse SQL. Elle reste visible pendant l'édition pour limiter les allers-retours et le défilement vertical."
+                               Style="{StaticResource SectionHint}" />
+                    <TabControl Margin="4">
+                        <TabItem Header="But">
+                            <Border Background="#EFF6FF" BorderBrush="#93C5FD" BorderThickness="1" CornerRadius="6" Padding="8" Margin="4">
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock DockPanel.Dock="Top" Text="But probable de la requête" FontWeight="Bold" Foreground="#1E3A8A" Margin="0,0,0,4" />
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <TextBlock Text="{Binding QueryPurpose, Mode=OneWay}" TextWrapping="Wrap" Foreground="#1F2937" />
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+                        </TabItem>
+                        <TabItem Header="Performance">
+                            <Border Background="#F0FDF4" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="6" Padding="8" Margin="4">
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock DockPanel.Dock="Top" Text="Analyse performance heuristique" FontWeight="Bold" Foreground="#166534" Margin="0,0,0,4" />
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <TextBlock Text="{Binding PerformanceReport, Mode=OneWay}" TextWrapping="Wrap" Foreground="#1F2937" />
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+                        </TabItem>
+                        <TabItem Header="Avertissements">
+                            <TextBox Text="{Binding Warnings, Mode=OneWay}"
+                                     FontFamily="Consolas"
+                                     FontSize="12"
+                                     AcceptsReturn="True"
+                                     IsReadOnly="True"
+                                     VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Auto"
+                                     TextWrapping="Wrap" />
+                        </TabItem>
+                        <TabItem Header="Reverse SQL">
+                            <Grid Margin="4">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="1*" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="1.35*" />
+                                </Grid.RowDefinitions>
+
+                                <Border Grid.Row="0" Background="#EFF6FF" BorderBrush="#93C5FD" BorderThickness="1" CornerRadius="6" Padding="8">
+                                    <TextBlock Text="{Binding ReverseSqlConfidenceSummary}" FontWeight="SemiBold" Foreground="#1D4ED8" TextWrapping="Wrap" />
+                                </Border>
+
+                                <TextBox Grid.Row="2"
+                                         Text="{Binding ReverseSqlCoverageReport, Mode=OneWay}"
+                                         FontFamily="Consolas"
+                                         FontSize="12"
+                                         AcceptsReturn="True"
+                                         IsReadOnly="True"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         TextWrapping="Wrap" />
+
+                                <TextBox Grid.Row="4"
+                                         Text="{Binding ReverseSqlDiagnosticsReport, Mode=OneWay}"
+                                         FontFamily="Consolas"
+                                         FontSize="12"
+                                         AcceptsReturn="True"
+                                         IsReadOnly="True"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         TextWrapping="Wrap" />
+                            </Grid>
+                        </TabItem>
+                    </TabControl>
+                </DockPanel>
+            </GroupBox>
         </Grid>
     </DockPanel>
 </Window>

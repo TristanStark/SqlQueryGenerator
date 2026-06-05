@@ -24,7 +24,23 @@ La fenêtre principale contient trois zones :
 3. Zone de sortie et validation
    SQL généré, but probable de la requête, analyse heuristique de performance et avertissements.
 
+La fenêtre est maintenant plus tolérante sur des écrans plus étroits : la barre du haut sépare les actions, le résumé de schéma et la ligne de statut, une colonne de diagnostics reste visible à droite pendant l'édition, et cette colonne utilise des onglets au lieu d'empiler systématiquement but, performance et avertissements.
+
+Dans l'onglet `Rétro-ingénierie SQL`, l'éditeur brut garde maintenant plus de hauteur utile. Les diagnostics détaillés de reverse restent dans la colonne de droite, onglet `Reverse SQL`, pendant que la zone centrale reste concentrée sur l'édition du SQL brut et la comparaison des versions.
+
 ## Opérations de la barre supérieure
+
+La barre supérieure contient aussi :
+
+- `Annuler`
+- `Rétablir`
+
+Raccourcis clavier :
+
+- `Ctrl+Z`
+- `Ctrl+Y`
+
+L'historique restaure l'état du constructeur et du SQL brut associé. Il est réinitialisé lorsqu'un nouveau schéma est chargé.
 
 ### `Charger schéma SQL/TXT`
 
@@ -38,11 +54,15 @@ Charge un fichier `.sql` ou `.txt` contenant le schéma :
 
 À utiliser lorsque le schéma existe déjà sur disque.
 
+Si des tables ressemblant à des copies `backup` / `history` / `archive` / `tmp` sont détectées, une fenêtre de revue s'ouvre avant l'import final. Les candidates sont cochées pour exclusion par défaut, mais vous pouvez les conserver une par une, tout garder, ou annuler l'import. Après l'import, la case `Masquer tables auxiliaires restantes` permet encore de masquer les tables auxiliaires non exclues.
+
 ### `Importer doc CSV/TSV`
 
 Importe une documentation table/colonne depuis un fichier tabulaire.
 
 À utiliser après le chargement du schéma si vous voulez enrichir les commentaires affichés dans l'arbre et les explications métier.
+
+Consulte aussi `docs/DOCUMENTATION_IMPORT_GUIDE.md` pour le format attendu, les entêtes reconnus et des exemples d'extraction Oracle / DB2 / PostgreSQL / SQL Server.
 
 ### `Coller schéma`
 
@@ -159,6 +179,8 @@ Opérations disponibles :
 - glisser-déposer des colonnes dans les champs de jointure
 - choisir `INNER JOIN` ou `LEFT JOIN`
 
+Les relations probables affichent aussi un état `Ajouter` / `Ajoutee` pour signaler rapidement si une relation est déjà présente dans les jointures courantes.
+
 ### Onglet `Groupes / agrégats`
 
 Gère `GROUP BY` et les sélections d'agrégats.
@@ -237,6 +259,8 @@ Recharge dans l'éditeur SQL brut le preset actuellement sélectionné dans la b
 
 Produit une version plus propre et plus moderne du SQL brut sans modifier le contenu de l'éditeur.
 
+Le profil source sélectionné dans l'onglet est également utilisé ici pour enrichir les avertissements dialecte.
+
 Réécritures conservatrices actuellement prises en charge :
 
 - conversion des jointures implicites en `JOIN` explicites
@@ -249,6 +273,14 @@ Réécritures conservatrices actuellement prises en charge :
 - préservation des paramètres
 
 Des avertissements sont affichés lorsqu'une structure avancée n'est que partiellement modélisée.
+
+Le rapport reverse fournit aussi :
+
+- une couverture par clause (`SELECT`, `FROM/JOIN`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, etc.) ;
+- un score de confiance heuristique ;
+- des diagnostics structurés en cas d'échec.
+
+Après réécriture, l'onglet `Comparaison SQL` affiche une comparaison ligne par ligne entre le SQL brut source et le SQL réécrit. Vous pouvez ensuite basculer vers `Réécrit / Constructeur` si vous voulez confronter la réécriture au SQL actuellement régénéré par le constructeur.
 
 ### `Charger dans le constructeur`
 
@@ -266,6 +298,16 @@ Le chargement tente de préserver :
 - `ORDER BY`
 - paramètres
 - alias de tables
+
+Le prétraitement reverse ignore maintenant les commentaires SQL `--` et `/* ... */`, et les prompts Cognos `#prompt(...)#` sont conservés comme paramètres bruts quand ils apparaissent dans les filtres.
+
+L'onglet `Comparaison SQL` permet ensuite de comparer :
+
+- le SQL brut initial au SQL régénéré depuis le constructeur
+- le SQL brut initial au SQL réécrit
+- le SQL réécrit au SQL régénéré depuis le constructeur
+
+Deux options permettent aussi d'ignorer les différences purement liées aux espaces ou à la casse. L'onglet `Diagnostics Reverse` expose la couverture, la confiance et les diagnostics détaillés sans devoir lire uniquement la zone d'avertissements.
 
 ## Fenêtre `Export du DDL`
 
@@ -304,6 +346,15 @@ Affiche des signaux simples sur des points de vigilance possibles :
 - coûts de tri
 - coûts de regroupement
 - hypothèses autour des index
+
+Les heuristiques actuelles couvrent notamment :
+
+- `SELECT *`
+- `LIKE '%...` avec wildcard en tête
+- filtres basés sur expressions ou fonctions (`UPPER`, `TO_CHAR`, etc.)
+- requêtes potentiellement volumineuses sans `LIMIT` / `FETCH` / `TOP`
+- `ORDER BY` et `GROUP BY` sur colonnes non indexées ou trop nombreuses
+- jointures sans extrémité PK/unique claire
 
 ### Zone `Avertissements`
 

@@ -13,6 +13,7 @@ public sealed class RelationshipItemViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de _isEnabled.</value>
     private bool _isEnabled = true;
+    private bool _isUsed;
     /// <summary>
     /// Stocke la valeur interne  isExpanded.
     /// </summary>
@@ -105,6 +106,22 @@ public sealed class RelationshipItemViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Indicates whether this probable join is already used in the current query.
+    /// </summary>
+    /// <value><c>true</c> when a matching join already exists in the builder.</value>
+    public bool IsUsed
+    {
+        get => _isUsed;
+        set
+        {
+            if (SetProperty(ref _isUsed, value))
+            {
+                OnPropertyChanged(nameof(UsageText));
+            }
+        }
+    }
+
+    /// <summary>
     /// Obtient ou définit FromTableDisplayName.
     /// </summary>
     /// <value>Valeur de FromTableDisplayName.</value>
@@ -134,4 +151,10 @@ public sealed class RelationshipItemViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de EnabledText.</value>
     public string EnabledText => IsEnabled ? "Auto" : "Off";
+
+    /// <summary>
+    /// Gets a short state label for the probable-join list.
+    /// </summary>
+    /// <value>`Ajoutee` when already present in current joins, otherwise `Ajouter`.</value>
+    public string UsageText => IsUsed ? "Ajoutee" : "Ajouter";
 }

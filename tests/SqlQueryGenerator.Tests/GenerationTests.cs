@@ -640,6 +640,35 @@ CREATE TABLE B (acti_iden INTEGER, emet_iden INTEGER, soaa_date TEXT);
         Assert.Contains("INNER JOIN B ON A.acti_iden = B.acti_iden", result.Sql);
         Assert.DoesNotContain("A.emet_iden = B.emet_iden", result.Sql);
     }
+
+    /// <summary>
+    /// Ensures changing an explicit join to LEFT JOIN changes the generated SQL.
+    /// </summary>
+    [Fact]
+    public void Generate_ExplicitJoin_WithLeftJoinType_EmitsLeftJoin()
+    {
+        const string sql = @"
+CREATE TABLE CUSTOMER (id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE ORDERS (id INTEGER PRIMARY KEY, customer_id INTEGER);
+";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new() { BaseTable = "CUSTOMER" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "CUSTOMER", Column = "name" });
+        query.SelectedColumns.Add(new ColumnReference { Table = "ORDERS", Column = "id" });
+        query.Joins.Add(new JoinDefinition
+        {
+            FromTable = "CUSTOMER",
+            FromColumn = "id",
+            ToTable = "ORDERS",
+            ToColumn = "customer_id",
+            JoinType = JoinType.Left
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
+
+        Assert.Contains("LEFT JOIN ORDERS ON CUSTOMER.id = ORDERS.customer_id", result.Sql);
+        Assert.DoesNotContain("INNER JOIN ORDERS", result.Sql);
+    }
 }
 
 /// <summary>

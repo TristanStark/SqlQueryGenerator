@@ -115,4 +115,207 @@ WHERE pnj.age > &1";
         Assert.Equal("&1", query.Filters[0].Value);
         Assert.Contains("WHERE pnj.age > &1", generated.Sql);
     }
+
+    /// <summary>
+    /// Ensures line comments and block comments are ignored during reverse SQL import.
+    /// </summary>
+    [Fact]
+    public void ReverseImport_WithComments_IgnoresThemWithoutBreakingParsing()
+    {
+        const string sql = @"
+-- Query used by old report
+SELECT
+    pnj.id, -- technical id
+    pnj.name,
+    pnj.note /* explanatory note */
+FROM pnj
+WHERE pnj.note LIKE '%-- not a real comment%'
+ORDER BY pnj.name";
+
+        ReverseSqlImportResult imported = new ReverseSqlImportService().Import(sql, SourceSqlDialect.GenericSql);
+
+        Assert.Equal("pnj", imported.Query.BaseTable);
+        Assert.Equal(3, imported.Query.SelectedColumns.Count);
+        Assert.Single(imported.Query.Filters);
+        Assert.Single(imported.Query.OrderBy);
+        Assert.Contains(imported.Diagnostics, diagnostic => diagnostic.Message.Contains("Commentaires ignorés", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures Cognos prompts are preserved as raw parameter expressions.
+    /// </summary>
+    [Fact]
+    public void ReverseParser_CognosPrompt_IsDetectedAndRegenerated()
+    {
+        const string schemaSql = @"CREATE TABLE CUSTOMER (CUSTOMER_ID INTEGER PRIMARY KEY, NAME TEXT);";
+        const string sql = @"
+SELECT CUSTOMER.CUSTOMER_ID
+FROM CUSTOMER
+WHERE CUSTOMER.CUSTOMER_ID = #prompt(""Customer Id"", ""integer"")#";
+
+        QueryDefinition query = new SqlSelectReverseParser().Parse(sql, SourceSqlDialect.GenericSql);
+        SqlGenerationResult generated = new SqlQueryGeneratorEngine().Generate(query, new SqlSchemaParser().Parse(schemaSql));
+
+        Assert.Single(query.Parameters);
+        Assert.Equal(QueryParameterSourceKind.CognosPrompt, query.Parameters[0].SourceKind);
+        Assert.Equal("Customer Id", query.Parameters[0].Name);
+        Assert.Equal("integer", query.Parameters[0].DeclaredType);
+        Assert.Equal(@"#prompt(""Customer Id"", ""integer"")#", query.Parameters[0].Placeholder);
+        Assert.Single(query.Filters);
+        Assert.Equal(FilterValueKind.Parameter, query.Filters[0].ValueKind);
+        Assert.Equal(@"#prompt(""Customer Id"", ""integer"")#", query.Filters[0].Value);
+        Assert.Contains(@"WHERE CUSTOMER.CUSTOMER_ID = #prompt(""Customer Id"", ""integer"")#", generated.Sql);
+    }
+
+    /// <summary>
+    /// Ensures reverse import exposes clause-level coverage and dialect-specific warnings.
+    /// </summary>
+    [Fact]
+    public void ReverseImport_Db2Profile_ReturnsCoverageAndFetchFirstWarning()
+    {
+        const string sql = @"
+SELECT pnj.id
+FROM pnj
+WHERE pnj.age > :age_min
+FETCH FIRST 5 ROWS ONLY";
+
+        ReverseSqlImportResult imported = new ReverseSqlImportService().Import(sql, SourceSqlDialect.Db2);
+
+        Assert.Equal(SourceSqlDialect.Db2, imported.SourceDialect);
+        Assert.True(imported.Coverage.Confidence > 0.0);
+        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "WHERE" && clause.Status == ReverseSqlCoverageStatus.FullyImported);
+        Assert.Contains(imported.Warnings, warning => warning.Contains("FETCH FIRST", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures a fully supported query produces strong clause-level coverage.
+    /// </summary>
+    [Fact]
+    public void ReverseImport_FullySupportedQuery_ReturnsFullyImportedCoverage()
+    {
+        const string sql = @"
+SELECT pnj.age, COUNT(pnj.id) AS total
+FROM pnj
+WHERE pnj.age > :age_min
+GROUP BY pnj.age
+HAVING COUNT(pnj.id) > 1
+ORDER BY total DESC";
+
+        ReverseSqlImportResult imported = new ReverseSqlImportService().Import(sql, SourceSqlDialect.GenericSql);
+
+        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "SELECT" && clause.Status == ReverseSqlCoverageStatus.FullyImported);
+        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "FROM/JOIN" && clause.Status == ReverseSqlCoverageStatus.FullyImported);
+        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "WHERE" && clause.Status == ReverseSqlCoverageStatus.FullyImported);
+        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "GROUP BY" && clause.Status == ReverseSqlCoverageStatus.FullyImported);
+        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "HAVING" && clause.Status == ReverseSqlCoverageStatus.FullyImported);
+        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "ORDER BY" && clause.Status == ReverseSqlCoverageStatus.FullyImported);
+        Assert.True(imported.Coverage.Confidence >= 0.80);
+    }
+
+    /// <summary>
+    /// Ensures imported subqueries are marked as partially supported instead of silently treated as fully modeled.
+    /// </summary>
+    [Fact]
+    public void ReverseImport_SubqueryFilter_ReturnsPartialSubqueryCoverage()
+    {
+        const string sql = @"
+SELECT pnj.id
+FROM pnj
+WHERE pnj.id IN (
+    SELECT tag.pnj_id
+    FROM pnj_tags tag
+    WHERE tag.tag_id = :tag_id
+)";
+
+        ReverseSqlImportResult imported = new ReverseSqlImportService().Import(sql, SourceSqlDialect.GenericSql);
+
+        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "Subqueries" && clause.Status == ReverseSqlCoverageStatus.PartiallyImported);
+        Assert.Contains(imported.Query.Filters, filter => filter.ValueKind == FilterValueKind.Subquery);
+        Assert.Contains(imported.Warnings, warning => warning.Contains("sous-requete", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures unsupported advanced constructs are surfaced explicitly in the coverage report.
+    /// </summary>
+    [Fact]
+    public void ReverseImport_AdvancedSql_ReturnsUnsupportedCoverageEntries()
+    {
+        const string sql = @"
+WITH recent_pnj AS (
+    SELECT id, age
+    FROM pnj
+)
+SELECT id
+FROM recent_pnj
+UNION
+SELECT id
+FROM archived_pnj";
+
+        ReverseSqlImportResult imported = new ReverseSqlImportService().Import(sql, SourceSqlDialect.GenericSql);
+
+        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "CTE" && clause.Status == ReverseSqlCoverageStatus.Unsupported);
+        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "Set operations" && clause.Status == ReverseSqlCoverageStatus.Unsupported);
+        Assert.Contains(imported.Warnings, warning => warning.Contains("CTE", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(imported.Warnings, warning => warning.Contains("operation", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures incomplete WHERE clauses produce a structured reverse SQL diagnostic.
+    /// </summary>
+    [Fact]
+    public void ReverseImport_IncompleteWhere_ThrowsStructuredDiagnostic()
+    {
+        const string sql = @"
+SELECT
+    c.CUSTOMER_ID
+FROM CUSTOMER c
+WHERE
+ORDER BY c.CUSTOMER_ID";
+
+        ReverseSqlImportException ex = Assert.Throws<ReverseSqlImportException>(() =>
+            new ReverseSqlImportService().Import(sql, SourceSqlDialect.GenericSql));
+
+        Assert.Equal("WHERE", ex.Diagnostic.Clause);
+        Assert.Equal(ReverseSqlDiagnosticSeverity.Error, ex.Diagnostic.Severity);
+        Assert.NotNull(ex.Diagnostic.Line);
+        Assert.NotNull(ex.Diagnostic.Column);
+        Assert.Contains("WHERE clause is incomplete", ex.Diagnostic.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures missing FROM produces a structured reverse SQL diagnostic instead of a generic failure.
+    /// </summary>
+    [Fact]
+    public void ReverseImport_InvalidSelectWithoutFrom_ThrowsStructuredDiagnostic()
+    {
+        const string sql = @"
+SELECT CUSTOMER_ID";
+
+        ReverseSqlImportException ex = Assert.Throws<ReverseSqlImportException>(() =>
+            new ReverseSqlImportService().Import(sql, SourceSqlDialect.GenericSql));
+
+        Assert.Equal("SELECT/FROM", ex.Diagnostic.Clause);
+        Assert.Equal(ReverseSqlDiagnosticSeverity.Error, ex.Diagnostic.Severity);
+        Assert.Equal(1, ex.Diagnostic.Line);
+        Assert.Equal(1, ex.Diagnostic.Column);
+        Assert.Contains("SELECT", ex.Diagnostic.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures Oracle legacy profile keeps existing compatibility messaging.
+    /// </summary>
+    [Fact]
+    public void ReverseImport_OracleLegacyProfile_AddsLegacyCompatibilityWarning()
+    {
+        const string sql = @"
+SELECT pnj.id
+FROM pnj, jobs
+WHERE pnj.job_id = jobs.id(+)
+  AND pnj.age > &1";
+
+        ReverseSqlImportResult imported = new ReverseSqlImportService().Import(sql, SourceSqlDialect.OracleLegacy);
+
+        Assert.Equal(SourceSqlDialect.OracleLegacy, imported.SourceDialect);
+        Assert.Contains(imported.Warnings, warning => warning.Contains("Oracle Legacy", StringComparison.OrdinalIgnoreCase));
+    }
 }

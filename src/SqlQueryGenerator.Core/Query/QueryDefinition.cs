@@ -103,6 +103,15 @@ public sealed record TableAliasDefinition
 }
 
 /// <summary>
+/// Identifies the source syntax used by a parameter placeholder.
+/// </summary>
+public enum QueryParameterSourceKind
+{
+    Standard,
+    CognosPrompt
+}
+
+/// <summary>
 /// Représente QueryParameterDefinition dans SQL Query Generator.
 /// </summary>
 public sealed record QueryParameterDefinition
@@ -123,6 +132,21 @@ public sealed record QueryParameterDefinition
     /// <value>Valeur de DefaultValue.</value>
     public string? DefaultValue { get; init; }
     /// <summary>
+    /// Gets or sets the declared type recovered from the source SQL when available.
+    /// </summary>
+    /// <value>Declared parameter type such as integer, string or date.</value>
+    public string? DeclaredType { get; init; }
+    /// <summary>
+    /// Gets or sets the original raw parameter expression when it should be preserved verbatim.
+    /// </summary>
+    /// <value>Original placeholder such as a Cognos prompt macro.</value>
+    public string? RawExpression { get; init; }
+    /// <summary>
+    /// Gets or sets the placeholder source syntax.
+    /// </summary>
+    /// <value>Standard placeholders or Cognos prompts.</value>
+    public QueryParameterSourceKind SourceKind { get; init; } = QueryParameterSourceKind.Standard;
+    /// <summary>
     /// Stocke la valeur interne Required.
     /// </summary>
     /// <value>Valeur de Required.</value>
@@ -132,7 +156,9 @@ public sealed record QueryParameterDefinition
     /// Obtient ou définit Placeholder.
     /// </summary>
     /// <value>Valeur de Placeholder.</value>
-    public string Placeholder => string.IsNullOrWhiteSpace(Name)
+    public string Placeholder => !string.IsNullOrWhiteSpace(RawExpression)
+        ? RawExpression
+        : string.IsNullOrWhiteSpace(Name)
         ? "?"
         : Name.StartsWith(':') || Name.StartsWith('@') || Name.StartsWith('?') || Name.StartsWith('&')
             ? Name

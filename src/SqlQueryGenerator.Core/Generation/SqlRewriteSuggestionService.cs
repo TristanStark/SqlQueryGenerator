@@ -12,6 +12,7 @@ public sealed class SqlRewriteSuggestionService
 {
     private readonly ReverseSqlImportService _importService = new();
     private readonly SqlQueryGeneratorEngine _generator = new();
+    private readonly SqlComparisonService _comparisonService = new();
 
     /// <summary>
     /// Rewrites one raw SQL statement into a cleaner SQL string.
@@ -19,10 +20,10 @@ public sealed class SqlRewriteSuggestionService
     /// <param name="sql">Raw SQL to modernize.</param>
     /// <param name="options">Optional SQL generation options.</param>
     /// <returns>Rewritten SQL plus warnings and applied transformations.</returns>
-    public SqlRewriteResult Rewrite(string sql, SqlGeneratorOptions? options = null)
+    public SqlRewriteResult Rewrite(string sql, SqlGeneratorOptions? options = null, SourceSqlDialect sourceDialect = SourceSqlDialect.GenericSql)
     {
-        ReverseSqlImportResult imported = _importService.Import(sql);
-        QueryDefinition rewritten = Clone(imported.Query);
+        ReverseSqlImportResult imported = _importService.Import(sql, sourceDialect);
+        QueryDefinition rewritten = QueryDefinitionCloner.Clone(imported.Query);
         List<string> transformations = [];
         List<string> warnings = [.. imported.Warnings];
 
@@ -54,89 +55,10 @@ public sealed class SqlRewriteSuggestionService
         {
             RewrittenSql = generated.Sql,
             Warnings = warnings.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-            AppliedTransformations = transformations.Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+            AppliedTransformations = transformations.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+            Comparison = _comparisonService.Compare(sql, generated.Sql)
         };
     }
-
-    private static QueryDefinition Clone(QueryDefinition source)
-    {
-        QueryDefinition clone = new()
-        {
-            Name = source.Name,
-            Description = source.Description,
-            BaseTable = source.BaseTable,
-            Distinct = source.Distinct,
-            LimitRows = source.LimitRows
-        };
-
-        foreach (TableAliasDefinition alias in source.TableAliases)
-        {
-            clone.TableAliases.Add(alias);
-        }
-
-        foreach (ColumnReference column in source.SelectedColumns)
-        {
-            clone.SelectedColumns.Add(column);
-        }
-
-        foreach (JoinDefinition join in source.Joins)
-        {
-            JoinDefinition clonedJoin = new()
-            {
-                FromTable = join.FromTable,
-                FromColumn = join.FromColumn,
-                ToTable = join.ToTable,
-                ToColumn = join.ToColumn,
-                JoinType = join.JoinType,
-                AutoInferred = join.AutoInferred
-            };
-
-            foreach (JoinColumnPair pair in join.AdditionalColumnPairs)
-            {
-                clonedJoin.AdditionalColumnPairs.Add(pair);
-            }
-
-            clone.Joins.Add(clonedJoin);
-        }
-
-        foreach (FilterCondition filter in source.Filters)
-        {
-            clone.Filters.Add(filter);
-        }
-
-        foreach (ColumnReference groupBy in source.GroupBy)
-        {
-            clone.GroupBy.Add(groupBy);
-        }
-
-        foreach (OrderByItem orderBy in source.OrderBy)
-        {
-            clone.OrderBy.Add(orderBy);
-        }
-
-        foreach (AggregateSelection aggregate in source.Aggregates)
-        {
-            clone.Aggregates.Add(aggregate);
-        }
-
-        foreach (CustomColumnSelection custom in source.CustomColumns)
-        {
-            clone.CustomColumns.Add(custom);
-        }
-
-        foreach (QueryParameterDefinition parameter in source.Parameters)
-        {
-            clone.Parameters.Add(parameter);
-        }
-
-        foreach (string key in source.DisabledAutoJoinKeys)
-        {
-            clone.DisabledAutoJoinKeys.Add(key);
-        }
-
-        return clone;
-    }
-
     private static bool LooksLikeImplicitJoinSql(string sql)
     {
         return sql.Contains(',', StringComparison.Ordinal)
@@ -266,4 +188,10 @@ public sealed class SqlRewriteResult
     /// </summary>
     /// <value>List of conservative transformations applied during rewrite.</value>
     public IReadOnlyList<string> AppliedTransformations { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Gets or sets the line comparison between the source SQL and the rewritten SQL.
+    /// </summary>
+    /// <value>Side-by-side comparison aligned by line.</value>
+    public SqlComparisonReport Comparison { get; init; } = new();
 }
