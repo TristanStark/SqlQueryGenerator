@@ -15,4 +15,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\SqlQueryGenerator.Core\SqlQueryGenerator.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures\ReverseSql\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>

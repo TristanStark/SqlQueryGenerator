@@ -1,0 +1,1 @@
+Reverse SQL impossible: CONNECT BY / START WITH n'est pas pris en charge.

@@ -1,0 +1,27 @@
+{
+  "baseTable": "customers",
+  "distinct": true,
+  "limitRows": 3,
+  "selectedColumns": [
+    {
+      "table": "customers",
+      "column": "name"
+    }
+  ],
+  "joins": [],
+  "filters": [],
+  "groupBy": [],
+  "orderBy": [
+    {
+      "column": {
+        "table": "customers",
+        "column": "name"
+      },
+      "fieldKind": "Column",
+      "direction": "Ascending"
+    }
+  ],
+  "aggregates": [],
+  "customColumns": [],
+  "parameters": []
+}
