@@ -163,6 +163,8 @@ public sealed record QueryParameterDefinition
     /// <value>Valeur de Placeholder.</value>
     public string Placeholder => !string.IsNullOrWhiteSpace(RawExpression)
         ? RawExpression
+        : SourceKind == QueryParameterSourceKind.CognosPrompt
+        ? CognosPromptSyntax.BuildPromptExpression(Name, DeclaredType)
         : string.IsNullOrWhiteSpace(Name)
         ? "?"
         : Name.StartsWith(':') || Name.StartsWith('@') || Name.StartsWith('?') || Name.StartsWith('&')

@@ -784,10 +784,20 @@ public sealed class QueryParameterRowViewModel : ObservableObject
     /// <value>Valeur de _defaultValue.</value>
     private string _defaultValue = string.Empty;
     /// <summary>
+    /// Stocke la valeur interne  declaredType.
+    /// </summary>
+    /// <value>Valeur de _declaredType.</value>
+    private string _declaredType = string.Empty;
+    /// <summary>
     /// Stocke la valeur interne  required.
     /// </summary>
     /// <value>Valeur de _required.</value>
     private bool _required = true;
+    /// <summary>
+    /// Stocke la valeur interne  useCognosPrompt.
+    /// </summary>
+    /// <value>Valeur de _useCognosPrompt.</value>
+    private bool _useCognosPrompt;
 
     /// <summary>
     /// Obtient ou définit Name.
@@ -805,10 +815,20 @@ public sealed class QueryParameterRowViewModel : ObservableObject
     /// <value>Valeur de DefaultValue.</value>
     public string DefaultValue { get => _defaultValue; set => SetProperty(ref _defaultValue, value); }
     /// <summary>
+    /// Obtient ou définit DeclaredType.
+    /// </summary>
+    /// <value>Valeur de DeclaredType.</value>
+    public string DeclaredType { get => _declaredType; set => SetProperty(ref _declaredType, value); }
+    /// <summary>
     /// Obtient ou définit Required.
     /// </summary>
     /// <value>Valeur de Required.</value>
     public bool Required { get => _required; set => SetProperty(ref _required, value); }
+    /// <summary>
+    /// Gets or sets whether this parameter should be preserved as a Cognos prompt macro.
+    /// </summary>
+    /// <value><c>true</c> when the parameter originates from or targets Cognos prompt syntax.</value>
+    public bool UseCognosPrompt { get => _useCognosPrompt; set => SetProperty(ref _useCognosPrompt, value); }
 }
 
 /// <summary>

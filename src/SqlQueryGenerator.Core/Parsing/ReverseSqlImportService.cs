@@ -38,6 +38,11 @@ public sealed class ReverseSqlImportService
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
+            if (TryBuildPartialUnsupportedImportResult(preprocessed.NormalizedSql, sourceDialect, warnings, diagnostics, ex, out ReverseSqlImportResult partialResult))
+            {
+                return partialResult;
+            }
+
             ReverseSqlDiagnostic diagnostic = BuildFailureDiagnostic(sql, preprocessed.NormalizedSql, ex);
             throw new ReverseSqlImportException(diagnostic.Message, diagnostic, ex);
         }
@@ -301,6 +306,110 @@ public sealed class ReverseSqlImportService
             Column = column,
             SuggestedFix = suggestedFix
         };
+    }
+
+    private bool TryBuildPartialUnsupportedImportResult(
+        string normalizedSql,
+        SourceSqlDialect sourceDialect,
+        IReadOnlyList<string> warnings,
+        IReadOnlyList<ReverseSqlDiagnostic> diagnostics,
+        Exception exception,
+        out ReverseSqlImportResult result)
+    {
+        result = null!;
+        if (exception is not InvalidOperationException invalidOperation
+            || !invalidOperation.Message.Contains("UNION, INTERSECT et EXCEPT", StringComparison.OrdinalIgnoreCase)
+            || !TryExtractFirstSupportedSelect(normalizedSql, out string supportedSql))
+        {
+            return false;
+        }
+
+        QueryDefinition partialQuery = _parser.Parse(supportedSql, sourceDialect);
+        List<ReverseSqlDiagnostic> combinedDiagnostics = [.. diagnostics, BuildPartialImportDiagnostic(normalizedSql)];
+        result = new ReverseSqlImportResult
+        {
+            Query = partialQuery,
+            SourceDialect = sourceDialect,
+            NormalizedSql = normalizedSql,
+            Warnings = warnings,
+            Diagnostics = combinedDiagnostics,
+            Coverage = BuildCoverageReport(normalizedSql, partialQuery, warnings)
+        };
+        return true;
+    }
+
+    private static ReverseSqlDiagnostic BuildPartialImportDiagnostic(string normalizedSql)
+    {
+        return new ReverseSqlDiagnostic
+        {
+            Severity = ReverseSqlDiagnosticSeverity.Warning,
+            Clause = "Set operations",
+            Message = "Le SQL contient une operation d'ensemble. Seule la premiere branche SELECT a ete importee dans le constructeur.",
+            Fragment = normalizedSql.Trim(),
+            StartOffset = 0,
+            Length = Math.Max(normalizedSql.Trim().Length, 1),
+            Line = 1,
+            Column = 1,
+            SuggestedFix = "Simplifie la requete a un SELECT unique pour un import complet, ou recompose manuellement les branches restantes."
+        };
+    }
+
+    private static bool TryExtractFirstSupportedSelect(string sql, out string supportedSql)
+    {
+        int splitIndex = FindFirstTopLevelSetOperationIndex(sql);
+        if (splitIndex <= 0)
+        {
+            supportedSql = string.Empty;
+            return false;
+        }
+
+        supportedSql = sql[..splitIndex].TrimEnd();
+        return supportedSql.Length > 0;
+    }
+
+    private static int FindFirstTopLevelSetOperationIndex(string sql)
+    {
+        int unionIndex = FindTopLevelKeyword(sql, "UNION", 0);
+        int intersectIndex = FindTopLevelKeyword(sql, "INTERSECT", 0);
+        int exceptIndex = FindTopLevelKeyword(sql, "EXCEPT", 0);
+        return new[] { unionIndex, intersectIndex, exceptIndex }
+            .Where(index => index >= 0)
+            .DefaultIfEmpty(-1)
+            .Min();
+    }
+
+    private static int FindTopLevelKeyword(string sql, string keyword, int start)
+    {
+        int depth = 0;
+        bool inString = false;
+        for (int i = Math.Max(0, start); i <= sql.Length - keyword.Length; i++)
+        {
+            char current = sql[i];
+            if (current == '\'')
+            {
+                inString = !inString;
+            }
+            else if (!inString && current == '(')
+            {
+                depth++;
+            }
+            else if (!inString && current == ')')
+            {
+                depth = Math.Max(0, depth - 1);
+            }
+
+            if (depth == 0 && !inString && string.Compare(sql, i, keyword, 0, keyword.Length, StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                bool beforeOk = i == 0 || !char.IsLetterOrDigit(sql[i - 1]);
+                bool afterOk = i + keyword.Length >= sql.Length || !char.IsLetterOrDigit(sql[i + keyword.Length]);
+                if (beforeOk && afterOk)
+                {
+                    return i;
+                }
+            }
+        }
+
+        return -1;
     }
 
     private static string ExtractClauseFragment(string sql, string clause)

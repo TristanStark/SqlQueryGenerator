@@ -16,7 +16,11 @@ public enum SqlDialect
     /// <summary>
     /// Valeur Oracle de l'énumération.
     /// </summary>
-    Oracle
+    Oracle,
+    /// <summary>
+    /// Valeur CognosAnalytics de l'énumération.
+    /// </summary>
+    CognosAnalytics
 }
 
 /// <summary>
