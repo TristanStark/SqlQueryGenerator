@@ -62,6 +62,65 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
         Assert.Contains("CASE WHEN T.A = 'X' THEN 'Z' ELSE 'Y' END AS label", result.Sql);
     }
 
+    /// <summary>
+    /// Ensures Cognos Analytics parameters are emitted as #prompt macros.
+    /// </summary>
+    [Fact]
+    public void Generate_CognosParameterFilter_EmitsPromptMacro()
+    {
+        const string sql = @"CREATE TABLE CUSTOMER (CUSTOMER_ID INTEGER PRIMARY KEY, NAME TEXT);";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new() { BaseTable = "CUSTOMER" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "CUSTOMER", Column = "CUSTOMER_ID" });
+        query.Filters.Add(new FilterCondition
+        {
+            Column = new ColumnReference { Table = "CUSTOMER", Column = "CUSTOMER_ID" },
+            Operator = "=",
+            ValueKind = FilterValueKind.Parameter,
+            Value = "Customer Id"
+        });
+        query.Parameters.Add(new QueryParameterDefinition
+        {
+            Name = "Customer Id",
+            DeclaredType = "integer",
+            SourceKind = QueryParameterSourceKind.CognosPrompt,
+            Required = true
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { Dialect = SqlDialect.CognosAnalytics });
+
+        Assert.Contains(@"WHERE CUSTOMER.CUSTOMER_ID = #prompt(""Customer Id"", ""integer"")#", result.Sql);
+    }
+
+    /// <summary>
+    /// Ensures Cognos Analytics date parameters are wrapped in TO_DATE.
+    /// </summary>
+    [Fact]
+    public void Generate_CognosDateParameterFilter_EmitsToDatePrompt()
+    {
+        const string sql = @"CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, ORDER_DATE DATE);";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new() { BaseTable = "ORDERS" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "ORDERS", Column = "ORDER_ID" });
+        query.Filters.Add(new FilterCondition
+        {
+            Column = new ColumnReference { Table = "ORDERS", Column = "ORDER_DATE" },
+            Operator = "=",
+            ValueKind = FilterValueKind.Parameter,
+            Value = "Order Date"
+        });
+        query.Parameters.Add(new QueryParameterDefinition
+        {
+            Name = "Order Date",
+            DeclaredType = "date",
+            SourceKind = QueryParameterSourceKind.CognosPrompt,
+            Required = true
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema, new SqlGeneratorOptions { Dialect = SqlDialect.CognosAnalytics });
+
+        Assert.Contains(@"WHERE ORDERS.ORDER_DATE = TO_DATE(#prompt(""Order Date"", ""date"")#, 'dd/MM/YYYY')", result.Sql);
+    }
 
     /// <summary>
     /// Exécute le traitement Generate QueryDistinct EmitsSelectDistinct.

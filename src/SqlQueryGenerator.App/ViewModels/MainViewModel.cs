@@ -319,7 +319,13 @@ public sealed class MainViewModel : ObservableObject
         AddAggregateOrderByCommand = new RelayCommand(obj => AddAggregateToOrderBy(obj as AggregateRowViewModel));
         AddCustomFilterCommand = new RelayCommand(obj => AddCustomColumnToFilter(obj as CustomColumnRowViewModel));
         AddCustomOrderByCommand = new RelayCommand(obj => AddCustomColumnToOrderBy(obj as CustomColumnRowViewModel));
-        AddParameterCommand = new RelayCommand(() => Parameters.Add(new QueryParameterRowViewModel { Name = $"param_{Parameters.Count + 1}", Required = true }));
+        AddParameterCommand = new RelayCommand(() => Parameters.Add(new QueryParameterRowViewModel
+        {
+            Name = $"param_{Parameters.Count + 1}",
+            DeclaredType = Dialect == SqlDialect.CognosAnalytics ? "string" : string.Empty,
+            UseCognosPrompt = Dialect == SqlDialect.CognosAnalytics,
+            Required = true
+        }));
         RemoveParameterCommand = new RelayCommand(obj => RemoveFromCollection(Parameters, obj));
         SaveCurrentQueryCommand = new RelayCommand(SaveCurrentQuery);
         SaveRawSqlPresetCommand = new RelayCommand(SaveRawSqlPreset);
@@ -2155,16 +2161,21 @@ public sealed class MainViewModel : ObservableObject
 
         foreach (QueryParameterRowViewModel? row in Parameters.Where(p => !string.IsNullOrWhiteSpace(p.Name)))
         {
+            QueryParameterSourceKind sourceKind = row.UseCognosPrompt || Dialect == SqlDialect.CognosAnalytics
+                ? QueryParameterSourceKind.CognosPrompt
+                : QueryParameterSourceKind.Standard;
             query.Parameters.Add(new QueryParameterDefinition
             {
                 Name = row.Name.Trim(),
                 Description = BlankToNull(row.Description),
                 DefaultValue = BlankToNull(row.DefaultValue),
+                DeclaredType = BlankToNull(row.DeclaredType),
+                SourceKind = sourceKind,
                 Required = row.Required
             });
         }
 
-        AddImplicitParametersFromFilters(query);
+        AddImplicitParametersFromFilters(query, Dialect);
 
         foreach (RelationshipItemViewModel? disabled in Relationships.Where(r => !r.IsEnabled))
         {
@@ -2179,15 +2190,18 @@ public sealed class MainViewModel : ObservableObject
     /// Exécute le traitement AddImplicitParametersFromFilters.
     /// </summary>
     /// <param name="query">Paramètre query.</param>
-    private static void AddImplicitParametersFromFilters(QueryDefinition query)
+    private static void AddImplicitParametersFromFilters(QueryDefinition query, SqlDialect dialect)
     {
-        HashSet<string> existing = query.Parameters.Select(p => p.Placeholder).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> existing = query.Parameters
+            .Select(GetParameterIdentity)
+            .Where(identity => !string.IsNullOrWhiteSpace(identity))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (FilterCondition filter in query.Filters)
         {
             foreach (string? raw in new[] { filter.Value, filter.SecondValue })
             {
-                string? placeholder = NormalizeParameterPlaceholder(raw, filter.ValueKind);
-                if (placeholder is null || !existing.Add(placeholder))
+                string? placeholder = NormalizeParameterPlaceholder(raw, filter.ValueKind, dialect);
+                if (string.IsNullOrWhiteSpace(placeholder) || !existing.Add(placeholder))
                 {
                     continue;
                 }
@@ -2196,6 +2210,9 @@ public sealed class MainViewModel : ObservableObject
                 {
                     Name = placeholder,
                     Description = "Paramètre inféré depuis un filtre",
+                    DeclaredType = BuildImplicitParameterType(raw),
+                    RawExpression = BuildImplicitParameterRawExpression(raw),
+                    SourceKind = BuildImplicitParameterSourceKind(raw, dialect),
                     Required = true
                 });
             }
@@ -2204,7 +2221,7 @@ public sealed class MainViewModel : ObservableObject
             {
                 foreach (QueryParameterDefinition subParam in filter.Subquery.Parameters)
                 {
-                    if (existing.Add(subParam.Placeholder))
+                    if (existing.Add(GetParameterIdentity(subParam)))
                     {
                         query.Parameters.Add(subParam with { Description = subParam.Description ?? $"Paramètre requis par la sous-requête {filter.SubqueryName}" });
                     }
@@ -2215,7 +2232,7 @@ public sealed class MainViewModel : ObservableObject
             {
                 foreach (QueryParameterDefinition subParam in SqlSelectReverseParser.ExtractParameters(filter.RawSubquerySql))
                 {
-                    if (existing.Add(subParam.Placeholder))
+                    if (existing.Add(GetParameterIdentity(subParam)))
                     {
                         query.Parameters.Add(subParam with { Description = subParam.Description ?? $"Paramètre requis par la sous-requête SQL brute {filter.SubqueryName}" });
                     }
@@ -2230,25 +2247,83 @@ public sealed class MainViewModel : ObservableObject
     /// <param name="raw">Paramètre raw.</param>
     /// <param name="kind">Paramètre kind.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static string? NormalizeParameterPlaceholder(string? raw, FilterValueKind kind)
+    private static string? NormalizeParameterPlaceholder(string? raw, FilterValueKind kind, SqlDialect dialect)
     {
         if (string.IsNullOrWhiteSpace(raw))
         {
-            return kind == FilterValueKind.Parameter ? "?" : null;
+            return kind == FilterValueKind.Parameter && dialect != SqlDialect.CognosAnalytics ? "?" : null;
         }
 
         string value = raw.Trim();
+        if (CognosPromptSyntax.TryExtractPromptExpression(value, out string promptExpression, out _)
+            && CognosPromptSyntax.TryParsePromptExpression(promptExpression, out string promptName, out _))
+        {
+            return promptName;
+        }
+
         if (kind == FilterValueKind.Parameter)
         {
-            if (SqlSelectReverseParser.IsCognosPromptExpression(value))
+            if (dialect == SqlDialect.CognosAnalytics)
             {
                 return value;
             }
 
-            return value.StartsWith(':') || value.StartsWith('@') || value.StartsWith('?') || value.StartsWith('&') ? value : ":" + value;
+            return TrimParameterPrefix(value);
         }
 
-        return value.StartsWith(':') || value.StartsWith('@') || value.StartsWith('?') || value.StartsWith('&') || SqlSelectReverseParser.IsCognosPromptExpression(value) ? value : null;
+        return value.StartsWith(':') || value.StartsWith('@') || value.StartsWith('?') || value.StartsWith('&') ? TrimParameterPrefix(value) : null;
+    }
+
+    private static string? BuildImplicitParameterType(string? raw)
+    {
+        string trimmed = raw?.Trim() ?? string.Empty;
+        if (CognosPromptSyntax.TryExtractPromptExpression(trimmed, out string promptExpression, out _)
+            && CognosPromptSyntax.TryParsePromptExpression(promptExpression, out _, out string promptType))
+        {
+            return BlankToNull(promptType);
+        }
+
+        return null;
+    }
+
+    private static string? BuildImplicitParameterRawExpression(string? raw)
+    {
+        string trimmed = raw?.Trim() ?? string.Empty;
+        return CognosPromptSyntax.TryExtractPromptExpression(trimmed, out string promptExpression, out _)
+            ? promptExpression
+            : null;
+    }
+
+    private static QueryParameterSourceKind BuildImplicitParameterSourceKind(string? raw, SqlDialect dialect)
+    {
+        string trimmed = raw?.Trim() ?? string.Empty;
+        return CognosPromptSyntax.TryExtractPromptExpression(trimmed, out _, out _) || dialect == SqlDialect.CognosAnalytics
+            ? QueryParameterSourceKind.CognosPrompt
+            : QueryParameterSourceKind.Standard;
+    }
+
+    private static string GetParameterIdentity(QueryParameterDefinition parameter)
+    {
+        if (parameter.SourceKind == QueryParameterSourceKind.CognosPrompt
+            && CognosPromptSyntax.TryParsePromptExpression(parameter.Placeholder, out string promptName, out _))
+        {
+            return promptName;
+        }
+
+        return TrimParameterPrefix(string.IsNullOrWhiteSpace(parameter.Name) ? parameter.Placeholder : parameter.Name);
+    }
+
+    private static string TrimParameterPrefix(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        string trimmed = value.Trim();
+        return trimmed.StartsWith(':') || trimmed.StartsWith('@') || trimmed.StartsWith('&')
+            ? trimmed[1..]
+            : trimmed;
     }
 
     /// <summary>
@@ -2983,7 +3058,15 @@ public sealed class MainViewModel : ObservableObject
                 Joins.Add(joinVm);
             }
             foreach (CustomColumnSelection c in query.CustomColumns) CustomColumns.Add(new CustomColumnRowViewModel { Alias = c.Alias ?? string.Empty, RawExpression = c.RawExpression ?? string.Empty, CaseTable = c.CaseColumn?.Table ?? string.Empty, CaseColumn = c.CaseColumn?.Column ?? string.Empty, CaseOperator = c.CaseOperator ?? "=", CaseCompareValue = c.CaseCompareValue ?? string.Empty, CaseThenValue = c.CaseThenValue ?? string.Empty, CaseElseValue = c.CaseElseValue ?? string.Empty });
-            foreach (QueryParameterDefinition p in query.Parameters) Parameters.Add(new QueryParameterRowViewModel { Name = p.Name, Description = p.Description ?? string.Empty, DefaultValue = p.DefaultValue ?? string.Empty, Required = p.Required });
+            foreach (QueryParameterDefinition p in query.Parameters) Parameters.Add(new QueryParameterRowViewModel
+            {
+                Name = p.Name,
+                Description = p.Description ?? string.Empty,
+                DefaultValue = p.DefaultValue ?? string.Empty,
+                DeclaredType = p.DeclaredType ?? string.Empty,
+                UseCognosPrompt = p.SourceKind == QueryParameterSourceKind.CognosPrompt,
+                Required = p.Required
+            });
         }
         finally
         {

@@ -1581,7 +1581,7 @@ public sealed class SqlQueryGeneratorEngine
             }
 
             string warningKey = filter.Column?.Key ?? filter.FieldAlias ?? expression;
-            string predicate = BuildPredicateSql(expression, op, filter, schema, options, warningKey, warnings);
+            string predicate = BuildPredicateSql(query, expression, op, filter, schema, options, warningKey, warnings);
             if (!string.IsNullOrWhiteSpace(predicate))
             {
                 result.Add((predicate, filter.Connector));
@@ -1787,7 +1787,7 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="warningKey">Paramètre warningKey.</param>
     /// <param name="warnings">Paramètre warnings.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static string BuildPredicateSql(string columnSql, string op, FilterCondition filter, DatabaseSchema schema, SqlGeneratorOptions options, string warningKey, List<string> warnings)
+    private static string BuildPredicateSql(QueryDefinition query, string columnSql, string op, FilterCondition filter, DatabaseSchema schema, SqlGeneratorOptions options, string warningKey, List<string> warnings)
     {
         if (op is "IS NULL" or "IS NOT NULL")
         {
@@ -1811,8 +1811,8 @@ public sealed class SqlQueryGeneratorEngine
             return $"{columnSql} {op} ({subquerySql})";
         }
 
-        string valueSql = FormatFilterValue(filter.Value, filter.ValueKind, warnings);
-        string secondValueSql = FormatFilterValue(filter.SecondValue, filter.ValueKind, warnings);
+        string valueSql = FormatFilterValue(query, filter, filter.Value, filter.ValueKind, schema, options, warnings);
+        string secondValueSql = FormatFilterValue(query, filter, filter.SecondValue, filter.ValueKind, schema, options, warnings);
 
         if (op == "BETWEEN")
         {
@@ -1847,7 +1847,7 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="valueKind">Paramètre valueKind.</param>
     /// <param name="warnings">Paramètre warnings.</param>
     /// <returns>Résultat du traitement.</returns>
-    private static string FormatFilterValue(string? raw, FilterValueKind valueKind, List<string> warnings)
+    private static string FormatFilterValue(QueryDefinition query, FilterCondition filter, string? raw, FilterValueKind valueKind, DatabaseSchema schema, SqlGeneratorOptions options, List<string> warnings)
     {
         if (valueKind == FilterValueKind.RawSql)
         {
@@ -1864,9 +1864,16 @@ public sealed class SqlQueryGeneratorEngine
         if (valueKind == FilterValueKind.Parameter)
         {
             string placeholder = string.IsNullOrWhiteSpace(raw) ? "?" : raw.Trim();
-            if (SqlSelectReverseParser.IsCognosPromptExpression(placeholder))
+            if (options.Dialect == SqlDialect.CognosAnalytics)
             {
-                return placeholder;
+                return BuildCognosPromptSql(query, filter, placeholder, schema);
+            }
+
+            if (CognosPromptSyntax.TryExtractPromptExpression(placeholder, out string promptExpression, out bool wrappedAsDate))
+            {
+                return wrappedAsDate
+                    ? CognosPromptSyntax.BuildDatePromptExpressionFromPrompt(promptExpression)
+                    : promptExpression;
             }
 
             if (!placeholder.StartsWith(':') && !placeholder.StartsWith('@') && !placeholder.StartsWith('?') && !placeholder.StartsWith('&'))
@@ -1877,6 +1884,85 @@ public sealed class SqlQueryGeneratorEngine
         }
 
         return SqlLiteralFormatter.FormatValue(raw);
+    }
+
+    private static string BuildCognosPromptSql(QueryDefinition query, FilterCondition filter, string raw, DatabaseSchema schema)
+    {
+        QueryParameterDefinition? parameter = FindParameter(query, raw);
+        string promptName = ResolvePromptName(raw, parameter);
+        bool isDatePrompt = IsDateParameter(parameter) || IsDateColumnFilter(filter, schema);
+        if (isDatePrompt)
+        {
+            return CognosPromptSyntax.BuildDatePromptExpression(promptName);
+        }
+
+        string declaredType = parameter?.DeclaredType ?? "string";
+        return CognosPromptSyntax.BuildPromptExpression(promptName, declaredType);
+    }
+
+    private static QueryParameterDefinition? FindParameter(QueryDefinition query, string raw)
+    {
+        string identity = NormalizeParameterIdentity(raw);
+        return query.Parameters.FirstOrDefault(parameter => string.Equals(NormalizeParameterIdentity(parameter.Name), identity, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(NormalizeParameterIdentity(parameter.Placeholder), identity, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string ResolvePromptName(string raw, QueryParameterDefinition? parameter)
+    {
+        if (parameter is not null && !string.IsNullOrWhiteSpace(parameter.Name))
+        {
+            return parameter.Name.Trim();
+        }
+
+        if (CognosPromptSyntax.TryExtractPromptExpression(raw, out string promptExpression, out _)
+            && CognosPromptSyntax.TryParsePromptExpression(promptExpression, out string promptName, out _))
+        {
+            return promptName;
+        }
+
+        return NormalizeParameterIdentity(raw);
+    }
+
+    private static bool IsDateParameter(QueryParameterDefinition? parameter)
+    {
+        return parameter is not null && IsDateLikeType(parameter.DeclaredType);
+    }
+
+    private static bool IsDateColumnFilter(FilterCondition filter, DatabaseSchema schema)
+    {
+        return filter.Column is not null
+            && IsDateLikeType(schema.FindColumn(filter.Column.Table, filter.Column.Column)?.DataType);
+    }
+
+    private static bool IsDateLikeType(string? dataType)
+    {
+        if (string.IsNullOrWhiteSpace(dataType))
+        {
+            return false;
+        }
+
+        string type = dataType.Trim().ToUpperInvariant();
+        return type.Contains("DATE", StringComparison.Ordinal)
+            || type.Contains("TIME", StringComparison.Ordinal);
+    }
+
+    private static string NormalizeParameterIdentity(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return raw;
+        }
+
+        if (CognosPromptSyntax.TryExtractPromptExpression(raw, out string promptExpression, out _)
+            && CognosPromptSyntax.TryParsePromptExpression(promptExpression, out string promptName, out _))
+        {
+            return promptName;
+        }
+
+        string trimmed = raw.Trim();
+        return trimmed.StartsWith(':') || trimmed.StartsWith('@') || trimmed.StartsWith('&')
+            ? trimmed[1..]
+            : trimmed;
     }
 
     /// <summary>

@@ -168,6 +168,31 @@ WHERE CUSTOMER.CUSTOMER_ID = #prompt(""Customer Id"", ""integer"")#";
     }
 
     /// <summary>
+    /// Ensures TO_DATE-wrapped Cognos date prompts are reverse-loaded as parameter filters.
+    /// </summary>
+    [Fact]
+    public void ReverseParser_CognosDatePrompt_IsDetectedAndRegenerated()
+    {
+        const string schemaSql = @"CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, ORDER_DATE DATE);";
+        const string sql = @"
+SELECT ORDERS.ORDER_ID
+FROM ORDERS
+WHERE ORDERS.ORDER_DATE = TO_DATE(#prompt(""Order Date"", ""date"")#, 'dd/MM/YYYY')";
+
+        QueryDefinition query = new SqlSelectReverseParser().Parse(sql, SourceSqlDialect.CognosAnalytics);
+        SqlGenerationResult generated = new SqlQueryGeneratorEngine().Generate(query, new SqlSchemaParser().Parse(schemaSql), new SqlGeneratorOptions { Dialect = SqlDialect.CognosAnalytics });
+
+        Assert.Single(query.Parameters);
+        Assert.Equal(QueryParameterSourceKind.CognosPrompt, query.Parameters[0].SourceKind);
+        Assert.Equal("Order Date", query.Parameters[0].Name);
+        Assert.Equal("date", query.Parameters[0].DeclaredType);
+        Assert.Single(query.Filters);
+        Assert.Equal(FilterValueKind.Parameter, query.Filters[0].ValueKind);
+        Assert.Equal(@"#prompt(""Order Date"", ""date"")#", query.Filters[0].Value);
+        Assert.Contains(@"WHERE ORDERS.ORDER_DATE = TO_DATE(#prompt(""Order Date"", ""date"")#, 'dd/MM/YYYY')", generated.Sql);
+    }
+
+    /// <summary>
     /// Ensures reverse import exposes clause-level coverage and dialect-specific warnings.
     /// </summary>
     [Fact]

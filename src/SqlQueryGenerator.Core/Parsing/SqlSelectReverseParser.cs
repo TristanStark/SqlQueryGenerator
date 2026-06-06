@@ -70,7 +70,7 @@ public sealed class SqlSelectReverseParser
         ParsePredicates(havingText, query, aliases, asHaving: true);
         ParseOrderBy(orderText, query, aliases);
         query.LimitRows ??= ParseLimit(limitText, fetchText);
-        query.Parameters = new System.Collections.ObjectModel.Collection<QueryParameterDefinition>(ExtractParameters(normalized).ToList());
+        query.Parameters = new System.Collections.ObjectModel.Collection<QueryParameterDefinition>(ExtractParameters(normalized, sourceDialect).ToList());
         return query;
     }
 
@@ -97,9 +97,9 @@ public sealed class SqlSelectReverseParser
             }
         }
 
-        foreach (Match match in Regex.Matches(sql, @"#prompt\s*\(\s*(?<quote>['""])(?<name>.*?)\k<quote>\s*,\s*(?<typeQuote>['""])(?<type>.*?)\k<typeQuote>\s*\)\s*#", RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        foreach (Match match in Regex.Matches(sql, @"#prompt\s*\(\s*(?<quote>['""])(?<name>.*?)\k<quote>\s*,\s*(?<typeQuote>['""])(?<type>.*?)\k<typeQuote>\s*\)\s*#?", RegexOptions.IgnoreCase | RegexOptions.Singleline))
         {
-            string rawExpression = match.Value.Trim();
+            string rawExpression = CognosPromptSyntax.BuildPromptExpression(match.Groups["name"].Value.Trim(), match.Groups["type"].Value.Trim());
             if (!seen.Add(rawExpression))
             {
                 continue;
@@ -126,12 +126,7 @@ public sealed class SqlSelectReverseParser
     /// <returns><c>true</c> when the value matches a Cognos prompt.</returns>
     public static bool IsCognosPromptExpression(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return false;
-        }
-
-        return Regex.IsMatch(value.Trim(), @"^#prompt\s*\(\s*(['""]).*?\1\s*,\s*(['""]).*?\2\s*\)\s*#$", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        return CognosPromptSyntax.IsPromptExpression(value);
     }
 
     /// <summary>
@@ -547,7 +542,9 @@ public sealed class SqlSelectReverseParser
         if (between.Success)
         {
             FilterCondition? filter = BuildFilter(query, between.Groups[1].Value, "BETWEEN", between.Groups[2].Value, aliases, asHaving);
-            return filter is null ? null : filter with { SecondValue = UnquoteValue(between.Groups[3].Value.Trim()) };
+            string secondRaw = between.Groups[3].Value.Trim();
+            FilterValueKind secondKind = DetectValueKind(secondRaw);
+            return filter is null ? null : filter with { SecondValue = NormalizeFilterValue(secondRaw, secondKind) };
         }
 
         Match inSubquery = Regex.Match(predicate, @"(?is)^(.+?)\s+(IN|NOT\s+IN)\s*\((\s*(?:SELECT|WITH)\b.+)\)$");
@@ -584,7 +581,7 @@ public sealed class SqlSelectReverseParser
     {
         string normalizedOperator = Regex.Replace(operatorText.Trim(), @"\s+", " ").ToUpperInvariant();
         FilterValueKind valueKind = DetectValueKind(valueText);
-        string? value = valueKind == FilterValueKind.Literal ? UnquoteValue(valueText?.Trim()) : valueText?.Trim();
+        string? value = NormalizeFilterValue(valueText, valueKind);
         string resolvedAlias = TrimIdentifierQuotes(leftExpression.Trim());
         if (TryResolveFieldAlias(query, resolvedAlias, asHaving, out QueryFieldKind fieldKind))
         {
@@ -812,7 +809,7 @@ public sealed class SqlSelectReverseParser
         }
 
         string value = valueText.Trim();
-        if (IsCognosPromptExpression(value))
+        if (CognosPromptSyntax.TryExtractPromptExpression(value, out _, out _))
         {
             return FilterValueKind.Parameter;
         }
@@ -833,6 +830,23 @@ public sealed class SqlSelectReverseParser
         }
 
         return FilterValueKind.Literal;
+    }
+
+    private static string? NormalizeFilterValue(string? valueText, FilterValueKind valueKind)
+    {
+        if (valueKind == FilterValueKind.Literal)
+        {
+            return UnquoteValue(valueText?.Trim());
+        }
+
+        string? trimmed = valueText?.Trim();
+        if (valueKind == FilterValueKind.Parameter
+            && CognosPromptSyntax.TryExtractPromptExpression(trimmed, out string promptExpression, out _))
+        {
+            return promptExpression;
+        }
+
+        return trimmed;
     }
 
     /// <summary>

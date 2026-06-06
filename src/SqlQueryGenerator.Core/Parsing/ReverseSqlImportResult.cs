@@ -14,7 +14,8 @@ public enum SourceSqlDialect
     SQLite,
     PostgreSql,
     SqlServer,
-    MySqlMariaDb
+    MySqlMariaDb,
+    CognosAnalytics
 }
 
 /// <summary>

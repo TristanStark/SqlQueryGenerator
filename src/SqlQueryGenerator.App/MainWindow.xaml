@@ -679,6 +679,7 @@
                                             <DataGrid ItemsSource="{Binding Parameters}" MinHeight="110">
                                                 <DataGrid.Columns>
                                                     <DataGridTextColumn Header="Nom" Binding="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1*" MinWidth="150" />
+                                                    <DataGridTextColumn Header="Type" Binding="{Binding DeclaredType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="0.9*" MinWidth="120" />
                                                     <DataGridTextColumn Header="Description" Binding="{Binding Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="260" />
                                                     <DataGridTextColumn Header="Valeur par défaut" Binding="{Binding DefaultValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.2*" MinWidth="180" />
                                                     <DataGridCheckBoxColumn Header="Obligatoire" Binding="{Binding Required, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="120" />
