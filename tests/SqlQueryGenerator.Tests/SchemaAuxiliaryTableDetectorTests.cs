@@ -37,13 +37,13 @@ public sealed class SchemaAuxiliaryTableDetectorTests
             new TableDefinition("CUSTOMER"),
             new TableDefinition("CUSTOMER_20240101"),
             new TableDefinition("ORDERS"),
-            new TableDefinition("ORDERS_SAVE_42"));
+            new TableDefinition("ORDERS_SAVE"));
 
         IReadOnlyList<BackupTableCandidate> candidates = _detector.DetectBackupCandidates(schema);
 
         Assert.Equal(2, candidates.Count);
         Assert.Contains(candidates, candidate => candidate.TableName == "CUSTOMER_20240101" && candidate.BaseTableName == "CUSTOMER");
-        Assert.Contains(candidates, candidate => candidate.TableName == "ORDERS_SAVE_42" && candidate.BaseTableName == "ORDERS" && candidate.DetectionReason.Contains("SAVE", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(candidates, candidate => candidate.TableName == "ORDERS_SAVE" && candidate.BaseTableName == "ORDERS" && candidate.DetectionReason.Contains("SAVE", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

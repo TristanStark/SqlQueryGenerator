@@ -29,5 +29,8 @@ jobs:
       - name: Build
         run: dotnet build .\SqlQueryGenerator.sln --configuration Release --no-restore
 
-      - name: Test
-        run: dotnet test .\SqlQueryGenerator.sln --configuration Release --no-build --verbosity normal
+      - name: Unit tests
+        run: dotnet test .\SqlQueryGenerator.sln --configuration Release --no-build --verbosity normal --filter "Category!=Performance"
+
+      - name: Performance gate
+        run: dotnet test .\tests\SqlQueryGenerator.Tests\SqlQueryGenerator.Tests.csproj --configuration Release --no-build --verbosity normal --filter "Category=Performance"
