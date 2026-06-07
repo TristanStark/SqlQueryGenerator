@@ -158,35 +158,34 @@ public sealed partial class SchemaAuxiliaryTableDetector
     {
         string candidateShortName = NormalizeReviewName(GetShortTableName(candidateTableName));
         string baseShortName = NormalizeReviewName(GetShortTableName(baseTableName));
+        reason = string.Empty;
         if (string.IsNullOrWhiteSpace(candidateShortName)
             || string.IsNullOrWhiteSpace(baseShortName)
             || candidateShortName.Length <= baseShortName.Length
             || !candidateShortName.StartsWith(baseShortName, StringComparison.OrdinalIgnoreCase))
-        {
-            reason = string.Empty;
             return false;
-        }
 
         string suffix = candidateShortName[baseShortName.Length..];
         if (suffix.Length < 2 || !CandidateSeparators.Contains(suffix[0]))
-        {
-            reason = string.Empty;
             return false;
-        }
 
         string detail = suffix[1..].Trim(CandidateSeparators);
-        if (string.IsNullOrWhiteSpace(detail) || !TrailingDigitsRegex().IsMatch(detail))
-        {
-            reason = string.Empty;
+        if (string.IsNullOrWhiteSpace(detail))
             return false;
-        }
+
 
         string[] tokens = detail.Split(CandidateSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         string? suspiciousToken = tokens.FirstOrDefault(token => SuspiciousTokens.Contains(token));
         string baseLabel = GetShortTableName(baseTableName);
-        reason = suspiciousToken is null
-            ? $"commence par {baseLabel}_ et se termine par des chiffres"
-            : $"mot-clé {suspiciousToken.ToUpperInvariant()} + suffixe numérique après la table de base {baseLabel}";
+        bool isDigits = TrailingDigitsRegex().IsMatch(detail);
+        if (suspiciousToken is null && !isDigits)
+            return false;
+
+        if (isDigits)
+            reason = $"commence par {baseLabel}_ et se termine par des chiffres";
+        else
+            reason = $"mot-clé {suspiciousToken?.ToUpperInvariant()} détecté de la table de base {baseLabel}";
+
         return true;
     }
 

@@ -13,6 +13,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
+using SqlQueryGenerator.App.Services;
 
 namespace SqlQueryGenerator.App.ViewModels;
 
@@ -218,15 +219,7 @@ public sealed class MainViewModel : ObservableObject
     /// <param name="OrdinalIgnoreCase">Paramètre OrdinalIgnoreCase.</param>
     /// <returns>Résultat du traitement.</returns>
     private IReadOnlySet<string> _cachedUniqueIndexColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    /// <summary>
-    /// Exécute le traitement Empty.
-    /// </summary>
-    /// <returns>Résultat du traitement.</returns>
-    private IReadOnlyList<TableDefinition> _sortedSchemaTables = Array.Empty<TableDefinition>();
-    /// <summary>
-    /// Stocke la valeur interne  columnNamesByTable.
-    /// </summary>
-    /// <value>Valeur de _columnNamesByTable.</value>
+
     private IReadOnlyDictionary<string, IReadOnlyList<string>> _columnNamesByTable = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _tableAliases = new(StringComparer.OrdinalIgnoreCase);
     private DdlExportDialect _ddlExportDialect = DdlExportDialect.SQLite;
@@ -234,46 +227,19 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>
     /// Maximum number of column rows rendered by a search to keep WPF memory usage bounded on large schemas.
     /// </summary>
-    /// <value>Upper bound for visible column results in the left tree.</value>
     private const int MaxVisibleColumnSearchResults = 650;
-
-    /// <summary>
-    /// Maximum number of columns displayed when a table name itself matches a broad search.
-    /// </summary>
-    /// <value>Per-table column cap used for broad table-name matches.</value>
-    private const int MaxVisibleColumnsForTableNameMatch = 120;
 
     /// <summary>
     /// Debounces left-tree searches so filtering is not executed for every keystroke.
     /// </summary>
-    /// <value>Dispatcher timer bound to the WPF UI thread.</value>
     private readonly DispatcherTimer _columnSearchDebounceTimer;
 
     /// <summary>
-    /// Stable table view models reused by filtering to avoid recreating WPF-bound objects on every search.
+    /// Reusable schema explorer index built once per schema reload.
     /// </summary>
-    /// <value>All table nodes, ordered by display name.</value>
-    private IReadOnlyList<TableItemViewModel> _allTableViewModels = Array.Empty<TableItemViewModel>();
+    private SchemaExplorerIndex _schemaExplorerIndex = SchemaExplorerIndex.Empty;
 
-    /// <summary>
-    /// Stable column view models grouped by fully qualified table name.
-    /// </summary>
-    /// <value>Column VM cache used by search, selection and clear operations.</value>
-    private IReadOnlyDictionary<string, IReadOnlyList<ColumnItemViewModel>> _columnViewModelsByTable = new Dictionary<string, IReadOnlyList<ColumnItemViewModel>>(StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Precomputed text index for fast left-tree search.
-    /// </summary>
-    /// <value>One entry per column, storing lower-cased searchable text once.</value>
-    private IReadOnlyList<ColumnSearchIndexEntry> _columnSearchIndex = Array.Empty<ColumnSearchIndexEntry>();
-
-    /// <summary>
-    /// Indicates whether the most recent search was truncated to preserve responsiveness and RAM.
-    /// </summary>
-    /// <value><c>true</c> when not all matching columns are rendered.</value>
     private bool _isColumnSearchTruncated;
-    private int _hiddenAuxiliaryTableCount;
-    private int _detectedAuxiliaryTableCount;
     private int _importDetectedBackupCandidateCount;
     private int _importExcludedBackupTableCount;
     private int _importKeptBackupCandidateCount;
@@ -1138,10 +1104,6 @@ public sealed class MainViewModel : ObservableObject
                 Status += $" {_importDetectedBackupCandidateCount} candidats backup detectes, {_importExcludedBackupTableCount} exclus, {_importKeptBackupCandidateCount} conserves.";
             }
 
-            if (_hiddenAuxiliaryTableCount > 0 && HideAuxiliaryTables)
-            {
-                Status += $" {_hiddenAuxiliaryTableCount} tables auxiliaires masquées.";
-            }
             Warnings = string.Join(Environment.NewLine, _schema.Warnings);
             if (string.IsNullOrWhiteSpace(BaseTable) && TableNames.Count > 0)
             {
@@ -1535,103 +1497,59 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Exécute le traitement ReloadSchemaViewModels.
+    /// Rebuilds the schema explorer index and refreshes the WPF-bound collections.
     /// </summary>
     private void ReloadSchemaViewModels()
     {
+        foreach (RelationshipItemViewModel relationship in Relationships)
+        {
+            relationship.PropertyChanged -= Relationship_PropertyChanged;
+        }
+
         Tables.Clear();
         AllColumns.Clear();
         Relationships.Clear();
         RelationshipGroups.Clear();
         TableNames.Clear();
+
         _cachedForeignKeySummaries = BuildForeignKeySummaries();
         _cachedIndexSummaries = BuildIndexSummaries();
         _cachedUniqueIndexColumns = BuildUniqueIndexColumnSet();
-        _sortedSchemaTables = _schema.Tables.OrderBy(t => t.FullName, StringComparer.OrdinalIgnoreCase).ToArray();
-        HashSet<string> pinnedTables = BuildPinnedSchemaTableNames();
-        HashSet<string> visibleTableNames = new(StringComparer.OrdinalIgnoreCase);
-        _hiddenAuxiliaryTableCount = 0;
-        _detectedAuxiliaryTableCount = 0;
 
-        Dictionary<string, IReadOnlyList<string>> columnNamesByTable = new(StringComparer.OrdinalIgnoreCase);
-        Dictionary<string, IReadOnlyList<ColumnItemViewModel>> columnViewModelsByTable = new(StringComparer.OrdinalIgnoreCase);
-        List<TableItemViewModel> tableViewModels = [];
-        List<ColumnSearchIndexEntry> searchIndex = [];
+        _schemaExplorerIndex = SchemaExplorerIndex.Build(
+            _schema,
+            _auxiliaryTableDetector,
+            BuildPinnedSchemaTableNames(),
+            HideAuxiliaryTables,
+            _cachedForeignKeySummaries,
+            _cachedIndexSummaries,
+            _cachedUniqueIndexColumns);
 
-        foreach (TableDefinition table in _sortedSchemaTables)
+        ColumnNamesByTable = _schemaExplorerIndex.ColumnNamesByTable;
+
+        foreach (ColumnItemViewModel column in _schemaExplorerIndex.AllColumns)
         {
-            bool isAuxiliaryCandidate = !table.IsView && _auxiliaryTableDetector.IsLikelyAuxiliaryTable(table.FullName);
-            if (isAuxiliaryCandidate)
-            {
-                _detectedAuxiliaryTableCount++;
-            }
-
-            if (ShouldHideAuxiliaryTable(table, pinnedTables))
-            {
-                _hiddenAuxiliaryTableCount++;
-                continue;
-            }
-
-            TableNames.Add(table.FullName);
-            visibleTableNames.Add(table.FullName);
-            visibleTableNames.Add(table.Name);
-            ColumnDefinition[] sortedColumns = table.Columns.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ToArray();
-            ColumnItemViewModel[] columnViewModels = sortedColumns
-                .Select(col => new ColumnItemViewModel(
-                    col,
-                    LookupSummary(col, _cachedForeignKeySummaries),
-                    LookupSummary(col, _cachedIndexSummaries),
-                    _cachedUniqueIndexColumns.Contains($"{col.TableName}.{col.Name}")))
-                .ToArray();
-
-            TableItemViewModel tableViewModel = new(table, columnViewModels)
-            {
-                IsExpanded = false
-            };
-
-            tableViewModels.Add(tableViewModel);
-            columnViewModelsByTable[table.FullName] = columnViewModels;
-            columnViewModelsByTable[SqlObjectDisplayName.Table(table.FullName)] = columnViewModels;
-            columnNamesByTable[table.FullName] = columnViewModels.Select(c => c.Column).ToArray();
-            columnNamesByTable[SqlObjectDisplayName.Table(table.FullName)] = columnViewModels.Select(c => c.Column).ToArray();
-
-            foreach (ColumnItemViewModel columnViewModel in columnViewModels)
-            {
-                AllColumns.Add(columnViewModel);
-                searchIndex.Add(new ColumnSearchIndexEntry(
-                    tableViewModel,
-                    columnViewModel,
-                    NormalizeSearchText($"{table.FullName} {tableViewModel.DisplayName} {table.Comment} {columnViewModel.SearchText}")));
-            }
+            AllColumns.Add(column);
         }
 
-        ColumnNamesByTable = columnNamesByTable;
-        _columnViewModelsByTable = columnViewModelsByTable;
-        _allTableViewModels = tableViewModels;
-        _columnSearchIndex = searchIndex;
+        foreach (string tableName in _schemaExplorerIndex.TableNames)
+        {
+            TableNames.Add(tableName);
+        }
+
+        foreach (RelationshipItemViewModel relationship in _schemaExplorerIndex.Relationships)
+        {
+            relationship.PropertyChanged += Relationship_PropertyChanged;
+            Relationships.Add(relationship);
+        }
+
+        foreach (RelationshipGroupViewModel group in _schemaExplorerIndex.RelationshipGroups)
+        {
+            RelationshipGroups.Add(group);
+        }
+
         _lastAppliedColumnSearchText = "__schema_reloaded__";
         _isColumnSearchTruncated = false;
-        foreach (InferredRelationship? rel in _schema.Relationships.OrderByDescending(r => r.Confidence))
-        {
-            if (!visibleTableNames.Contains(rel.FromTable) || !visibleTableNames.Contains(rel.ToTable))
-            {
-                continue;
-            }
-
-            RelationshipItemViewModel vm = new(rel);
-            vm.PropertyChanged += Relationship_PropertyChanged;
-            Relationships.Add(vm);
-        }
-
-        foreach (IGrouping<string, RelationshipItemViewModel>? group in Relationships
-                     .GroupBy(r => r.FromTable, StringComparer.OrdinalIgnoreCase)
-                     .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
-        {
-            RelationshipGroups.Add(new RelationshipGroupViewModel($"{SqlObjectDisplayName.Table(group.Key)} ({group.Count()})", group.OrderByDescending(r => r.Confidence))
-            {
-                IsExpanded = false
-            });
-        }
 
         ApplyColumnTreeFilter();
         RefreshRelationshipUsage();
@@ -1686,6 +1604,7 @@ public sealed class MainViewModel : ObservableObject
             && _auxiliaryTableDetector.IsLikelyAuxiliaryTable(table.FullName);
     }
 
+
     private string BuildSchemaFilterSummary()
     {
         List<string> parts = [];
@@ -1704,20 +1623,20 @@ public sealed class MainViewModel : ObservableObject
             }
         }
 
-        if (_detectedAuxiliaryTableCount == 0)
+        if (_schemaExplorerIndex.DetectedAuxiliaryTableCount == 0)
         {
             parts.Add("aucune table auxiliaire restante detectee");
         }
         else if (HideAuxiliaryTables)
         {
-            parts.Add($"{_hiddenAuxiliaryTableCount} tables auxiliaires restantes masquees");
+            parts.Add($"{_schemaExplorerIndex.HiddenAuxiliaryTableCount} tables auxiliaires restantes masquees");
         }
         else
         {
-            parts.Add($"{_detectedAuxiliaryTableCount} tables auxiliaires restantes visibles");
+            parts.Add($"{_schemaExplorerIndex.DetectedAuxiliaryTableCount} tables auxiliaires restantes visibles");
         }
 
-        return string.Join(" Â· ", parts);
+        return string.Join(" · ", parts);
     }
 
     /// <summary>
@@ -1747,74 +1666,46 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Applies the current left-tree filter using stable view models and a prebuilt search index.
+    /// Applies the current left-tree filter using the reusable schema explorer index.
     /// </summary>
     private void ApplyColumnTreeFilter()
     {
-        string needle = NormalizeSearchText(ColumnSearchText ?? string.Empty);
+        string needle = string.IsNullOrWhiteSpace(ColumnSearchText)
+            ? string.Empty
+            : ColumnSearchText.Trim().ToUpperInvariant();
+
         if (string.Equals(needle, _lastAppliedColumnSearchText, StringComparison.Ordinal))
         {
             return;
         }
 
         _lastAppliedColumnSearchText = needle;
-        Tables.Clear();
         SelectedAvailableColumn = null;
         SelectedAvailableTable = null;
-        _isColumnSearchTruncated = false;
 
-        if (string.IsNullOrWhiteSpace(needle))
+        SchemaExplorerSearchResult result = _schemaExplorerIndex.Search(
+            ColumnSearchText,
+            MaxVisibleColumnSearchResults);
+
+        _isColumnSearchTruncated = result.IsTruncated;
+
+        Tables.Clear();
+        foreach (TableItemViewModel table in result.Tables)
         {
-            foreach (TableItemViewModel table in _allTableViewModels)
-            {
-                table.ResetVisibleColumns();
-                table.IsExpanded = false;
-                Tables.Add(table);
-            }
+            Tables.Add(table);
+        }
 
+        if (result.IsEmptySearch)
+        {
             Status = BuildSchemaLoadedStatus();
             return;
         }
 
-        Dictionary<TableItemViewModel, List<ColumnItemViewModel>> matchesByTable = [];
-        int matchCount = 0;
-        foreach (ColumnSearchIndexEntry entry in _columnSearchIndex)
-        {
-            if (!entry.NormalizedSearchText.Contains(needle, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            matchCount++;
-            if (matchCount > MaxVisibleColumnSearchResults)
-            {
-                _isColumnSearchTruncated = true;
-                break;
-            }
-
-            if (!matchesByTable.TryGetValue(entry.Table, out List<ColumnItemViewModel>? columns))
-            {
-                columns = [];
-                matchesByTable[entry.Table] = columns;
-            }
-
-            columns.Add(entry.Column);
-        }
-
-        foreach (TableItemViewModel table in _allTableViewModels)
-        {
-            if (matchesByTable.TryGetValue(table, out List<ColumnItemViewModel>? columns))
-            {
-                table.SetVisibleColumns(columns.Distinct().OrderBy(c => c.Column, StringComparer.OrdinalIgnoreCase));
-                table.IsExpanded = true;
-                Tables.Add(table);
-            }
-        }
-
-        string suffix = _isColumnSearchTruncated
+        string suffix = result.IsTruncated
             ? $" Recherche tronquée aux {MaxVisibleColumnSearchResults} premières colonnes pour préserver la RAM. Affine le filtre."
             : string.Empty;
-        Status = $"Recherche '{ColumnSearchText}': {matchCount:N0} colonne(s) correspondante(s), {Tables.Count:N0} table(s) affichée(s).{suffix}";
+
+        Status = $"Recherche '{ColumnSearchText}': {result.MatchedColumnCount:N0} colonne(s) correspondante(s), {result.DisplayedTableCount:N0} table(s) affichée(s).{suffix}";
     }
 
     /// <summary>
@@ -1824,16 +1715,6 @@ public sealed class MainViewModel : ObservableObject
     private string BuildSchemaLoadedStatus()
     {
         return $"Schéma chargé: {_schema.Tables.Count} objets, {_schema.Tables.Sum(t => t.Columns.Count)} colonnes, {_schema.Relationships.Count} relations probables.";
-    }
-
-    /// <summary>
-    /// Normalizes text used by the left-tree search index.
-    /// </summary>
-    /// <param name="value">Raw searchable text.</param>
-    /// <returns>Lower-cased, trimmed search text.</returns>
-    private static string NormalizeSearchText(string value)
-    {
-        return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToUpperInvariant();
     }
 
     /// <summary>
@@ -1882,17 +1763,6 @@ public sealed class MainViewModel : ObservableObject
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// Exécute le traitement LookupSummary.
-    /// </summary>
-    /// <param name="column">Paramètre column.</param>
-    /// <param name="summaries">Paramètre summaries.</param>
-    /// <returns>Résultat du traitement.</returns>
-    private static string LookupSummary(ColumnDefinition column, IReadOnlyDictionary<string, string> summaries)
-    {
-        string key = $"{column.TableName}.{column.Name}";
-        return summaries.TryGetValue(key, out string? summary) ? summary : string.Empty;
-    }
 
     /// <summary>
     /// Exécute le traitement Relationship PropertyChanged.

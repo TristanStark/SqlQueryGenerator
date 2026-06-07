@@ -13,5 +13,5 @@ public static class ApplicationDocumentation
     /// <summary>
     /// Remote fallback used when the local documentation file is unavailable.
     /// </summary>
-    public const string RemoteHelpUrl = "https://github.com/TristanStark/SqlQueryGenerator/blob/main/docs/OPERATIONS_GUIDE.md";
+    public const string RemoteHelpUrl = "https://github.com/TristanStark/SqlQueryGenerator/blob/master/docs/OPERATIONS_GUIDE.md";
 }
