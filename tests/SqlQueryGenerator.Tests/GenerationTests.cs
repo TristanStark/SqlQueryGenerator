@@ -485,6 +485,69 @@ CREATE TABLE pnj_item (pnj_id INTEGER, item_id INTEGER);
         Assert.Contains("Aucune jointure fiable", string.Join("\n", result.Warnings));
     }
 
+    [Fact]
+    public void Generate_SelectFromMaterializedView_UsesMaterializedViewAsSource()
+    {
+        const string sql = @"
+CREATE TABLE SALES (
+    REGION TEXT,
+    AMOUNT NUMBER
+);
+
+CREATE MATERIALIZED VIEW MV_SALES_BY_REGION AS
+SELECT REGION, SUM(AMOUNT) AS TOTAL_AMOUNT
+FROM SALES
+GROUP BY REGION;
+";
+
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new() { BaseTable = "MV_SALES_BY_REGION" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "MV_SALES_BY_REGION", Column = "REGION" });
+        query.SelectedColumns.Add(new ColumnReference { Table = "MV_SALES_BY_REGION", Column = "TOTAL_AMOUNT" });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
+
+        Assert.Contains("FROM MV_SALES_BY_REGION", result.Sql);
+        Assert.Contains("MV_SALES_BY_REGION.REGION", result.Sql);
+        Assert.Contains("MV_SALES_BY_REGION.TOTAL_AMOUNT", result.Sql);
+    }
+
+    [Fact]
+    public void BuildCommand_Oracle_IncludesMaterializedViews()
+    {
+        string sql = new DdlCommandExportService().BuildCommand(DdlExportDialect.Oracle, "APP");
+
+        Assert.Contains("'MATERIALIZED VIEW'", sql);
+    }
+
+    [Fact]
+    public void BuildCreateMaterializedViewCommand_Oracle_WrapsCurrentQuery()
+    {
+        string ddl = new DdlCommandExportService().BuildCreateMaterializedViewCommand(
+            "MV_SALES_BY_REGION",
+            "SELECT REGION, SUM(AMOUNT) AS TOTAL_AMOUNT FROM SALES GROUP BY REGION",
+            SqlDialect.Oracle,
+            quoteIdentifiers: false);
+
+        Assert.StartsWith("CREATE MATERIALIZED VIEW MV_SALES_BY_REGION AS", ddl);
+        Assert.Contains("SELECT REGION, SUM(AMOUNT) AS TOTAL_AMOUNT FROM SALES GROUP BY REGION", ddl);
+        Assert.EndsWith(";", ddl.TrimEnd());
+    }
+
+    [Fact]
+    public void BuildCreateMaterializedViewCommand_SQLite_Throws()
+    {
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
+            new DdlCommandExportService().BuildCreateMaterializedViewCommand(
+                "MV_TEST",
+                "SELECT 1 AS X",
+                SqlDialect.SQLite,
+                quoteIdentifiers: false));
+
+        Assert.Contains("SQLite", ex.Message);
+    }
+
+
     /// <summary>
     /// Exécute le traitement Generate FilterOnAggregate EmitsHavingWithoutSubquery.
     /// </summary>

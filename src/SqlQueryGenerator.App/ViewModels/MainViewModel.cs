@@ -134,6 +134,8 @@ public sealed class MainViewModel : ObservableObject
     private int _rawSqlSelectionStart;
     private int _rawSqlSelectionLength;
     private string _ddlSchemaName = "main";
+    private string _materializedViewName = "mv_nouvelle_requete";
+    private string _createMaterializedViewSql = string.Empty;
     private string _ddlExportSql = string.Empty;
     /// <summary>
     /// Stocke la valeur interne  selectedSavedQuery.
@@ -303,6 +305,7 @@ public sealed class MainViewModel : ObservableObject
         CompareRawVsBuilderSqlCommand = new RelayCommand(CompareRawVsBuilderSql);
         CompareRewrittenVsBuilderSqlCommand = new RelayCommand(CompareRewrittenVsBuilderSql, () => !string.IsNullOrWhiteSpace(_lastRewrittenSql));
         GenerateDdlExportCommand = new RelayCommand(GenerateDdlExportSql);
+        GenerateCreateMaterializedViewCommand = new RelayCommand(GenerateCreateMaterializedViewSql);
         OpenHelpCommand = new RelayCommand(OpenHelpDocumentation);
         ReloadSavedQueriesCommand = new RelayCommand(ReloadSavedQueries);
         LoadSelectedQueryCommand = new RelayCommand(_ => LoadSelectedSavedQuery(), _ => SelectedSavedQuery is not null);
@@ -643,6 +646,12 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Command bound to the DDL helper button.</value>
     public RelayCommand GenerateDdlExportCommand { get; }
+
+    /// <summary>
+    /// Generates a CREATE MATERIALIZED VIEW statement from the current visual query.
+    /// </summary>
+    public RelayCommand GenerateCreateMaterializedViewCommand { get; }
+
     /// <summary>
     /// Opens the user documentation.
     /// </summary>
@@ -765,6 +774,24 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Read-only helper SQL shown to the user and copied on demand.</value>
     public string DdlExportSql { get => _ddlExportSql; set => SetProperty(ref _ddlExportSql, value); }
+
+    /// <summary>
+    /// Gets or sets the materialized view name generated from the current query.
+    /// </summary>
+    public string MaterializedViewName
+    {
+        get => _materializedViewName;
+        set => SetProperty(ref _materializedViewName, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the CREATE MATERIALIZED VIEW SQL generated from the current query.
+    /// </summary>
+    public string CreateMaterializedViewSql
+    {
+        get => _createMaterializedViewSql;
+        set => SetProperty(ref _createMaterializedViewSql, value);
+    }
 
     /// <summary>
     /// Stocke la valeur interne SelectedSavedQuery.
@@ -917,13 +944,10 @@ public sealed class MainViewModel : ObservableObject
     public string SchemaFilterSummary => _schema.Tables.Count == 0
         ? "Charge un schema pour activer le filtrage."
         : BuildSchemaFilterSummary();
-    /// <summary>
-    /// Obtient ou définit SchemaSummary.
-    /// </summary>
-    /// <value>Valeur de SchemaSummary.</value>
+
     public string SchemaSummary => _schema.Tables.Count == 0
         ? "Aucun schéma chargé"
-        : $"{_schema.PhysicalTables.Count()} tables · {_schema.Views.Count()} vues · {_schema.Tables.Sum(t => t.Columns.Count)} colonnes · {_schema.Indexes.Count} index · {_schema.Relationships.Count} relations probables";
+        : $"{_schema.PhysicalTables.Count()} tables · {_schema.Views.Count()} vues · {_schema.MaterializedViews.Count()} vues matérialisées · {_schema.Tables.Sum(t => t.Columns.Count)} colonnes · {_schema.Indexes.Count} index · {_schema.Relationships.Count} relations probables";
 
     /// <summary>
     /// Stocke la valeur interne SelectedAvailableColumn.
@@ -1101,7 +1125,7 @@ public sealed class MainViewModel : ObservableObject
             Status = $"Schéma chargé: {_schema.PhysicalTables.Count()} tables, {_schema.Views.Count()} vues, {_schema.Tables.Sum(t => t.Columns.Count)} colonnes, {_schema.Indexes.Count} index, {_schema.Relationships.Count} relations probables.";
             if (_importDetectedBackupCandidateCount > 0)
             {
-                Status += $" {_importDetectedBackupCandidateCount} candidats backup detectes, {_importExcludedBackupTableCount} exclus, {_importKeptBackupCandidateCount} conserves.";
+                Status = $"Schéma chargé: {_schema.PhysicalTables.Count()} tables, {_schema.Views.Count()} vues, {_schema.MaterializedViews.Count()} vues matérialisées, {_schema.Tables.Sum(t => t.Columns.Count)} colonnes, {_schema.Indexes.Count} index, {_schema.Relationships.Count} relations probables.";
             }
 
             Warnings = string.Join(Environment.NewLine, _schema.Warnings);
@@ -2754,6 +2778,52 @@ public sealed class MainViewModel : ObservableObject
         Clipboard.SetText(DdlExportSql);
         Status = "Commande de récupération du DDL générée et copiée dans le presse-papier.";
         Warnings = "Vérifie le nom de schéma/base avant exécution dans ton client SQL.";
+    }
+
+
+    /// <summary>
+    /// Generates a CREATE MATERIALIZED VIEW statement from the current visual query.
+    /// </summary>
+    private void GenerateCreateMaterializedViewSql()
+    {
+        try
+        {
+            QueryDefinition query = BuildQueryDefinition();
+            IReadOnlyList<string> validationErrors = _validator.Validate(query, _schema);
+            if (validationErrors.Count > 0)
+            {
+                CreateMaterializedViewSql = "-- Impossible de générer la vue matérialisée : la requête courante contient des erreurs.";
+                Warnings = string.Join(Environment.NewLine, validationErrors);
+                Status = "Création de vue matérialisée impossible: corrige la requête courante.";
+                return;
+            }
+
+            SqlGenerationResult result = _generator.Generate(query, _schema, new SqlGeneratorOptions
+            {
+                Dialect = Dialect,
+                QuoteIdentifiers = QuoteIdentifiers,
+                AutoGroupSelectedColumnsWhenAggregating = AutoGroupSelectedColumns,
+                EmitOptimizationComments = false
+            });
+
+            CreateMaterializedViewSql = _ddlCommandExportService.BuildCreateMaterializedViewCommand(
+                MaterializedViewName,
+                result.Sql,
+                Dialect,
+                QuoteIdentifiers);
+
+            Clipboard.SetText(CreateMaterializedViewSql);
+            Status = $"Instruction CREATE MATERIALIZED VIEW générée et copiée: {MaterializedViewName}.";
+            Warnings = result.Warnings.Count == 0
+                ? "CREATE MATERIALIZED VIEW généré sans avertissement."
+                : string.Join(Environment.NewLine, result.Warnings);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            CreateMaterializedViewSql = "-- Impossible de générer l'instruction CREATE MATERIALIZED VIEW.";
+            Warnings = ex.Message;
+            Status = "Erreur pendant la génération de la vue matérialisée.";
+        }
     }
 
     /// <summary>

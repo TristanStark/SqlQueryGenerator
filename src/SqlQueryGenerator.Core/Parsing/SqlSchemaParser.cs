@@ -68,9 +68,15 @@ public sealed partial class SqlSchemaParser
                 continue;
             }
 
+            if (CreateMaterializedViewRegex().Match(trimmed) is { Success: true } materializedViewMatch)
+            {
+                TryParseCreateView(trimmed, materializedViewMatch, commentsByTable, schema, isMaterializedView: true);
+                continue;
+            }
+
             if (CreateViewRegex().Match(trimmed) is { Success: true } viewMatch)
             {
-                TryParseCreateView(trimmed, viewMatch, commentsByTable, schema);
+                TryParseCreateView(trimmed, viewMatch, commentsByTable, schema, isMaterializedView: false);
                 continue;
             }
 
@@ -120,20 +126,30 @@ public sealed partial class SqlSchemaParser
         string statement,
         Match viewMatch,
         IReadOnlyDictionary<string, string> commentsByTable,
-        DatabaseSchema schema)
+        DatabaseSchema schema,
+        bool isMaterializedView)
     {
         string rawViewName = viewMatch.Groups["name"].Value.Trim();
         (string? schemaName, string? viewName) = SplitQualifiedName(rawViewName);
         int asIndex = FindTopLevelKeyword(statement, "AS", viewMatch.Index + viewMatch.Length);
+        string objectLabel = isMaterializedView ? "Vue matérialisée" : "Vue";
+
         if (asIndex <= 0)
         {
-            schema.Warnings.Add($"Vue {rawViewName} détectée mais clause AS introuvable.");
+            schema.Warnings.Add($"{objectLabel} {rawViewName} détectée mais clause AS introuvable.");
             return;
         }
 
         string viewSql = statement[asIndex..].Trim();
-        TableDefinition view = new(viewName, schemaName, isView: true, viewSql: viewSql);
-        if (commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(view.FullName), out string? comment) || commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(view.Name), out comment))
+        TableDefinition view = new(
+            viewName,
+            schemaName,
+            isView: true,
+            viewSql: viewSql,
+            isMaterializedView: isMaterializedView);
+
+        if (commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(view.FullName), out string? comment)
+            || commentsByTable.TryGetValue(SqlNameNormalizer.Normalize(view.Name), out comment))
         {
             view.Comment = comment;
         }
@@ -147,8 +163,10 @@ public sealed partial class SqlSchemaParser
                 {
                     TableName = view.FullName,
                     Name = column,
-                    DataType = "VIEW_EXPR",
-                    Comment = "Colonne déclarée dans CREATE VIEW",
+                    DataType = isMaterializedView ? "MATERIALIZED_VIEW_EXPR" : "VIEW_EXPR",
+                    Comment = isMaterializedView
+                        ? "Colonne déclarée dans CREATE MATERIALIZED VIEW"
+                        : "Colonne déclarée dans CREATE VIEW",
                     IsNullable = true
                 });
             }
@@ -157,7 +175,15 @@ public sealed partial class SqlSchemaParser
         {
             foreach (ColumnDefinition column in InferViewColumnsFromSelect(statement, view.FullName, schema, asIndex))
             {
-                view.Columns.Add(column);
+                view.Columns.Add(column with
+                {
+                    DataType = column.DataType == "VIEW_EXPR" && isMaterializedView
+                        ? "MATERIALIZED_VIEW_EXPR"
+                        : column.DataType,
+                    Comment = column.Comment == "Expression inférée depuis le SELECT de la vue" && isMaterializedView
+                        ? "Expression inférée depuis le SELECT de la vue matérialisée"
+                        : column.Comment
+                });
             }
         }
 
@@ -166,17 +192,19 @@ public sealed partial class SqlSchemaParser
             view.Columns.Add(new ColumnDefinition
             {
                 TableName = view.FullName,
-                Name = "view_expression",
-                DataType = "VIEW_EXPR",
-                Comment = "Colonnes non inférées automatiquement ; consulte le SQL de la vue.",
+                Name = isMaterializedView ? "materialized_view_expression" : "view_expression",
+                DataType = isMaterializedView ? "MATERIALIZED_VIEW_EXPR" : "VIEW_EXPR",
+                Comment = isMaterializedView
+                    ? "Colonnes non inférées automatiquement ; consulte le SQL de la vue matérialisée."
+                    : "Colonnes non inférées automatiquement ; consulte le SQL de la vue.",
                 IsNullable = true
             });
-            schema.Warnings.Add($"Vue {rawViewName} détectée mais les colonnes n'ont pas pu être inférées précisément.");
+
+            schema.Warnings.Add($"{objectLabel} {rawViewName} détectée mais les colonnes n'ont pas pu être inférées précisément.");
         }
 
         schema.Tables.Add(view);
     }
-
     /// <summary>
     /// Exécute le traitement ExtractExplicitViewColumns.
     /// </summary>
@@ -1279,6 +1307,13 @@ public sealed partial class SqlSchemaParser
     /// <returns>Résultat du traitement.</returns>
     [GeneratedRegex(@"CREATE\s+(?:OR\s+REPLACE\s+)?(?:FORCE\s+|NOFORCE\s+)?(?:(?:EDITIONABLE|NONEDITIONABLE)\s+)?VIEW\s+(?<name>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex CreateViewRegex();
+
+    /// <summary>
+    /// Detects CREATE MATERIALIZED VIEW statements.
+    /// </summary>
+    /// <returns>Compiled regular expression.</returns>
+    [GeneratedRegex(@"CREATE\s+(?:OR\s+REPLACE\s+)?MATERIALIZED\s+VIEW\s+(?<name>(?:[`""\[]?\w+[`""\]]?\.)?[`""\[]?\w+[`""\]]?)", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    private static partial Regex CreateMaterializedViewRegex();
 
     /// <summary>
     /// Exécute le traitement CreateTableRegex.

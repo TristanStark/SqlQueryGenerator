@@ -1,3 +1,5 @@
+using SqlQueryGenerator.Core.Query;
+
 namespace SqlQueryGenerator.Core.Generation;
 
 /// <summary>
@@ -27,7 +29,7 @@ public sealed class DdlCommandExportService
 $@"SELECT DBMS_METADATA.GET_DDL(object_type, object_name, owner) AS ddl
 FROM all_objects
 WHERE owner = UPPER('{escaped}')
-  AND object_type IN ('TABLE', 'VIEW', 'INDEX')
+  AND object_type IN ('TABLE', 'VIEW', 'MATERIALIZED VIEW', 'INDEX')
 ORDER BY object_type, object_name;";
     }
 
@@ -48,6 +50,48 @@ ORDER BY
     ELSE 4
   END,
   name;";
+    }
+
+    /// <summary>
+    /// Builds a CREATE MATERIALIZED VIEW statement around the current generated SELECT query.
+    /// </summary>
+    /// <param name="viewName">Materialized view name to create.</param>
+    /// <param name="selectSql">Generated SELECT SQL.</param>
+    /// <param name="dialect">Target SQL dialect.</param>
+    /// <param name="quoteIdentifiers">Whether identifiers should be quoted.</param>
+    /// <returns>CREATE MATERIALIZED VIEW SQL.</returns>
+    public string BuildCreateMaterializedViewCommand(
+        string viewName,
+        string selectSql,
+        SqlDialect dialect,
+        bool quoteIdentifiers)
+    {
+        if (string.IsNullOrWhiteSpace(viewName))
+        {
+            throw new ArgumentException("Nom de vue matérialisée vide.", nameof(viewName));
+        }
+
+        if (string.IsNullOrWhiteSpace(selectSql))
+        {
+            throw new ArgumentException("Requête SELECT vide.", nameof(selectSql));
+        }
+
+        string normalizedSelect = selectSql.Trim().TrimEnd(';');
+        if (!normalizedSelect.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase)
+            && !normalizedSelect.StartsWith("WITH", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Une vue matérialisée doit être générée à partir d'une requête SELECT ou WITH valide.");
+        }
+
+        string quotedName = SqlIdentifierQuoter.Quote(viewName.Trim(), dialect, quoteIdentifiers);
+
+        return dialect switch
+        {
+            SqlDialect.SQLite => throw new InvalidOperationException("SQLite ne supporte pas les vues matérialisées natives."),
+            _ =>
+    $@"CREATE MATERIALIZED VIEW {quotedName} AS
+{normalizedSelect};"
+        };
     }
 
     private static string EscapeSqlLiteral(string value) => value.Replace("'", "''", StringComparison.Ordinal);
