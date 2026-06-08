@@ -12,31 +12,40 @@ public sealed class DatabaseSchema
     /// </summary>
     /// <value>Valeur de Tables.</value>
     public Collection<TableDefinition> Tables { get; } = [];
+
     /// <summary>
-    /// Obtient ou définit Views.
+    /// Gets normal views, excluding materialized views.
     /// </summary>
-    /// <value>Valeur de Views.</value>
-    public IEnumerable<TableDefinition> Views => Tables.Where(t => t.IsView);
+    public IEnumerable<TableDefinition> Views => Tables.Where(t => t.IsView && !t.IsMaterializedView);
+
     /// <summary>
-    /// Obtient ou définit PhysicalTables.
+    /// Gets materialized views.
     /// </summary>
-    /// <value>Valeur de PhysicalTables.</value>
-    public IEnumerable<TableDefinition> PhysicalTables => Tables.Where(t => !t.IsView);
+    public IEnumerable<TableDefinition> MaterializedViews => Tables.Where(t => t.IsMaterializedView);
+
+    /// <summary>
+    /// Gets real physical tables, excluding normal views and materialized views.
+    /// </summary>
+    public IEnumerable<TableDefinition> PhysicalTables => Tables.Where(t => !t.IsView && !t.IsMaterializedView);
+
     /// <summary>
     /// Stocke la valeur interne DeclaredForeignKeys.
     /// </summary>
     /// <value>Valeur de DeclaredForeignKeys.</value>
     public Collection<DeclaredForeignKey> DeclaredForeignKeys { get; } = [];
+    
     /// <summary>
     /// Stocke la valeur interne Indexes.
     /// </summary>
     /// <value>Valeur de Indexes.</value>
     public Collection<IndexDefinition> Indexes { get; } = [];
+    
     /// <summary>
     /// Stocke la valeur interne Relationships.
     /// </summary>
     /// <value>Valeur de Relationships.</value>
     public Collection<InferredRelationship> Relationships { get; } = [];
+    
     /// <summary>
     /// Stocke la valeur interne Warnings.
     /// </summary>
@@ -95,10 +104,9 @@ public sealed class DatabaseSchema
     /// <returns>Résultat du traitement.</returns>
     public IReadOnlyList<IndexDefinition> FindIndexesForColumn(string tableName, string columnName)
     {
-        return Indexes
+        return [.. Indexes
             .Where(index => SqlNameNormalizer.EqualsName(index.Table, tableName) && index.ContainsColumn(columnName))
             .OrderByDescending(index => index.IsUnique)
-            .ThenBy(index => index.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .ThenBy(index => index.Name, StringComparer.OrdinalIgnoreCase)];
     }
 }

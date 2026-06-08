@@ -109,7 +109,7 @@ FROM recent_orders";
         Assert.Contains("DBMS_METADATA.GET_DDL", command);
         Assert.Contains("FROM all_objects", command);
         Assert.Contains("WHERE owner = UPPER('APP_OWNER')", command);
-        Assert.Contains("'TABLE', 'VIEW', 'INDEX'", command);
+        Assert.Contains("'TABLE', 'VIEW', 'MATERIALIZED VIEW', 'INDEX'", command);
     }
 
     /// <summary>

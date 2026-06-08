@@ -84,6 +84,24 @@ public sealed class SelectColumnRowViewModel : BuilderRowBase
     private string _alias = string.Empty;
 
     /// <summary>
+    /// Stocke si la colonne sélectionnée peut produire une valeur NULL.
+    /// </summary>
+    /// <value><c>true</c> par défaut.</value>
+    private bool _nullAllowed = true;
+
+    /// <summary>
+    /// Stocke si la colonne sélectionnée doit être générée en longueur fixe.
+    /// </summary>
+    /// <value><c>true</c> lorsque le padding est activé.</value>
+    private bool _useFixedLength;
+
+    /// <summary>
+    /// Stocke la longueur fixe demandée pour la colonne sélectionnée.
+    /// </summary>
+    /// <value>Longueur cible en caractères.</value>
+    private int? _fixedLength;
+
+    /// <summary>
     /// Stocke la valeur interne Alias.
     /// </summary>
     /// <value>Valeur de Alias.</value>
@@ -91,6 +109,79 @@ public sealed class SelectColumnRowViewModel : BuilderRowBase
     {
         get => _alias;
         set => SetProperty(ref _alias, value);
+    }
+
+    /// <summary>
+    /// Obtient ou définit si la colonne sélectionnée peut produire une valeur NULL.
+    /// </summary>
+    /// <value><c>true</c> lorsque NULL est autorisé ; sinon <c>false</c>.</value>
+    public bool NullAllowed
+    {
+        get => _nullAllowed;
+        set
+        {
+            if (SetProperty(ref _nullAllowed, value))
+            {
+                OnPropertyChanged(nameof(OutputPropertiesSummary));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Obtient ou définit si la colonne sélectionnée doit être formatée en longueur fixe.
+    /// </summary>
+    /// <value><c>true</c> lorsque la longueur fixe est activée.</value>
+    public bool UseFixedLength
+    {
+        get => _useFixedLength;
+        set
+        {
+            if (SetProperty(ref _useFixedLength, value))
+            {
+                OnPropertyChanged(nameof(OutputPropertiesSummary));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Obtient ou définit la longueur fixe demandée.
+    /// </summary>
+    /// <value>Longueur cible en caractères, ou <c>null</c>.</value>
+    public int? FixedLength
+    {
+        get => _fixedLength;
+        set
+        {
+            int? normalized = value is > 0 ? value : null;
+            if (SetProperty(ref _fixedLength, normalized))
+            {
+                OnPropertyChanged(nameof(OutputPropertiesSummary));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Obtient un résumé court des propriétés de sortie appliquées à cette colonne.
+    /// </summary>
+    /// <value>Texte affichable dans la grille de sélection.</value>
+    public string OutputPropertiesSummary
+    {
+        get
+        {
+            List<string> parts = [];
+
+            if (!NullAllowed)
+            {
+                parts.Add("NOT NULL");
+            }
+
+            if (UseFixedLength)
+            {
+                parts.Add(FixedLength is > 0 ? $"FIXED {FixedLength}" : "FIXED ?");
+            }
+
+            return parts.Count == 0 ? string.Empty : string.Join(" · ", parts);
+        }
     }
 }
 

@@ -93,6 +93,84 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
     }
 
     /// <summary>
+    /// Ensures Cognos Analytics keeps automatic GROUP BY enabled for normal selected columns.
+    /// </summary>
+    [Fact]
+    public void Generate_CognosAutoGroupBy_AddsSelectedColumns()
+    {
+        const string sql = @"
+CREATE TABLE SALES (
+    REGION TEXT,
+    PRODUCT TEXT,
+    AMOUNT NUMBER
+);
+";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new() { BaseTable = "SALES" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "SALES", Column = "REGION" });
+        query.SelectedColumns.Add(new ColumnReference { Table = "SALES", Column = "PRODUCT" });
+        query.Aggregates.Add(new AggregateSelection
+        {
+            Function = AggregateFunction.Sum,
+            Column = new ColumnReference { Table = "SALES", Column = "AMOUNT" },
+            Alias = "total_amount"
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(
+            query,
+            schema,
+            new SqlGeneratorOptions
+            {
+                Dialect = SqlDialect.CognosAnalytics,
+                AutoGroupSelectedColumnsWhenAggregating = true
+            });
+
+        Assert.Contains("SUM(SALES.AMOUNT) AS total_amount", result.Sql);
+        Assert.Contains("GROUP BY SALES.REGION, SALES.PRODUCT", result.Sql);
+    }
+
+    /// <summary>
+    /// Ensures Cognos Analytics automatic GROUP BY includes calculated non-aggregate SELECT expressions.
+    /// </summary>
+    [Fact]
+    public void Generate_CognosAutoGroupBy_AddsCustomNonAggregateExpressions()
+    {
+        const string sql = @"
+CREATE TABLE SALES (
+    REGION TEXT,
+    SEGMENT TEXT,
+    AMOUNT NUMBER
+);
+";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new() { BaseTable = "SALES" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "SALES", Column = "REGION" });
+        query.CustomColumns.Add(new CustomColumnSelection
+        {
+            Alias = "segment_label",
+            RawExpression = "CASE WHEN SALES.SEGMENT = 'A' THEN 'A' ELSE 'Other' END"
+        });
+        query.Aggregates.Add(new AggregateSelection
+        {
+            Function = AggregateFunction.Sum,
+            Column = new ColumnReference { Table = "SALES", Column = "AMOUNT" },
+            Alias = "total_amount"
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(
+            query,
+            schema,
+            new SqlGeneratorOptions
+            {
+                Dialect = SqlDialect.CognosAnalytics,
+                AutoGroupSelectedColumnsWhenAggregating = true
+            });
+
+        Assert.Contains("SUM(SALES.AMOUNT) AS total_amount", result.Sql);
+        Assert.Contains("GROUP BY SALES.REGION, CASE WHEN SALES.SEGMENT = 'A' THEN 'A' ELSE 'Other' END", result.Sql);
+    }
+
+    /// <summary>
     /// Ensures Cognos Analytics date parameters are wrapped in TO_DATE.
     /// </summary>
     [Fact]
@@ -406,6 +484,159 @@ CREATE TABLE pnj_item (pnj_id INTEGER, item_id INTEGER);
         Assert.DoesNotContain("JOIN pnj_item", result.Sql);
         Assert.Contains("Aucune jointure fiable", string.Join("\n", result.Warnings));
     }
+
+    [Fact]
+    public void Generate_SelectFromMaterializedView_UsesMaterializedViewAsSource()
+    {
+        const string sql = @"
+CREATE TABLE SALES (
+    REGION TEXT,
+    AMOUNT NUMBER
+);
+
+CREATE MATERIALIZED VIEW MV_SALES_BY_REGION AS
+SELECT REGION, SUM(AMOUNT) AS TOTAL_AMOUNT
+FROM SALES
+GROUP BY REGION;
+";
+
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new() { BaseTable = "MV_SALES_BY_REGION" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "MV_SALES_BY_REGION", Column = "REGION" });
+        query.SelectedColumns.Add(new ColumnReference { Table = "MV_SALES_BY_REGION", Column = "TOTAL_AMOUNT" });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(query, schema);
+
+        Assert.Contains("FROM MV_SALES_BY_REGION", result.Sql);
+        Assert.Contains("MV_SALES_BY_REGION.REGION", result.Sql);
+        Assert.Contains("MV_SALES_BY_REGION.TOTAL_AMOUNT", result.Sql);
+    }
+
+    [Fact]
+    public void BuildCommand_Oracle_IncludesMaterializedViews()
+    {
+        string sql = new DdlCommandExportService().BuildCommand(DdlExportDialect.Oracle, "APP");
+
+        Assert.Contains("'MATERIALIZED VIEW'", sql);
+    }
+
+    [Fact]
+    public void Generate_OracleSelectedColumnNotNull_UsesNvl()
+    {
+        const string sql = @"CREATE TABLE CUSTOMER (NAME VARCHAR2(100));";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+
+        QueryDefinition query = new() { BaseTable = "CUSTOMER" };
+        query.SelectedColumns.Add(new ColumnReference
+        {
+            Table = "CUSTOMER",
+            Column = "NAME",
+            NullAllowed = false
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(
+            query,
+            schema,
+            new SqlGeneratorOptions { Dialect = SqlDialect.Oracle });
+
+        Assert.Contains("NVL(CUSTOMER.NAME, '') AS NAME", result.Sql);
+    }
+
+    [Fact]
+    public void Generate_SQLiteSelectedColumnNotNull_UsesCoalesce()
+    {
+        const string sql = @"CREATE TABLE CUSTOMER (NAME TEXT);";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+
+        QueryDefinition query = new() { BaseTable = "CUSTOMER" };
+        query.SelectedColumns.Add(new ColumnReference
+        {
+            Table = "CUSTOMER",
+            Column = "NAME",
+            NullAllowed = false
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(
+            query,
+            schema,
+            new SqlGeneratorOptions { Dialect = SqlDialect.SQLite });
+
+        Assert.Contains("COALESCE(CUSTOMER.NAME, '') AS NAME", result.Sql);
+    }
+
+    [Fact]
+    public void Generate_OracleIntegerFixedLength_LeftPadsWithZeroes()
+    {
+        const string sql = @"CREATE TABLE CUSTOMER (CUSTOMER_ID INTEGER);";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+
+        QueryDefinition query = new() { BaseTable = "CUSTOMER" };
+        query.SelectedColumns.Add(new ColumnReference
+        {
+            Table = "CUSTOMER",
+            Column = "CUSTOMER_ID",
+            UseFixedLength = true,
+            FixedLength = 6
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(
+            query,
+            schema,
+            new SqlGeneratorOptions { Dialect = SqlDialect.Oracle });
+
+        Assert.Contains("SUBSTR(LPAD(TO_CHAR(NVL(CUSTOMER.CUSTOMER_ID, 0)), 6, '0'), 1, 6) AS CUSTOMER_ID", result.Sql);
+    }
+
+    [Fact]
+    public void Generate_OracleTextFixedLength_RightPadsWithSpaces()
+    {
+        const string sql = @"CREATE TABLE CUSTOMER (NAME VARCHAR2(100));";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+
+        QueryDefinition query = new() { BaseTable = "CUSTOMER" };
+        query.SelectedColumns.Add(new ColumnReference
+        {
+            Table = "CUSTOMER",
+            Column = "NAME",
+            UseFixedLength = true,
+            FixedLength = 10
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(
+            query,
+            schema,
+            new SqlGeneratorOptions { Dialect = SqlDialect.Oracle });
+
+        Assert.Contains("SUBSTR(RPAD(TO_CHAR(NVL(CUSTOMER.NAME, '')), 10, ' '), 1, 10) AS NAME", result.Sql);
+    }
+
+    [Fact]
+    public void BuildCreateMaterializedViewCommand_Oracle_WrapsCurrentQuery()
+    {
+        string ddl = new DdlCommandExportService().BuildCreateMaterializedViewCommand(
+            "MV_SALES_BY_REGION",
+            "SELECT REGION, SUM(AMOUNT) AS TOTAL_AMOUNT FROM SALES GROUP BY REGION",
+            SqlDialect.Oracle,
+            quoteIdentifiers: false);
+
+        Assert.StartsWith("CREATE MATERIALIZED VIEW MV_SALES_BY_REGION AS", ddl);
+        Assert.Contains("SELECT REGION, SUM(AMOUNT) AS TOTAL_AMOUNT FROM SALES GROUP BY REGION", ddl);
+        Assert.EndsWith(";", ddl.TrimEnd());
+    }
+
+    [Fact]
+    public void BuildCreateMaterializedViewCommand_SQLite_Throws()
+    {
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
+            new DdlCommandExportService().BuildCreateMaterializedViewCommand(
+                "MV_TEST",
+                "SELECT 1 AS X",
+                SqlDialect.SQLite,
+                quoteIdentifiers: false));
+
+        Assert.Contains("SQLite", ex.Message);
+    }
+
 
     /// <summary>
     /// Exécute le traitement Generate FilterOnAggregate EmitsHavingWithoutSubquery.

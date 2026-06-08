@@ -8,6 +8,34 @@ namespace SqlQueryGenerator.Tests;
 /// </summary>
 public sealed class ParserTests
 {
+    [Fact]
+    public void Parse_CreateMaterializedView_AddsMaterializedViewWithInferredColumns()
+    {
+        const string sql = @"
+CREATE TABLE SALES (
+    REGION TEXT,
+    AMOUNT NUMBER
+);
+
+CREATE MATERIALIZED VIEW MV_SALES_BY_REGION AS
+SELECT REGION, SUM(AMOUNT) AS TOTAL_AMOUNT
+FROM SALES
+GROUP BY REGION;
+";
+
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+
+        TableDefinition? materializedView = schema.FindTable("MV_SALES_BY_REGION");
+
+        Assert.NotNull(materializedView);
+        Assert.True(materializedView!.IsView);
+        Assert.True(materializedView.IsMaterializedView);
+        Assert.Contains(materializedView, schema.MaterializedViews);
+        Assert.Contains(materializedView.Columns, column => column.Name == "REGION");
+        Assert.Contains(materializedView.Columns, column => column.Name == "TOTAL_AMOUNT");
+        Assert.Contains("AS", materializedView.ViewSql);
+    }
+
     /// <summary>
     /// Exécute le traitement Parse OracleCommentsAndPrimaryKeys ExtractsTablesColumnsAndComments.
     /// </summary>

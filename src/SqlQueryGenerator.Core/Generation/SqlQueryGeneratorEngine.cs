@@ -35,7 +35,7 @@ public sealed class SqlQueryGeneratorEngine
         usedTables.Add(baseTable);
         IReadOnlyList<JoinDefinition> joins = BuildJoinPlan(query, schema, baseTable, usedTables, warnings);
 
-        List<string> selectItems = BuildSelectItems(query, options, warnings, tableAliases);
+        List<string> selectItems = BuildSelectItems(query, schema, options, warnings, tableAliases);
         if (selectItems.Count == 0)
         {
             selectItems.Add("*");
@@ -78,23 +78,7 @@ public sealed class SqlQueryGeneratorEngine
         List<(string Predicate, LogicalConnector Connector)> where = BuildFilterPredicates(query, whereFilters, schema, options, warnings, tableAliases);
         AppendPredicateBlock(sb, "WHERE", where);
 
-        List<string> groupBy = BuildGroupBy(query, options, tableAliases);
-        if (query.Aggregates.Count > 0 && options.AutoGroupSelectedColumnsWhenAggregating)
-        {
-            foreach (ColumnReference selected in query.SelectedColumns)
-            {
-                if (IsWildcardColumn(selected))
-                {
-                    continue;
-                }
-
-                string expr = ColumnSql(selected, options, includeAlias: false, tableAliases);
-                if (!groupBy.Contains(expr, StringComparer.OrdinalIgnoreCase))
-                {
-                    groupBy.Add(expr);
-                }
-            }
-        }
+        List<string> groupBy = BuildGroupBy(query, options, warnings, tableAliases);
 
         if (groupBy.Count > 0)
         {
@@ -1405,15 +1389,27 @@ public sealed class SqlQueryGeneratorEngine
     }
 
     /// <summary>
-    /// Exécute le traitement BuildSelectItems.
+    /// Builds SELECT projections, including optional output formatting properties.
     /// </summary>
-    /// <param name="query">Paramètre query.</param>
-    /// <param name="options">Paramètre options.</param>
-    /// <param name="warnings">Paramètre warnings.</param>
-    /// <returns>Résultat du traitement.</returns>
-    private static List<string> BuildSelectItems(QueryDefinition query, SqlGeneratorOptions options, List<string> warnings, IReadOnlyDictionary<string, string> tableAliases)
+    /// <param name="query">Query model.</param>
+    /// <param name="schema">Loaded schema.</param>
+    /// <param name="options">SQL generation options.</param>
+    /// <param name="warnings">Generation warnings.</param>
+    /// <param name="tableAliases">Table aliases keyed by real table name.</param>
+    /// <returns>SELECT items.</returns>
+    private static List<string> BuildSelectItems(
+        QueryDefinition query,
+        DatabaseSchema schema,
+        SqlGeneratorOptions options,
+        List<string> warnings,
+        IReadOnlyDictionary<string, string> tableAliases)
     {
-        List<string> result = [.. query.SelectedColumns.Select(c => ColumnSql(c, options, includeAlias: true, tableAliases))];
+        List<string> result = [];
+
+        foreach (ColumnReference selectedColumn in query.SelectedColumns)
+        {
+            result.Add(BuildSelectedColumnSql(selectedColumn, schema, options, warnings, tableAliases));
+        }
 
         foreach (AggregateSelection aggregate in query.Aggregates)
         {
@@ -1427,6 +1423,7 @@ public sealed class SqlQueryGeneratorEngine
             {
                 item += " AS " + Q(aggregate.Alias, options);
             }
+
             result.Add(item);
         }
 
@@ -1438,11 +1435,13 @@ public sealed class SqlQueryGeneratorEngine
                 warnings.Add("Colonne personnalisée ignorée: expression vide.");
                 continue;
             }
+
             SqlSafety.EnsureSelectExpressionIsSafe(expression);
             if (!string.IsNullOrWhiteSpace(custom.Alias))
             {
                 expression += " AS " + Q(custom.Alias, options);
             }
+
             result.Add(expression);
         }
 
@@ -2008,14 +2007,89 @@ public sealed class SqlQueryGeneratorEngine
     }
 
     /// <summary>
-    /// Exécute le traitement BuildGroupBy.
+    /// Builds the GROUP BY clause, including explicit groupings and optional automatic grouping
+    /// of every non-aggregate expression projected by the SELECT list.
     /// </summary>
-    /// <param name="query">Paramètre query.</param>
-    /// <param name="options">Paramètre options.</param>
-    /// <returns>Résultat du traitement.</returns>
-    private static List<string> BuildGroupBy(QueryDefinition query, SqlGeneratorOptions options, IReadOnlyDictionary<string, string> tableAliases)
+    /// <param name="query">Query model.</param>
+    /// <param name="options">SQL generation options.</param>
+    /// <param name="warnings">Generation warnings.</param>
+    /// <param name="tableAliases">Table aliases keyed by real table name.</param>
+    /// <returns>GROUP BY expressions.</returns>
+    private static List<string> BuildGroupBy(
+        QueryDefinition query,
+        SqlGeneratorOptions options,
+        List<string> warnings,
+        IReadOnlyDictionary<string, string> tableAliases)
     {
-        return query.GroupBy.Select(c => ColumnSql(c, options, includeAlias: false, tableAliases)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        List<string> groupBy = [];
+
+        foreach (ColumnReference explicitGroupBy in query.GroupBy)
+        {
+            AddGroupByExpression(groupBy, ColumnSql(explicitGroupBy, options, includeAlias: false, tableAliases));
+        }
+
+        if (query.Aggregates.Count == 0 || !options.AutoGroupSelectedColumnsWhenAggregating)
+        {
+            return groupBy;
+        }
+
+        foreach (ColumnReference selected in query.SelectedColumns)
+        {
+            if (IsWildcardColumn(selected))
+            {
+                warnings.Add("Auto GROUP BY ignoré pour une projection table.*: sélectionne explicitement les colonnes à grouper.");
+                continue;
+            }
+
+            AddGroupByExpression(groupBy, ColumnSql(selected, options, includeAlias: false, tableAliases));
+        }
+
+        foreach (CustomColumnSelection custom in query.CustomColumns)
+        {
+            string expression = BuildCustomExpression(custom, options, tableAliases);
+            if (string.IsNullOrWhiteSpace(expression))
+            {
+                continue;
+            }
+
+            if (LooksLikeAggregateExpression(expression.TrimStart()))
+            {
+                continue;
+            }
+
+            try
+            {
+                SqlSafety.EnsureSelectExpressionIsSafe(expression);
+            }
+            catch (InvalidOperationException ex)
+            {
+                warnings.Add($"Auto GROUP BY ignoré pour la colonne calculée '{custom.Alias ?? expression}': {ex.Message}");
+                continue;
+            }
+
+            AddGroupByExpression(groupBy, expression);
+        }
+
+        return groupBy;
+    }
+
+    /// <summary>
+    /// Adds one GROUP BY expression if it is not already present.
+    /// </summary>
+    /// <param name="groupBy">Current GROUP BY expression list.</param>
+    /// <param name="expression">Expression to add.</param>
+    private static void AddGroupByExpression(List<string> groupBy, string expression)
+    {
+        if (string.IsNullOrWhiteSpace(expression))
+        {
+            return;
+        }
+
+        string normalized = expression.Trim();
+        if (!groupBy.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+        {
+            groupBy.Add(normalized);
+        }
     }
 
     /// <summary>
@@ -2072,6 +2146,232 @@ public sealed class SqlQueryGeneratorEngine
             sql += " AS " + Q(reference.Alias, options);
         }
         return sql;
+    }
+
+    /// <summary>
+    /// Builds one selected column projection with optional NULL handling and fixed-length formatting.
+    /// </summary>
+    /// <param name="reference">Selected column reference.</param>
+    /// <param name="schema">Loaded schema.</param>
+    /// <param name="options">SQL generation options.</param>
+    /// <param name="warnings">Generation warnings.</param>
+    /// <param name="tableAliases">Table aliases keyed by real table name.</param>
+    /// <returns>SQL SELECT projection.</returns>
+    private static string BuildSelectedColumnSql(
+        ColumnReference reference,
+        DatabaseSchema schema,
+        SqlGeneratorOptions options,
+        List<string> warnings,
+        IReadOnlyDictionary<string, string> tableAliases)
+    {
+        string expression = ColumnSql(reference, options, includeAlias: false, tableAliases);
+        if (IsWildcardColumn(reference))
+        {
+            return expression;
+        }
+
+        bool transformed = false;
+        ColumnDefinition? sourceColumn = schema.FindColumn(reference.Table, reference.Column);
+        SqlOutputValueKind valueKind = DetectOutputValueKind(sourceColumn?.DataType);
+
+        if (!reference.NullAllowed || reference.UseFixedLength)
+        {
+            expression = BuildNotNullExpression(expression, valueKind, options, fixedLengthMode: reference.UseFixedLength);
+            transformed = true;
+        }
+
+        if (reference.UseFixedLength)
+        {
+            if (reference.FixedLength is not > 0)
+            {
+                warnings.Add($"Longueur fixe ignorée pour {reference.Key}: longueur absente ou invalide.");
+            }
+            else
+            {
+                expression = BuildFixedLengthExpression(expression, valueKind, reference.FixedLength.Value, options);
+                transformed = true;
+            }
+        }
+
+        string? alias = reference.Alias;
+        if (transformed && string.IsNullOrWhiteSpace(alias))
+        {
+            alias = reference.Column;
+        }
+
+        if (!string.IsNullOrWhiteSpace(alias))
+        {
+            expression += " AS " + Q(alias, options);
+        }
+
+        return expression;
+    }
+
+    /// <summary>
+    /// Builds a dialect-specific expression that replaces NULL with a default value.
+    /// </summary>
+    /// <param name="expression">Source SQL expression.</param>
+    /// <param name="valueKind">Detected value kind.</param>
+    /// <param name="options">SQL generation options.</param>
+    /// <param name="fixedLengthMode">Whether the value is being prepared for fixed-length formatting.</param>
+    /// <returns>Expression protected against NULL.</returns>
+    private static string BuildNotNullExpression(
+        string expression,
+        SqlOutputValueKind valueKind,
+        SqlGeneratorOptions options,
+        bool fixedLengthMode)
+    {
+        string defaultValue = BuildDefaultValueLiteral(valueKind, options, fixedLengthMode);
+        string functionName = options.Dialect is SqlDialect.Oracle or SqlDialect.CognosAnalytics
+            ? "NVL"
+            : "COALESCE";
+
+        return $"{functionName}({expression}, {defaultValue})";
+    }
+
+    /// <summary>
+    /// Builds a fixed-length string expression using dialect-specific padding functions.
+    /// </summary>
+    /// <param name="expression">Source expression already protected against NULL.</param>
+    /// <param name="valueKind">Detected value kind.</param>
+    /// <param name="length">Target fixed length.</param>
+    /// <param name="options">SQL generation options.</param>
+    /// <returns>Fixed-length SQL expression.</returns>
+    private static string BuildFixedLengthExpression(
+        string expression,
+        SqlOutputValueKind valueKind,
+        int length,
+        SqlGeneratorOptions options)
+    {
+        bool numeric = valueKind is SqlOutputValueKind.Integer or SqlOutputValueKind.Number or SqlOutputValueKind.Boolean;
+
+        return options.Dialect switch
+        {
+            SqlDialect.SQLite when numeric =>
+                $"SUBSTR(PRINTF('%0{length}d', CAST({expression} AS INTEGER)), 1, {length})",
+
+            SqlDialect.SQLite =>
+                $"SUBSTR(CAST({expression} AS TEXT) || PRINTF('%*s', {length}, ''), 1, {length})",
+
+            SqlDialect.Oracle or SqlDialect.CognosAnalytics when numeric =>
+                $"SUBSTR(LPAD(TO_CHAR({expression}), {length}, '0'), 1, {length})",
+
+            SqlDialect.Oracle or SqlDialect.CognosAnalytics =>
+                $"SUBSTR(RPAD(TO_CHAR({expression}), {length}, ' '), 1, {length})",
+
+            _ when numeric =>
+                $"SUBSTRING(LPAD(CAST({expression} AS VARCHAR(4000)), {length}, '0'), 1, {length})",
+
+            _ =>
+                $"SUBSTRING(RPAD(CAST({expression} AS VARCHAR(4000)), {length}, ' '), 1, {length})"
+        };
+    }
+
+    /// <summary>
+    /// Builds the default SQL literal used when NULL is not allowed.
+    /// </summary>
+    /// <param name="valueKind">Detected value kind.</param>
+    /// <param name="options">SQL generation options.</param>
+    /// <param name="fixedLengthMode">Whether the default is used before padding.</param>
+    /// <returns>SQL literal.</returns>
+    private static string BuildDefaultValueLiteral(SqlOutputValueKind valueKind, SqlGeneratorOptions options, bool fixedLengthMode)
+    {
+        if (fixedLengthMode && valueKind is not SqlOutputValueKind.Integer and not SqlOutputValueKind.Number and not SqlOutputValueKind.Boolean)
+        {
+            return "''";
+        }
+
+        return valueKind switch
+        {
+            SqlOutputValueKind.Integer => "0",
+            SqlOutputValueKind.Number => "0",
+            SqlOutputValueKind.Boolean => "0",
+            SqlOutputValueKind.DateTime when options.Dialect is SqlDialect.Oracle or SqlDialect.CognosAnalytics => "DATE '1900-01-01'",
+            SqlOutputValueKind.DateTime => "'1900-01-01'",
+            _ => "''"
+        };
+    }
+
+    /// <summary>
+    /// Detects the broad output type used for NULL replacement and fixed-length padding.
+    /// </summary>
+    /// <param name="dataType">Column SQL data type.</param>
+    /// <returns>Detected output value kind.</returns>
+    private static SqlOutputValueKind DetectOutputValueKind(string? dataType)
+    {
+        if (string.IsNullOrWhiteSpace(dataType))
+        {
+            return SqlOutputValueKind.Text;
+        }
+
+        string normalized = dataType.Trim().ToUpperInvariant();
+
+        if (normalized.Contains("CHAR", StringComparison.Ordinal)
+            || normalized.Contains("TEXT", StringComparison.Ordinal)
+            || normalized.Contains("CLOB", StringComparison.Ordinal)
+            || normalized.Contains("STRING", StringComparison.Ordinal))
+        {
+            return SqlOutputValueKind.Text;
+        }
+
+        if (normalized.Contains("INT", StringComparison.Ordinal))
+        {
+            return SqlOutputValueKind.Integer;
+        }
+
+        if (normalized.Contains("NUMBER", StringComparison.Ordinal)
+            || normalized.Contains("NUMERIC", StringComparison.Ordinal)
+            || normalized.Contains("DECIMAL", StringComparison.Ordinal)
+            || normalized.Contains("FLOAT", StringComparison.Ordinal)
+            || normalized.Contains("DOUBLE", StringComparison.Ordinal)
+            || normalized.Contains("REAL", StringComparison.Ordinal))
+        {
+            return SqlOutputValueKind.Number;
+        }
+
+        if (normalized.Contains("DATE", StringComparison.Ordinal)
+            || normalized.Contains("TIME", StringComparison.Ordinal))
+        {
+            return SqlOutputValueKind.DateTime;
+        }
+
+        if (normalized.Contains("BOOL", StringComparison.Ordinal) || normalized == "BIT")
+        {
+            return SqlOutputValueKind.Boolean;
+        }
+
+        return SqlOutputValueKind.Text;
+    }
+
+    /// <summary>
+    /// Broad SQL output value kinds used by selected-column formatting.
+    /// </summary>
+    private enum SqlOutputValueKind
+    {
+        /// <summary>
+        /// Textual value.
+        /// </summary>
+        Text,
+
+        /// <summary>
+        /// Integer numeric value.
+        /// </summary>
+        Integer,
+
+        /// <summary>
+        /// Decimal or floating numeric value.
+        /// </summary>
+        Number,
+
+        /// <summary>
+        /// Date or timestamp value.
+        /// </summary>
+        DateTime,
+
+        /// <summary>
+        /// Boolean-like value.
+        /// </summary>
+        Boolean
     }
 
     /// <summary>
