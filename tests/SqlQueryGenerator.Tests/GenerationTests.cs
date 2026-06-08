@@ -93,6 +93,84 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
     }
 
     /// <summary>
+    /// Ensures Cognos Analytics keeps automatic GROUP BY enabled for normal selected columns.
+    /// </summary>
+    [Fact]
+    public void Generate_CognosAutoGroupBy_AddsSelectedColumns()
+    {
+        const string sql = @"
+CREATE TABLE SALES (
+    REGION TEXT,
+    PRODUCT TEXT,
+    AMOUNT NUMBER
+);
+";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new() { BaseTable = "SALES" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "SALES", Column = "REGION" });
+        query.SelectedColumns.Add(new ColumnReference { Table = "SALES", Column = "PRODUCT" });
+        query.Aggregates.Add(new AggregateSelection
+        {
+            Function = AggregateFunction.Sum,
+            Column = new ColumnReference { Table = "SALES", Column = "AMOUNT" },
+            Alias = "total_amount"
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(
+            query,
+            schema,
+            new SqlGeneratorOptions
+            {
+                Dialect = SqlDialect.CognosAnalytics,
+                AutoGroupSelectedColumnsWhenAggregating = true
+            });
+
+        Assert.Contains("SUM(SALES.AMOUNT) AS total_amount", result.Sql);
+        Assert.Contains("GROUP BY SALES.REGION, SALES.PRODUCT", result.Sql);
+    }
+
+    /// <summary>
+    /// Ensures Cognos Analytics automatic GROUP BY includes calculated non-aggregate SELECT expressions.
+    /// </summary>
+    [Fact]
+    public void Generate_CognosAutoGroupBy_AddsCustomNonAggregateExpressions()
+    {
+        const string sql = @"
+CREATE TABLE SALES (
+    REGION TEXT,
+    SEGMENT TEXT,
+    AMOUNT NUMBER
+);
+";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new() { BaseTable = "SALES" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "SALES", Column = "REGION" });
+        query.CustomColumns.Add(new CustomColumnSelection
+        {
+            Alias = "segment_label",
+            RawExpression = "CASE WHEN SALES.SEGMENT = 'A' THEN 'A' ELSE 'Other' END"
+        });
+        query.Aggregates.Add(new AggregateSelection
+        {
+            Function = AggregateFunction.Sum,
+            Column = new ColumnReference { Table = "SALES", Column = "AMOUNT" },
+            Alias = "total_amount"
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(
+            query,
+            schema,
+            new SqlGeneratorOptions
+            {
+                Dialect = SqlDialect.CognosAnalytics,
+                AutoGroupSelectedColumnsWhenAggregating = true
+            });
+
+        Assert.Contains("SUM(SALES.AMOUNT) AS total_amount", result.Sql);
+        Assert.Contains("GROUP BY SALES.REGION, CASE WHEN SALES.SEGMENT = 'A' THEN 'A' ELSE 'Other' END", result.Sql);
+    }
+
+    /// <summary>
     /// Ensures Cognos Analytics date parameters are wrapped in TO_DATE.
     /// </summary>
     [Fact]

@@ -78,23 +78,7 @@ public sealed class SqlQueryGeneratorEngine
         List<(string Predicate, LogicalConnector Connector)> where = BuildFilterPredicates(query, whereFilters, schema, options, warnings, tableAliases);
         AppendPredicateBlock(sb, "WHERE", where);
 
-        List<string> groupBy = BuildGroupBy(query, options, tableAliases);
-        if (query.Aggregates.Count > 0 && options.AutoGroupSelectedColumnsWhenAggregating)
-        {
-            foreach (ColumnReference selected in query.SelectedColumns)
-            {
-                if (IsWildcardColumn(selected))
-                {
-                    continue;
-                }
-
-                string expr = ColumnSql(selected, options, includeAlias: false, tableAliases);
-                if (!groupBy.Contains(expr, StringComparer.OrdinalIgnoreCase))
-                {
-                    groupBy.Add(expr);
-                }
-            }
-        }
+        List<string> groupBy = BuildGroupBy(query, options, warnings, tableAliases);
 
         if (groupBy.Count > 0)
         {
@@ -2008,14 +1992,89 @@ public sealed class SqlQueryGeneratorEngine
     }
 
     /// <summary>
-    /// Exécute le traitement BuildGroupBy.
+    /// Builds the GROUP BY clause, including explicit groupings and optional automatic grouping
+    /// of every non-aggregate expression projected by the SELECT list.
     /// </summary>
-    /// <param name="query">Paramètre query.</param>
-    /// <param name="options">Paramètre options.</param>
-    /// <returns>Résultat du traitement.</returns>
-    private static List<string> BuildGroupBy(QueryDefinition query, SqlGeneratorOptions options, IReadOnlyDictionary<string, string> tableAliases)
+    /// <param name="query">Query model.</param>
+    /// <param name="options">SQL generation options.</param>
+    /// <param name="warnings">Generation warnings.</param>
+    /// <param name="tableAliases">Table aliases keyed by real table name.</param>
+    /// <returns>GROUP BY expressions.</returns>
+    private static List<string> BuildGroupBy(
+        QueryDefinition query,
+        SqlGeneratorOptions options,
+        List<string> warnings,
+        IReadOnlyDictionary<string, string> tableAliases)
     {
-        return query.GroupBy.Select(c => ColumnSql(c, options, includeAlias: false, tableAliases)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        List<string> groupBy = [];
+
+        foreach (ColumnReference explicitGroupBy in query.GroupBy)
+        {
+            AddGroupByExpression(groupBy, ColumnSql(explicitGroupBy, options, includeAlias: false, tableAliases));
+        }
+
+        if (query.Aggregates.Count == 0 || !options.AutoGroupSelectedColumnsWhenAggregating)
+        {
+            return groupBy;
+        }
+
+        foreach (ColumnReference selected in query.SelectedColumns)
+        {
+            if (IsWildcardColumn(selected))
+            {
+                warnings.Add("Auto GROUP BY ignoré pour une projection table.*: sélectionne explicitement les colonnes à grouper.");
+                continue;
+            }
+
+            AddGroupByExpression(groupBy, ColumnSql(selected, options, includeAlias: false, tableAliases));
+        }
+
+        foreach (CustomColumnSelection custom in query.CustomColumns)
+        {
+            string expression = BuildCustomExpression(custom, options, tableAliases);
+            if (string.IsNullOrWhiteSpace(expression))
+            {
+                continue;
+            }
+
+            if (LooksLikeAggregateExpression(expression.TrimStart()))
+            {
+                continue;
+            }
+
+            try
+            {
+                SqlSafety.EnsureSelectExpressionIsSafe(expression);
+            }
+            catch (InvalidOperationException ex)
+            {
+                warnings.Add($"Auto GROUP BY ignoré pour la colonne calculée '{custom.Alias ?? expression}': {ex.Message}");
+                continue;
+            }
+
+            AddGroupByExpression(groupBy, expression);
+        }
+
+        return groupBy;
+    }
+
+    /// <summary>
+    /// Adds one GROUP BY expression if it is not already present.
+    /// </summary>
+    /// <param name="groupBy">Current GROUP BY expression list.</param>
+    /// <param name="expression">Expression to add.</param>
+    private static void AddGroupByExpression(List<string> groupBy, string expression)
+    {
+        if (string.IsNullOrWhiteSpace(expression))
+        {
+            return;
+        }
+
+        string normalized = expression.Trim();
+        if (!groupBy.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+        {
+            groupBy.Add(normalized);
+        }
     }
 
     /// <summary>
