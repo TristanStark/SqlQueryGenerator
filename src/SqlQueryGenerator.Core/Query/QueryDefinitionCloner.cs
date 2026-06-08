@@ -147,13 +147,16 @@ public static class QueryDefinitionCloner
         return clone;
     }
 
-    private static ColumnReference Clone(ColumnReference source)
+    private static ColumnReference Clone(ColumnReference c)
     {
         return new ColumnReference
         {
-            Table = source.Table,
-            Column = source.Column,
-            Alias = source.Alias
+            Table = c.Table,
+            Column = c.Column,
+            Alias = c.Alias,
+            NullAllowed = c.NullAllowed,
+            UseFixedLength = c.UseFixedLength,
+            FixedLength = c.FixedLength
         };
     }
 }

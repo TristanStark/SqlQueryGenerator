@@ -136,49 +136,49 @@
                 </Grid.RowDefinitions>
 
                 <Grid Grid.Row="0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="360" MinWidth="285" />
-                    <ColumnDefinition Width="8" />
-                    <ColumnDefinition Width="*" MinWidth="600" />
-                </Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="360" MinWidth="285" />
+                        <ColumnDefinition Width="8" />
+                        <ColumnDefinition Width="*" MinWidth="600" />
+                    </Grid.ColumnDefinitions>
 
-                <GroupBox Grid.Column="0" Header="1. Colonnes disponibles">
-                    <DockPanel LastChildFill="True">
-                        <TextBlock DockPanel.Dock="Top"
+                    <GroupBox Grid.Column="0" Header="1. Colonnes disponibles">
+                        <DockPanel LastChildFill="True">
+                            <TextBlock DockPanel.Dock="Top"
                                    Text="Filtre, sélectionne, puis utilise les boutons rapides ou glisse une colonne vers un onglet de construction."
                                    Style="{StaticResource SectionHint}" />
 
-                        <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0"
+                            <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0"
                                      Text="{Binding ColumnSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      ToolTip="Recherche dans table, colonne, type ou commentaire." />
-                            <Button Grid.Column="1" Content="Effacer" Command="{Binding ClearColumnSearchCommand}" />
-                        </Grid>
+                                <Button Grid.Column="1" Content="Effacer" Command="{Binding ClearColumnSearchCommand}" />
+                            </Grid>
 
-                        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                            <CheckBox Content="Masquer tables auxiliaires restantes"
+                            <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                <CheckBox Content="Masquer tables auxiliaires restantes"
                                       IsChecked="{Binding HideAuxiliaryTables, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                       ToolTip="Masque les tables auxiliaires détectées dans le DDL importé : backup, history, archive, staging, tmp, audit, log, etc." />
-                            <TextBlock Text="{Binding SchemaFilterSummary}" VerticalAlignment="Center" Foreground="#475569" Margin="8,4,0,4" TextWrapping="Wrap" />
-                        </WrapPanel>
+                                <TextBlock Text="{Binding SchemaFilterSummary}" VerticalAlignment="Center" Foreground="#475569" Margin="8,4,0,4" TextWrapping="Wrap" />
+                            </WrapPanel>
 
-                        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                            <Button Content="+ Sélection" Command="{Binding AddSelectedColumnCommand}" ToolTip="Ajoute la colonne au SELECT." />
-                            <Button Content="+ Sélection cochée" Command="{Binding AddCheckedColumnsToSelectCommand}" ToolTip="Ajoute au SELECT toutes les colonnes cochées dans l'arbre." />
-                            <Button Content="Table .*" Command="{Binding AddSelectedTableWildcardCommand}" ToolTip="Ajoute table.* pour la table sélectionnée." />
-                            <Button Content="Décocher" Command="{Binding ClearCheckedColumnsCommand}" ToolTip="Décoche toutes les colonnes de sélection multiple." />
-                            <Button Content="+ Filtre" Command="{Binding AddSelectedFilterCommand}" ToolTip="Ajoute la colonne au WHERE." />
-                            <Button Content="+ Groupe" Command="{Binding AddSelectedGroupByCommand}" ToolTip="Ajoute la colonne au GROUP BY." />
-                            <Button Content="+ Tri" Command="{Binding AddSelectedOrderByCommand}" ToolTip="Ajoute la colonne au ORDER BY." />
-                            <Button Content="+ Agrégat" Command="{Binding AddSelectedAggregateCommand}" ToolTip="Ajoute un COUNT/SUM/AVG/etc." />
-                        </WrapPanel>
+                            <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                                <Button Content="+ Sélection" Command="{Binding AddSelectedColumnCommand}" ToolTip="Ajoute la colonne au SELECT." />
+                                <Button Content="+ Sélection cochée" Command="{Binding AddCheckedColumnsToSelectCommand}" ToolTip="Ajoute au SELECT toutes les colonnes cochées dans l'arbre." />
+                                <Button Content="Table .*" Command="{Binding AddSelectedTableWildcardCommand}" ToolTip="Ajoute table.* pour la table sélectionnée." />
+                                <Button Content="Décocher" Command="{Binding ClearCheckedColumnsCommand}" ToolTip="Décoche toutes les colonnes de sélection multiple." />
+                                <Button Content="+ Filtre" Command="{Binding AddSelectedFilterCommand}" ToolTip="Ajoute la colonne au WHERE." />
+                                <Button Content="+ Groupe" Command="{Binding AddSelectedGroupByCommand}" ToolTip="Ajoute la colonne au GROUP BY." />
+                                <Button Content="+ Tri" Command="{Binding AddSelectedOrderByCommand}" ToolTip="Ajoute la colonne au ORDER BY." />
+                                <Button Content="+ Agrégat" Command="{Binding AddSelectedAggregateCommand}" ToolTip="Ajoute un COUNT/SUM/AVG/etc." />
+                            </WrapPanel>
 
-                        <Border Margin="4" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="4">
-                            <TreeView x:Name="AvailableColumnsTree"
+                            <Border Margin="4" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="4">
+                                <TreeView x:Name="AvailableColumnsTree"
                                       ItemsSource="{Binding Tables}"
                                       SelectedItemChanged="AvailableColumnsTree_SelectedItemChanged"
                                       PreviewMouseMove="ColumnsTree_PreviewMouseMove"
@@ -188,553 +188,570 @@
                                       ScrollViewer.VerticalScrollBarVisibility="Auto"
                                       VirtualizingStackPanel.IsVirtualizing="True"
                                       VirtualizingStackPanel.VirtualizationMode="Recycling">
-                                <TreeView.ItemContainerStyle>
-                                    <Style TargetType="TreeViewItem">
-                                        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
-                                    </Style>
-                                </TreeView.ItemContainerStyle>
-                                <TreeView.Resources>
-                                    <HierarchicalDataTemplate DataType="{x:Type vm:TableItemViewModel}" ItemsSource="{Binding Columns}">
-                                        <StackPanel Orientation="Horizontal" ToolTip="{Binding Comment}">
-                                            <StackPanel.ContextMenu>
-                                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                                    <MenuItem Header="Ajouter table.* au SELECT" Click="AddTableWildcardMenu_Click" />
-                                                </ContextMenu>
-                                            </StackPanel.ContextMenu>
-                                            <TextBlock Text="🗂 " Margin="0,0,4,0" />
-                                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
-                                            <TextBlock Text=" (" Foreground="#64748B" />
-                                            <TextBlock Text="{Binding ColumnCount}" Foreground="#64748B" />
-                                            <TextBlock Text=")" Foreground="#64748B" />
-                                        </StackPanel>
-                                    </HierarchicalDataTemplate>
+                                    <TreeView.ItemContainerStyle>
+                                        <Style TargetType="TreeViewItem">
+                                            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                                        </Style>
+                                    </TreeView.ItemContainerStyle>
+                                    <TreeView.Resources>
+                                        <HierarchicalDataTemplate DataType="{x:Type vm:TableItemViewModel}" ItemsSource="{Binding Columns}">
+                                            <StackPanel Orientation="Horizontal" ToolTip="{Binding Comment}">
+                                                <StackPanel.ContextMenu>
+                                                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                                        <MenuItem Header="Ajouter table.* au SELECT" Click="AddTableWildcardMenu_Click" />
+                                                    </ContextMenu>
+                                                </StackPanel.ContextMenu>
+                                                <TextBlock Text="🗂 " Margin="0,0,4,0" />
+                                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                                                <TextBlock Text=" (" Foreground="#64748B" />
+                                                <TextBlock Text="{Binding ColumnCount}" Foreground="#64748B" />
+                                                <TextBlock Text=")" Foreground="#64748B" />
+                                            </StackPanel>
+                                        </HierarchicalDataTemplate>
 
-                                    <DataTemplate DataType="{x:Type vm:ColumnItemViewModel}">
-                                        <Grid Margin="0,2,0,2" ToolTip="{Binding DisplayName}" PreviewMouseLeftButtonDown="ColumnNode_PreviewMouseLeftButtonDown">
-                                            <Grid.ContextMenu>
-                                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                                    <MenuItem Header="Ajouter au SELECT" Click="AddColumnToSelectMenu_Click" />
-                                                    <MenuItem Header="Ajouter au filtre WHERE" Click="AddColumnToFilterMenu_Click" />
-                                                    <MenuItem Header="Ajouter au GROUP BY" Click="AddColumnToGroupMenu_Click" />
-                                                    <MenuItem Header="Ajouter au tri ORDER BY" Click="AddColumnToOrderMenu_Click" />
-                                                    <Separator />
-                                                    <MenuItem Header="Ajouter comme agrégat" Click="AddColumnToAggregateMenu_Click" />
-                                                </ContextMenu>
-                                            </Grid.ContextMenu>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="34" />
-                                                <ColumnDefinition Width="23" />
-                                                <ColumnDefinition Width="23" />
-                                                <ColumnDefinition Width="26" />
-                                                <ColumnDefinition Width="145" />
-                                                <ColumnDefinition Width="76" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
+                                        <DataTemplate DataType="{x:Type vm:ColumnItemViewModel}">
+                                            <Grid Margin="0,2,0,2" ToolTip="{Binding DisplayName}" PreviewMouseLeftButtonDown="ColumnNode_PreviewMouseLeftButtonDown">
+                                                <Grid.ContextMenu>
+                                                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                                        <MenuItem Header="Ajouter au SELECT" Click="AddColumnToSelectMenu_Click" />
+                                                        <MenuItem Header="Ajouter au filtre WHERE" Click="AddColumnToFilterMenu_Click" />
+                                                        <MenuItem Header="Ajouter au GROUP BY" Click="AddColumnToGroupMenu_Click" />
+                                                        <MenuItem Header="Ajouter au tri ORDER BY" Click="AddColumnToOrderMenu_Click" />
+                                                        <Separator />
+                                                        <MenuItem Header="Ajouter comme agrégat" Click="AddColumnToAggregateMenu_Click" />
+                                                    </ContextMenu>
+                                                </Grid.ContextMenu>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="34" />
+                                                    <ColumnDefinition Width="23" />
+                                                    <ColumnDefinition Width="23" />
+                                                    <ColumnDefinition Width="26" />
+                                                    <ColumnDefinition Width="145" />
+                                                    <ColumnDefinition Width="76" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
 
-                                            <CheckBox Grid.Column="0" IsChecked="{Binding IsBulkSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Cocher pour ajouter plusieurs colonnes au SELECT." HorizontalAlignment="Center" VerticalAlignment="Center" Width="18" MinWidth="0" Padding="0" Margin="0,0,8,0" />
-                                            <Border Grid.Column="1" Visibility="{Binding IsPrimaryKey, Converter={StaticResource BoolToVisibility}}" Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="1" CornerRadius="3" Padding="2,0" Margin="0,0,4,0" ToolTip="Clé primaire">
-                                                <TextBlock Text="PK" Foreground="#92400E" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" />
-                                            </Border>
-                                            <Border Grid.Column="2" Visibility="{Binding IsForeignKey, Converter={StaticResource BoolToVisibility}}" Background="#E0F2FE" BorderBrush="#0284C7" BorderThickness="1" CornerRadius="3" Padding="2,0" Margin="0,0,4,0" ToolTip="{Binding ForeignKeySummary}">
-                                                <TextBlock Text="FK" Foreground="#075985" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" />
-                                            </Border>
-                                            <Border Grid.Column="3" Visibility="{Binding IsIndexed, Converter={StaticResource BoolToVisibility}}" Background="#DCFCE7" BorderBrush="#16A34A" BorderThickness="1" CornerRadius="3" Padding="2,0" Margin="0,0,4,0" ToolTip="{Binding IndexSummary}">
-                                                <TextBlock Text="{Binding IndexBadge}" Foreground="#166534" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" />
-                                            </Border>
-                                            <TextBlock Grid.Column="4" Text="{Binding Column}" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            <Border Grid.Column="5" Background="{Binding TypeBackground}" CornerRadius="4" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding TypeCategory}" Foreground="{Binding TypeForeground}" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            </Border>
-                                            <TextBlock Grid.Column="6" Text="{Binding Comment}" Foreground="#475569" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                        </Grid>
-                                    </DataTemplate>
-                                </TreeView.Resources>
-                            </TreeView>
-                        </Border>
-                    </DockPanel>
-                </GroupBox>
-
-                <GridSplitter Grid.Column="1" Width="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
-
-                <GroupBox Grid.Column="2" Header="2. Construire la requête">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-
-                        <Border Grid.Row="0" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6" Background="#FFFFFF" Padding="8" Margin="4,2,4,8">
-                            <WrapPanel VerticalAlignment="Center">
-                                <TextBlock Text="Table de départ" VerticalAlignment="Center" Margin="4" FontWeight="SemiBold" />
-                                <ComboBox Width="260" ItemsSource="{Binding TableNames}" SelectedItem="{Binding BaseTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Le nom complet schema.table est conservé pour le SQL.">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding Converter={StaticResource TableNameDisplayConverter}}" />
+                                                <CheckBox Grid.Column="0" IsChecked="{Binding IsBulkSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Cocher pour ajouter plusieurs colonnes au SELECT." HorizontalAlignment="Center" VerticalAlignment="Center" Width="18" MinWidth="0" Padding="0" Margin="0,0,8,0" />
+                                                <Border Grid.Column="1" Visibility="{Binding IsPrimaryKey, Converter={StaticResource BoolToVisibility}}" Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="1" CornerRadius="3" Padding="2,0" Margin="0,0,4,0" ToolTip="Clé primaire">
+                                                    <TextBlock Text="PK" Foreground="#92400E" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" />
+                                                </Border>
+                                                <Border Grid.Column="2" Visibility="{Binding IsForeignKey, Converter={StaticResource BoolToVisibility}}" Background="#E0F2FE" BorderBrush="#0284C7" BorderThickness="1" CornerRadius="3" Padding="2,0" Margin="0,0,4,0" ToolTip="{Binding ForeignKeySummary}">
+                                                    <TextBlock Text="FK" Foreground="#075985" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" />
+                                                </Border>
+                                                <Border Grid.Column="3" Visibility="{Binding IsIndexed, Converter={StaticResource BoolToVisibility}}" Background="#DCFCE7" BorderBrush="#16A34A" BorderThickness="1" CornerRadius="3" Padding="2,0" Margin="0,0,4,0" ToolTip="{Binding IndexSummary}">
+                                                    <TextBlock Text="{Binding IndexBadge}" Foreground="#166534" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" />
+                                                </Border>
+                                                <TextBlock Grid.Column="4" Text="{Binding Column}" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                                <Border Grid.Column="5" Background="{Binding TypeBackground}" CornerRadius="4" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding TypeCategory}" Foreground="{Binding TypeForeground}" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                                </Border>
+                                                <TextBlock Grid.Column="6" Text="{Binding Comment}" Foreground="#475569" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                            </Grid>
                                         </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
+                                    </TreeView.Resources>
+                                </TreeView>
+                            </Border>
+                        </DockPanel>
+                    </GroupBox>
 
-                                <TextBlock Text="Dialecte" VerticalAlignment="Center" Margin="16,4,4,4" FontWeight="SemiBold" />
-                                <ComboBox Width="135" ItemsSource="{Binding Dialects}" SelectedItem="{Binding Dialect, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <GridSplitter Grid.Column="1" Width="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
 
-                                <CheckBox Content="DISTINCT" IsChecked="{Binding Distinct, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Ajoute SELECT DISTINCT." />
-                                <CheckBox Content="Quoter noms" IsChecked="{Binding QuoteIdentifiers, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Protège les noms avec les quotes du dialecte." />
-                                <CheckBox Content="Auto GROUP BY" IsChecked="{Binding AutoGroupSelectedColumns, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Ajoute automatiquement les colonnes sélectionnées au GROUP BY quand un agrégat est utilisé." />
+                    <GroupBox Grid.Column="2" Header="2. Construire la requête">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
 
-                                <TextBlock Text="Limite" VerticalAlignment="Center" Margin="16,4,4,4" FontWeight="SemiBold" />
-                                <TextBox Width="90" Text="{Binding LimitRows, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, TargetNullValue=''}" ToolTip="Nombre maximal de lignes. Vide = aucune limite." />
-                                <Button Content="Générer" Command="{Binding GenerateCommand}" />
-                            </WrapPanel>
-                        </Border>
+                            <Border Grid.Row="0" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6" Background="#FFFFFF" Padding="8" Margin="4,2,4,8">
+                                <WrapPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Table de départ" VerticalAlignment="Center" Margin="4" FontWeight="SemiBold" />
+                                    <ComboBox Width="260" ItemsSource="{Binding TableNames}" SelectedItem="{Binding BaseTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Le nom complet schema.table est conservé pour le SQL.">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Converter={StaticResource TableNameDisplayConverter}}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
 
-                        <TabControl Grid.Row="1" Margin="4">
-                            <TabItem Header="Sélection">
-                                <DockPanel AllowDrop="True" Drop="Select_Drop" DragOver="Drop_DragOver" LastChildFill="True">
-                                    <TextBlock DockPanel.Dock="Top" Text="Dépose ici les colonnes à afficher. L'alias est le nom lisible qui apparaîtra dans le résultat." Style="{StaticResource SectionHint}" />
-                                    <DataGrid ItemsSource="{Binding SelectedColumns}">
-                                        <DataGrid.Columns>
-                                            <DataGridTextColumn Header="Table" Binding="{Binding TableDisplayName}" IsReadOnly="True" Width="2*" MinWidth="220" />
-                                            <DataGridTextColumn Header="Colonne" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="220" />
-                                            <DataGridTextColumn Header="Alias optionnel" Binding="{Binding Alias, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="240" />
-                                            <DataGridTemplateColumn Header="Action" Width="290" MinWidth="270">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveSelectedColumnCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                        </DataGrid.Columns>
-                                    </DataGrid>
-                                </DockPanel>
-                            </TabItem>
+                                    <TextBlock Text="Dialecte" VerticalAlignment="Center" Margin="16,4,4,4" FontWeight="SemiBold" />
+                                    <ComboBox Width="135" ItemsSource="{Binding Dialects}" SelectedItem="{Binding Dialect, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
-                            <TabItem Header="Filtres">
-                                <DockPanel AllowDrop="True" Drop="Filter_Drop" DragOver="Drop_DragOver" LastChildFill="True">
-                                    <TextBlock DockPanel.Dock="Top" Text="WHERE / HAVING : dépose une colonne normale, ou ajoute un agrégat / une colonne calculée depuis leurs onglets. Les filtres sur agrégats deviennent automatiquement HAVING." Style="{StaticResource SectionHint}" />
-                                    <DataGrid ItemsSource="{Binding Filters}">
-                                        <DataGrid.Columns>
-                                            <DataGridTemplateColumn Header="Lien" Width="100" MinWidth="95">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <ComboBox ItemsSource="{Binding DataContext.LogicalConnectors, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Connector, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                            <DataGridTextColumn Header="Type" Binding="{Binding FieldKind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="0.9*" MinWidth="130" />
-                                            <DataGridTextColumn Header="Table / source" Binding="{Binding TableDisplayName}" IsReadOnly="True" Width="1.3*" MinWidth="170" />
-                                            <DataGridTextColumn Header="Colonne / alias" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.6*" MinWidth="210" />
-                                            <DataGridTemplateColumn Header="Opérateur" Width="155" MinWidth="145">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <ComboBox ItemsSource="{Binding DataContext.Operators, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Operator, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                            <DataGridTemplateColumn Header="Type valeur" Width="150" MinWidth="140">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <ComboBox ItemsSource="{Binding DataContext.FilterValueKinds, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding ValueKind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                            <DataGridTextColumn Header="Valeur / paramètre" Binding="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="230" />
-                                            <DataGridTextColumn Header="Valeur 2" Binding="{Binding SecondValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.4*" MinWidth="190" />
-                                            <DataGridTextColumn Header="Sous-requête" Binding="{Binding SubqueryName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.5*" MinWidth="190" />
-                                            <DataGridTemplateColumn Header="Action" Width="190" MinWidth="170">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                        </DataGrid.Columns>
-                                    </DataGrid>
-                                </DockPanel>
-                            </TabItem>
+                                    <CheckBox Content="DISTINCT" IsChecked="{Binding Distinct, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Ajoute SELECT DISTINCT." />
+                                    <CheckBox Content="Quoter noms" IsChecked="{Binding QuoteIdentifiers, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Protège les noms avec les quotes du dialecte." />
+                                    <CheckBox Content="Auto GROUP BY" IsChecked="{Binding AutoGroupSelectedColumns, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Ajoute automatiquement les colonnes sélectionnées au GROUP BY quand un agrégat est utilisé." />
 
-                            <TabItem Header="Jointures">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="1.15*" />
-                                        <RowDefinition Height="8" />
-                                        <RowDefinition Height="*" />
-                                    </Grid.RowDefinitions>
-                                    <DockPanel Grid.Row="0" LastChildFill="True">
-                                        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-                                            <TextBlock Text="Relations probables détectées" VerticalAlignment="Center" FontWeight="Bold" Margin="8,4" />
-                                            <Button Content="Ajouter comme jointure" Command="{Binding AddJoinFromRelationshipCommand}" />
-                                            <Button Content="+ Jointure manuelle" Command="{Binding AddManualJoinCommand}" ToolTip="Ajoute une ligne vide modifiable dans les jointures forcées." />
-                                        </WrapPanel>
-                                        <Border BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="4" Margin="4">
-                                            <TreeView x:Name="RelationshipsTree"
-                                                      ItemsSource="{Binding RelationshipGroups}"
-                                                      SelectedItemChanged="RelationshipsTree_SelectedItemChanged"
-                                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                                                      ScrollViewer.VerticalScrollBarVisibility="Auto">
-                                                <TreeView.ItemContainerStyle>
-                                                    <Style TargetType="TreeViewItem">
-                                                        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
-                                                    </Style>
-                                                </TreeView.ItemContainerStyle>
-                                                <TreeView.Resources>
-                                                    <HierarchicalDataTemplate DataType="{x:Type vm:RelationshipGroupViewModel}" ItemsSource="{Binding Relationships}">
-                                                        <StackPanel Orientation="Horizontal">
-                                                            <TextBlock Text="🔗 " Margin="0,0,4,0" />
-                                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-                                                        </StackPanel>
-                                                    </HierarchicalDataTemplate>
-                                                    <DataTemplate DataType="{x:Type vm:RelationshipItemViewModel}">
-                                                        <Grid Margin="0,2,0,2" ToolTip="{Binding Reason}">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="78" />
-                                                                <ColumnDefinition Width="250" />
-                                                                <ColumnDefinition Width="30" />
-                                                                <ColumnDefinition Width="250" />
-                                                                <ColumnDefinition Width="80" />
-                                                                <ColumnDefinition Width="92" />
-                                                                <ColumnDefinition Width="*" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <CheckBox Grid.Column="0" Content="Auto" IsChecked="{Binding IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Décoche pour empêcher cette relation auto-détectée d'être utilisée par le planificateur automatique." />
-                                                            <TextBlock Grid.Column="1" Text="{Binding FromDisplay}" FontWeight="SemiBold" />
-                                                            <TextBlock Grid.Column="2" Text="→" HorizontalAlignment="Center" Foreground="#64748B" />
-                                                            <TextBlock Grid.Column="3" Text="{Binding ToDisplay}" FontWeight="SemiBold" />
-                                                            <TextBlock Grid.Column="4" Text="{Binding Confidence, StringFormat=P0}" Foreground="#166534" FontWeight="SemiBold" />
-                                                            <Button Grid.Column="5"
-                                                                    Content="{Binding UsageText}"
-                                                                    MinWidth="84"
-                                                                    Padding="10,2"
-                                                                    HorizontalAlignment="Left"
-                                                                    Command="{Binding DataContext.AddRelationshipAsJoinCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                    CommandParameter="{Binding}" />
-                                                            <TextBlock Grid.Column="6" Text="{Binding Reason}" Foreground="#475569" TextTrimming="CharacterEllipsis" />
-                                                        </Grid>
-                                                    </DataTemplate>
-                                                </TreeView.Resources>
-                                            </TreeView>
-                                        </Border>
-                                    </DockPanel>
-                                    <GridSplitter Grid.Row="1" Height="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
-                                    <DockPanel Grid.Row="2" LastChildFill="True">
-                                        <TextBlock DockPanel.Dock="Top" Text="Jointures forcées / manuelles : sélectionne les tables dans les listes, ou glisse une colonne depuis l'arbre vers Colonne gauche / droite. Le drop remplit aussi la table automatiquement." Style="{StaticResource SectionHint}" />
-                                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-                                            <ItemsControl ItemsSource="{Binding Joins}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="8" Background="#FFFFFF" Padding="8" Margin="6,4">
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="150" />
-                                                                    <ColumnDefinition Width="230" />
-                                                                    <ColumnDefinition Width="210" />
-                                                                    <ColumnDefinition Width="36" />
-                                                                    <ColumnDefinition Width="230" />
-                                                                    <ColumnDefinition Width="210" />
-                                                                    <ColumnDefinition Width="300" />
-                                                                </Grid.ColumnDefinitions>
-                                                                <Grid.RowDefinitions>
-                                                                    <RowDefinition Height="Auto" />
-                                                                    <RowDefinition Height="Auto" />
-                                                                    <RowDefinition Height="Auto" />
-                                                                </Grid.RowDefinitions>
+                                    <TextBlock Text="Limite" VerticalAlignment="Center" Margin="16,4,4,4" FontWeight="SemiBold" />
+                                    <TextBox Width="90" Text="{Binding LimitRows, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, TargetNullValue=''}" ToolTip="Nombre maximal de lignes. Vide = aucune limite." />
+                                    <Button Content="Générer" Command="{Binding GenerateCommand}" />
+                                </WrapPanel>
+                            </Border>
 
-                                                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Type" FontWeight="SemiBold" Margin="4,0" />
-                                                                <TextBlock Grid.Row="0" Grid.Column="1" Text="Table gauche" FontWeight="SemiBold" Margin="4,0" />
-                                                                <TextBlock Grid.Row="0" Grid.Column="2" Text="Colonne gauche" FontWeight="SemiBold" Margin="4,0" />
-                                                                <TextBlock Grid.Row="0" Grid.Column="4" Text="Table droite" FontWeight="SemiBold" Margin="4,0" />
-                                                                <TextBlock Grid.Row="0" Grid.Column="5" Text="Colonne droite" FontWeight="SemiBold" Margin="4,0" />
-
-                                                                <ComboBox Grid.Row="1" Grid.Column="0" ItemsSource="{Binding DataContext.JoinTypes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding JoinType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                                <ComboBox Grid.Row="1" Grid.Column="1" IsEditable="True" IsTextSearchEnabled="True" ItemsSource="{Binding DataContext.TableNames, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding FromTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" Text="{Binding FromTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" ToolTip="Choisis la table gauche. L'affichage masque le préfixe schema mais la valeur complète est conservée.">
-                                                                    <ComboBox.ItemTemplate>
-                                                                        <DataTemplate><TextBlock Text="{Binding Converter={StaticResource TableNameDisplayConverter}}" /></DataTemplate>
-                                                                    </ComboBox.ItemTemplate>
-                                                                </ComboBox>
-                                                                <ComboBox Grid.Row="1" Grid.Column="2" IsEditable="True" IsTextSearchEnabled="True" ItemsSource="{Binding FromColumnCandidates}" Text="{Binding FromColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" SelectedItem="{Binding FromColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinLeftColumn_Drop" ToolTip="Choisis ou glisse la colonne gauche. La table gauche sera remplie automatiquement." />
-
-                                                                <TextBlock Grid.Row="1" Grid.Column="3" Text="=" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" FontSize="18" Foreground="#475569" />
-
-                                                                <ComboBox Grid.Row="1" Grid.Column="4" IsEditable="True" IsTextSearchEnabled="True" ItemsSource="{Binding DataContext.TableNames, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding ToTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" Text="{Binding ToTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" ToolTip="Choisis la table droite. L'affichage masque le préfixe schema mais la valeur complète est conservée.">
-                                                                    <ComboBox.ItemTemplate>
-                                                                        <DataTemplate><TextBlock Text="{Binding Converter={StaticResource TableNameDisplayConverter}}" /></DataTemplate>
-                                                                    </ComboBox.ItemTemplate>
-                                                                </ComboBox>
-                                                                <ComboBox Grid.Row="1" Grid.Column="5" IsEditable="True" IsTextSearchEnabled="True" ItemsSource="{Binding ToColumnCandidates}" Text="{Binding ToColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" SelectedItem="{Binding ToColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinRightColumn_Drop" ToolTip="Choisis ou glisse la colonne droite. La table droite sera remplie automatiquement." />
-                                                                <Grid Grid.Row="1" Grid.Column="6" Margin="4,0,0,0">
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="*" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <Button Grid.Column="0" Content="Retirer" HorizontalAlignment="Stretch" MinWidth="130" Padding="10,4" Margin="0,4,4,4" Command="{Binding DataContext.RemoveJoinCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
-                                                                    <Button Grid.Column="1" Content="+ Colonne" HorizontalAlignment="Stretch" MinWidth="130" Padding="10,4" Margin="4,4,0,4" Command="{Binding DataContext.AddJoinPairCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute une condition supplémentaire à la jointure composite." />
-                                                                </Grid>
-
-                                                                <ItemsControl Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="5" ItemsSource="{Binding AdditionalPairs}" Margin="4,8,4,0">
-                                                                    <ItemsControl.ItemTemplate>
-                                                                        <DataTemplate>
-                                                                            <Grid Margin="0,2">
-                                                                                <Grid.ColumnDefinitions>
-                                                                                    <ColumnDefinition Width="80" />
-                                                                                    <ColumnDefinition Width="210" />
-                                                                                    <ColumnDefinition Width="36" />
-                                                                                    <ColumnDefinition Width="210" />
-                                                                                    <ColumnDefinition Width="120" />
-                                                                                </Grid.ColumnDefinitions>
-                                                                                <CheckBox Grid.Column="0" Content="Actif" IsChecked="{Binding Enabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Active/désactive cette colonne de jointure." />
-                                                                                <TextBox Grid.Column="1" Text="{Binding FromColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinPairLeftColumn_Drop" ToolTip="Glisse ici une colonne supplémentaire côté gauche." />
-                                                                                <TextBlock Grid.Column="2" Text="=" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" />
-                                                                                <TextBox Grid.Column="3" Text="{Binding ToColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinPairRightColumn_Drop" ToolTip="Glisse ici une colonne supplémentaire côté droit." />
-                                                                                <Button Grid.Column="4" Content="Retirer" MinWidth="105" Command="{Binding DataContext.RemoveJoinPairCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
-                                                                            </Grid>
-                                                                        </DataTemplate>
-                                                                    </ItemsControl.ItemTemplate>
-                                                                </ItemsControl>
-                                                            </Grid>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </ScrollViewer>
-                                    </DockPanel>
-                                </Grid>
-                            </TabItem>
-
-                            <TabItem Header="Groupes / agrégats">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="*" />
-                                        <RowDefinition Height="8" />
-                                        <RowDefinition Height="*" />
-                                    </Grid.RowDefinitions>
-                                    <DockPanel Grid.Row="0" AllowDrop="True" Drop="Group_Drop" DragOver="Drop_DragOver" LastChildFill="True">
-                                        <TextBlock DockPanel.Dock="Top" Text="GROUP BY : dépose les colonnes par lesquelles regrouper." Style="{StaticResource SectionHint}" />
-                                        <DataGrid ItemsSource="{Binding GroupBy}">
+                            <TabControl Grid.Row="1" Margin="4">
+                                <TabItem Header="Sélection">
+                                    <DockPanel AllowDrop="True" Drop="Select_Drop" DragOver="Drop_DragOver" LastChildFill="True">
+                                        <TextBlock DockPanel.Dock="Top" Text="Dépose ici les colonnes à afficher. L'alias est le nom lisible qui apparaîtra dans le résultat." Style="{StaticResource SectionHint}" />
+                                        <DataGrid ItemsSource="{Binding SelectedColumns}">
                                             <DataGrid.Columns>
-                                                <DataGridTextColumn Header="Table" Binding="{Binding TableDisplayName}" IsReadOnly="True" Width="2*" MinWidth="260" />
-                                                <DataGridTextColumn Header="Colonne" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="260" />
+                                                <DataGridTextColumn Header="Table" Binding="{Binding TableDisplayName}" IsReadOnly="True" Width="2*" MinWidth="220" />
+                                                <DataGridTextColumn Header="Colonne" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="220" />
+                                                <DataGridTextColumn Header="Alias optionnel" Binding="{Binding Alias, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="240" />
+                                                <DataGridTextColumn Header="Properties" Binding="{Binding OutputPropertiesSummary}" Width="140" IsReadOnly="True" />
+                                                <DataGridTemplateColumn Header="Action" Width="290" MinWidth="270">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveSelectedColumnCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                            </DataGrid.Columns>
+                                            <DataGrid.RowStyle>
+                                                <Style TargetType="{x:Type DataGridRow}">
+                                                    <Setter Property="Tag" Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=DataGrid}}" />
+                                                    <Setter Property="ContextMenu">
+                                                        <Setter.Value>
+                                                            <ContextMenu>
+                                                                <MenuItem Header="Properties" Command="{Binding PlacementTarget.Tag.OpenSelectedColumnPropertiesCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                                            </ContextMenu>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </DataGrid.RowStyle>
+                                        </DataGrid>
+                                    </DockPanel>
+                                </TabItem>
+
+                                <TabItem Header="Filtres">
+                                    <DockPanel AllowDrop="True" Drop="Filter_Drop" DragOver="Drop_DragOver" LastChildFill="True">
+                                        <TextBlock DockPanel.Dock="Top" Text="WHERE / HAVING : dépose une colonne normale, ou ajoute un agrégat / une colonne calculée depuis leurs onglets. Les filtres sur agrégats deviennent automatiquement HAVING." Style="{StaticResource SectionHint}" />
+                                        <DataGrid ItemsSource="{Binding Filters}">
+                                            <DataGrid.Columns>
+                                                <DataGridTemplateColumn Header="Lien" Width="100" MinWidth="95">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <ComboBox ItemsSource="{Binding DataContext.LogicalConnectors, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Connector, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTextColumn Header="Type" Binding="{Binding FieldKind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="0.9*" MinWidth="130" />
+                                                <DataGridTextColumn Header="Table / source" Binding="{Binding TableDisplayName}" IsReadOnly="True" Width="1.3*" MinWidth="170" />
+                                                <DataGridTextColumn Header="Colonne / alias" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.6*" MinWidth="210" />
+                                                <DataGridTemplateColumn Header="Opérateur" Width="155" MinWidth="145">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <ComboBox ItemsSource="{Binding DataContext.Operators, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Operator, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTemplateColumn Header="Type valeur" Width="150" MinWidth="140">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <ComboBox ItemsSource="{Binding DataContext.FilterValueKinds, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding ValueKind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTextColumn Header="Valeur / paramètre" Binding="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="230" />
+                                                <DataGridTextColumn Header="Valeur 2" Binding="{Binding SecondValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.4*" MinWidth="190" />
+                                                <DataGridTextColumn Header="Sous-requête" Binding="{Binding SubqueryName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.5*" MinWidth="190" />
                                                 <DataGridTemplateColumn Header="Action" Width="190" MinWidth="170">
                                                     <DataGridTemplateColumn.CellTemplate>
                                                         <DataTemplate>
-                                                            <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveGroupByCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                            <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                         </DataTemplate>
                                                     </DataGridTemplateColumn.CellTemplate>
                                                 </DataGridTemplateColumn>
                                             </DataGrid.Columns>
                                         </DataGrid>
                                     </DockPanel>
-                                    <GridSplitter Grid.Row="1" Height="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
-                                    <DockPanel Grid.Row="2" AllowDrop="True" Drop="Aggregate_Drop" DragOver="Drop_DragOver" LastChildFill="True">
-                                        <StackPanel DockPanel.Dock="Top">
-                                            <TextBlock Text="Agrégats : COUNT, SUM, AVG, MIN, MAX. Dépose une colonne cible puis choisis la fonction." Style="{StaticResource SectionHint}" />
-                                            <TextBlock Text="Option conditionnelle : renseigne une colonne de condition pour générer COUNT/SUM/AVG ... uniquement pour les lignes qui respectent la condition, sans sous-requête." Style="{StaticResource SectionHint}" />
-                                        </StackPanel>
-                                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                            <ItemsControl ItemsSource="{Binding Aggregates}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="8" Background="#FFFFFF" Padding="10" Margin="6">
-                                                            <StackPanel>
-                                                                <WrapPanel>
-                                                                    <TextBlock Text="Fonction" VerticalAlignment="Center" FontWeight="SemiBold" Margin="4" />
-                                                                    <ComboBox Width="130" ItemsSource="{Binding DataContext.AggregateFunctions, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Function, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </TabItem>
 
-                                                                    <TextBlock Text="Table cible" VerticalAlignment="Center" FontWeight="SemiBold" Margin="12,4,4,4" />
-                                                                    <TextBox Width="190" Text="{Binding Table, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Table de la colonne à compter/sommer/moyenner." />
-
-                                                                    <TextBlock Text="Colonne cible" VerticalAlignment="Center" FontWeight="SemiBold" Margin="12,4,4,4" />
-                                                                    <TextBox Width="190" Text="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Colonne cible. Pour COUNT, elle peut être un identifiant de paiement. Pour SUM/AVG, choisis une colonne numérique." />
-
-                                                                    <CheckBox Content="Distinct" IsChecked="{Binding Distinct, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="COUNT(DISTINCT ...), SUM(DISTINCT ...), etc." />
-
-                                                                    <TextBlock Text="Alias" VerticalAlignment="Center" FontWeight="SemiBold" Margin="12,4,4,4" />
-                                                                    <TextBox Width="210" Text="{Binding Alias, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Nom de la colonne générée, ex: nb_paiements_cb, total_paye." />
-
-                                                                    <Button Content="+ Filtre" MinWidth="95" Padding="10,4" Command="{Binding DataContext.AddAggregateFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute cet agrégat comme filtre HAVING." />
-                                                                    <Button Content="+ Tri" MinWidth="85" Padding="10,4" Command="{Binding DataContext.AddAggregateOrderByCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute cet agrégat au ORDER BY." />
-                                                                    <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveAggregateCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
-                                                                </WrapPanel>
-
-                                                                <Border BorderBrush="#E5E7EB" BorderThickness="1,0,0,0" Margin="4,8,4,0" Padding="8,6,0,0">
-                                                                    <StackPanel>
-                                                                        <TextBlock Text="Condition optionnelle de l'agrégat : ex. mode_reglement = CB ou statut = PAYE. Vide = agrégat normal." Foreground="#374151" FontWeight="Normal" Margin="0,0,0,4" />
-                                                                        <WrapPanel>
-                                                                            <TextBlock Text="Table condition" VerticalAlignment="Center" FontWeight="SemiBold" Margin="4" />
-                                                                            <TextBox Width="190" Text="{Binding ConditionTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-
-                                                                            <TextBlock Text="Colonne condition" VerticalAlignment="Center" FontWeight="SemiBold" Margin="12,4,4,4" />
-                                                                            <TextBox Width="190" Text="{Binding ConditionColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-
-                                                                            <TextBlock Text="Opérateur" VerticalAlignment="Center" FontWeight="SemiBold" Margin="12,4,4,4" />
-                                                                            <ComboBox Width="145" ItemsSource="{Binding DataContext.Operators, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding ConditionOperator, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-
-                                                                            <TextBlock Text="Valeur" VerticalAlignment="Center" FontWeight="SemiBold" Margin="12,4,4,4" />
-                                                                            <TextBox Width="190" Text="{Binding ConditionValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Ex: CB, PAYE, 2024-01-01. Les quotes SQL sont ajoutées automatiquement." />
-
-                                                                            <TextBlock Text="Valeur 2" VerticalAlignment="Center" FontWeight="SemiBold" Margin="12,4,4,4" />
-                                                                            <TextBox Width="170" Text="{Binding ConditionSecondValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Utilisé pour BETWEEN." />
-                                                                        </WrapPanel>
-                                                                    </StackPanel>
-                                                                </Border>
-                                                            </StackPanel>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </ScrollViewer>
-                                    </DockPanel>
-                                </Grid>
-                            </TabItem>
-
-                            <TabItem Header="Tri">
-                                <DockPanel AllowDrop="True" Drop="Order_Drop" DragOver="Drop_DragOver" LastChildFill="True">
-                                    <TextBlock DockPanel.Dock="Top" Text="ORDER BY : dépose une colonne normale, ou ajoute un agrégat / une colonne calculée depuis leurs onglets. Les tris sur alias restent lisibles." Style="{StaticResource SectionHint}" />
-                                    <DataGrid ItemsSource="{Binding OrderBy}">
-                                        <DataGrid.Columns>
-                                            <DataGridTextColumn Header="Type" Binding="{Binding FieldKind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="0.9*" MinWidth="130" />
-                                            <DataGridTextColumn Header="Table / source" Binding="{Binding TableDisplayName}" IsReadOnly="True" Width="1.5*" MinWidth="210" />
-                                            <DataGridTextColumn Header="Colonne / alias" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.8*" MinWidth="250" />
-                                            <DataGridTemplateColumn Header="Sens" Width="160" MinWidth="150">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <ComboBox ItemsSource="{Binding DataContext.SortDirections, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Direction, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                            <DataGridTemplateColumn Header="Action" Width="190" MinWidth="170">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveOrderByCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                        </DataGrid.Columns>
-                                    </DataGrid>
-                                </DockPanel>
-                            </TabItem>
-
-                            <TabItem Header="Colonnes calculées">
-                                <DockPanel AllowDrop="True" Drop="CustomCase_Drop" DragOver="Drop_DragOver" LastChildFill="True">
-                                    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-                                        <TextBlock Text="CASE WHEN ou expression SELECT contrôlée. Dépose une colonne pour créer un CASE." VerticalAlignment="Center" Margin="8,4" FontWeight="Normal" />
-                                        <Button Content="Ajouter colonne personnalisée" Command="{Binding AddEmptyCustomColumnCommand}" />
-                                    </WrapPanel>
-                                    <DataGrid ItemsSource="{Binding CustomColumns}">
-                                        <DataGrid.Columns>
-                                            <DataGridTextColumn Header="Alias" Binding="{Binding Alias, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.2*" MinWidth="160" />
-                                            <DataGridTextColumn Header="Expression brute" Binding="{Binding RawExpression, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2.2*" MinWidth="300" />
-                                            <DataGridTextColumn Header="Table CASE" Binding="{Binding CaseTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.4*" MinWidth="180" />
-                                            <DataGridTextColumn Header="Colonne CASE" Binding="{Binding CaseColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.4*" MinWidth="180" />
-                                            <DataGridTemplateColumn Header="Opérateur" Width="150" MinWidth="145">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <ComboBox ItemsSource="{Binding DataContext.Operators, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding CaseOperator, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                            <DataGridTextColumn Header="Si valeur" Binding="{Binding CaseCompareValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1*" MinWidth="140" />
-                                            <DataGridTextColumn Header="Alors" Binding="{Binding CaseThenValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1*" MinWidth="140" />
-                                            <DataGridTextColumn Header="Sinon" Binding="{Binding CaseElseValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1*" MinWidth="140" />
-                                            <DataGridTemplateColumn Header="Action" Width="330" MinWidth="310">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch">
-                                                            <Button Content="+ Filtre" MinWidth="80" Padding="8,4" Command="{Binding DataContext.AddCustomFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute cette colonne calculée comme filtre." />
-                                                            <Button Content="+ Tri" MinWidth="70" Padding="8,4" Command="{Binding DataContext.AddCustomOrderByCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute cette colonne calculée au ORDER BY." />
-                                                            <Button Content="Retirer" MinWidth="100" Padding="8,4" Command="{Binding DataContext.RemoveCustomColumnCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
-                                                        </StackPanel>
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                        </DataGrid.Columns>
-                                    </DataGrid>
-                                </DockPanel>
-                            </TabItem>
-
-                            <TabItem Header="Sous-requêtes / sauvegarde">
-                                <Grid Margin="4">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="*" />
-                                    </Grid.RowDefinitions>
-
-                                    <Border Grid.Row="0" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="8" Background="#FFFFFF" Padding="8" Margin="4">
-                                        <DockPanel LastChildFill="True">
-                                            <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                                                <TextBlock Text="Nom" FontWeight="SemiBold" VerticalAlignment="Center" Margin="4" />
-                                                <TextBox Width="230" Text="{Binding QueryName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                <TextBlock Text="Description" FontWeight="SemiBold" VerticalAlignment="Center" Margin="14,4,4,4" />
-                                                <TextBox Width="520" MinHeight="60" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Text="{Binding QueryDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" ToolTip="Description métier sauvegardée avec la requête JSON." />
-                                                <Button Content="Sauvegarder requête" Command="{Binding SaveCurrentQueryCommand}" />
-                                                <Button Content="Recharger bibliothèque" Command="{Binding ReloadSavedQueriesCommand}" />
-                                                <Button Content="Charger sélection" Command="{Binding LoadSelectedQueryCommand}" />
-                                                <Button Content="Utiliser comme sous-requête filtrante" Command="{Binding AddSelectedSavedQueryAsSubqueryFilterCommand}" ToolTip="Ajoute la requête sauvegardée sélectionnée comme filtre IN/=/EXISTS. Si une colonne est sélectionnée dans l'arbre de gauche, elle devient la colonne filtrée." />
+                                <TabItem Header="Jointures">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="1.15*" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
+                                        <DockPanel Grid.Row="0" LastChildFill="True">
+                                            <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                                                <TextBlock Text="Relations probables détectées" VerticalAlignment="Center" FontWeight="Bold" Margin="8,4" />
+                                                <Button Content="Ajouter comme jointure" Command="{Binding AddJoinFromRelationshipCommand}" />
+                                                <Button Content="+ Jointure manuelle" Command="{Binding AddManualJoinCommand}" ToolTip="Ajoute une ligne vide modifiable dans les jointures forcées." />
                                             </WrapPanel>
-                                            <TextBlock Text="Sauvegarde locale JSON dans le dossier saved_queries. Les presets peuvent être construits avec l'UI ou être du SQL brut SELECT. Les deux types peuvent être utilisés comme sous-requêtes filtrantes." TextWrapping="Wrap" Foreground="#475569" />
+                                            <Border BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="4" Margin="4">
+                                                <TreeView x:Name="RelationshipsTree"
+                                                      ItemsSource="{Binding RelationshipGroups}"
+                                                      SelectedItemChanged="RelationshipsTree_SelectedItemChanged"
+                                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                                      ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                                    <TreeView.ItemContainerStyle>
+                                                        <Style TargetType="TreeViewItem">
+                                                            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                                                        </Style>
+                                                    </TreeView.ItemContainerStyle>
+                                                    <TreeView.Resources>
+                                                        <HierarchicalDataTemplate DataType="{x:Type vm:RelationshipGroupViewModel}" ItemsSource="{Binding Relationships}">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="🔗 " Margin="0,0,4,0" />
+                                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                                            </StackPanel>
+                                                        </HierarchicalDataTemplate>
+                                                        <DataTemplate DataType="{x:Type vm:RelationshipItemViewModel}">
+                                                            <Grid Margin="0,2,0,2" ToolTip="{Binding Reason}">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="78" />
+                                                                    <ColumnDefinition Width="250" />
+                                                                    <ColumnDefinition Width="30" />
+                                                                    <ColumnDefinition Width="250" />
+                                                                    <ColumnDefinition Width="80" />
+                                                                    <ColumnDefinition Width="92" />
+                                                                    <ColumnDefinition Width="*" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <CheckBox Grid.Column="0" Content="Auto" IsChecked="{Binding IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Décoche pour empêcher cette relation auto-détectée d'être utilisée par le planificateur automatique." />
+                                                                <TextBlock Grid.Column="1" Text="{Binding FromDisplay}" FontWeight="SemiBold" />
+                                                                <TextBlock Grid.Column="2" Text="→" HorizontalAlignment="Center" Foreground="#64748B" />
+                                                                <TextBlock Grid.Column="3" Text="{Binding ToDisplay}" FontWeight="SemiBold" />
+                                                                <TextBlock Grid.Column="4" Text="{Binding Confidence, StringFormat=P0}" Foreground="#166534" FontWeight="SemiBold" />
+                                                                <Button Grid.Column="5"
+                                                                    Content="{Binding UsageText}"
+                                                                    MinWidth="84"
+                                                                    Padding="10,2"
+                                                                    HorizontalAlignment="Left"
+                                                                    Command="{Binding DataContext.AddRelationshipAsJoinCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                    CommandParameter="{Binding}" />
+                                                                <TextBlock Grid.Column="6" Text="{Binding Reason}" Foreground="#475569" TextTrimming="CharacterEllipsis" />
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </TreeView.Resources>
+                                                </TreeView>
+                                            </Border>
                                         </DockPanel>
-                                    </Border>
+                                        <GridSplitter Grid.Row="1" Height="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
+                                        <DockPanel Grid.Row="2" LastChildFill="True">
+                                            <TextBlock DockPanel.Dock="Top" Text="Jointures forcées / manuelles : sélectionne les tables dans les listes, ou glisse une colonne depuis l'arbre vers Colonne gauche / droite. Le drop remplit aussi la table automatiquement." Style="{StaticResource SectionHint}" />
+                                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                                                <ItemsControl ItemsSource="{Binding Joins}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="8" Background="#FFFFFF" Padding="8" Margin="6,4">
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="150" />
+                                                                        <ColumnDefinition Width="230" />
+                                                                        <ColumnDefinition Width="210" />
+                                                                        <ColumnDefinition Width="36" />
+                                                                        <ColumnDefinition Width="230" />
+                                                                        <ColumnDefinition Width="210" />
+                                                                        <ColumnDefinition Width="300" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <Grid.RowDefinitions>
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                    </Grid.RowDefinitions>
 
-                                    <GroupBox Grid.Row="1" Header="Paramètres de la requête / sous-requête" Margin="4">
-                                        <DockPanel LastChildFill="True">
-                                            <Button DockPanel.Dock="Top" HorizontalAlignment="Left" Content="+ Paramètre" Command="{Binding AddParameterCommand}" />
-                                            <DataGrid ItemsSource="{Binding Parameters}" MinHeight="110">
+                                                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Type" FontWeight="SemiBold" Margin="4,0" />
+                                                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="Table gauche" FontWeight="SemiBold" Margin="4,0" />
+                                                                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Colonne gauche" FontWeight="SemiBold" Margin="4,0" />
+                                                                    <TextBlock Grid.Row="0" Grid.Column="4" Text="Table droite" FontWeight="SemiBold" Margin="4,0" />
+                                                                    <TextBlock Grid.Row="0" Grid.Column="5" Text="Colonne droite" FontWeight="SemiBold" Margin="4,0" />
+
+                                                                    <ComboBox Grid.Row="1" Grid.Column="0" ItemsSource="{Binding DataContext.JoinTypes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding JoinType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                                    <ComboBox Grid.Row="1" Grid.Column="1" IsEditable="True" IsTextSearchEnabled="True" ItemsSource="{Binding DataContext.TableNames, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding FromTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" Text="{Binding FromTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" ToolTip="Choisis la table gauche. L'affichage masque le préfixe schema mais la valeur complète est conservée.">
+                                                                        <ComboBox.ItemTemplate>
+                                                                            <DataTemplate>
+                                                                                <TextBlock Text="{Binding Converter={StaticResource TableNameDisplayConverter}}" />
+                                                                            </DataTemplate>
+                                                                        </ComboBox.ItemTemplate>
+                                                                    </ComboBox>
+                                                                    <ComboBox Grid.Row="1" Grid.Column="2" IsEditable="True" IsTextSearchEnabled="True" ItemsSource="{Binding FromColumnCandidates}" Text="{Binding FromColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" SelectedItem="{Binding FromColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinLeftColumn_Drop" ToolTip="Choisis ou glisse la colonne gauche. La table gauche sera remplie automatiquement." />
+
+                                                                    <TextBlock Grid.Row="1" Grid.Column="3" Text="=" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" FontSize="18" Foreground="#475569" />
+
+                                                                    <ComboBox Grid.Row="1" Grid.Column="4" IsEditable="True" IsTextSearchEnabled="True" ItemsSource="{Binding DataContext.TableNames, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding ToTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" Text="{Binding ToTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" ToolTip="Choisis la table droite. L'affichage masque le préfixe schema mais la valeur complète est conservée.">
+                                                                        <ComboBox.ItemTemplate>
+                                                                            <DataTemplate>
+                                                                                <TextBlock Text="{Binding Converter={StaticResource TableNameDisplayConverter}}" />
+                                                                            </DataTemplate>
+                                                                        </ComboBox.ItemTemplate>
+                                                                    </ComboBox>
+                                                                    <ComboBox Grid.Row="1" Grid.Column="5" IsEditable="True" IsTextSearchEnabled="True" ItemsSource="{Binding ToColumnCandidates}" Text="{Binding ToColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" SelectedItem="{Binding ToColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinRightColumn_Drop" ToolTip="Choisis ou glisse la colonne droite. La table droite sera remplie automatiquement." />
+                                                                    <Grid Grid.Row="1" Grid.Column="6" Margin="4,0,0,0">
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="*" />
+                                                                            <ColumnDefinition Width="*" />
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <Button Grid.Column="0" Content="Retirer" HorizontalAlignment="Stretch" MinWidth="130" Padding="10,4" Margin="0,4,4,4" Command="{Binding DataContext.RemoveJoinCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                        <Button Grid.Column="1" Content="+ Colonne" HorizontalAlignment="Stretch" MinWidth="130" Padding="10,4" Margin="4,4,0,4" Command="{Binding DataContext.AddJoinPairCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute une condition supplémentaire à la jointure composite." />
+                                                                    </Grid>
+
+                                                                    <ItemsControl Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="5" ItemsSource="{Binding AdditionalPairs}" Margin="4,8,4,0">
+                                                                        <ItemsControl.ItemTemplate>
+                                                                            <DataTemplate>
+                                                                                <Grid Margin="0,2">
+                                                                                    <Grid.ColumnDefinitions>
+                                                                                        <ColumnDefinition Width="80" />
+                                                                                        <ColumnDefinition Width="210" />
+                                                                                        <ColumnDefinition Width="36" />
+                                                                                        <ColumnDefinition Width="210" />
+                                                                                        <ColumnDefinition Width="120" />
+                                                                                    </Grid.ColumnDefinitions>
+                                                                                    <CheckBox Grid.Column="0" Content="Actif" IsChecked="{Binding Enabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Active/désactive cette colonne de jointure." />
+                                                                                    <TextBox Grid.Column="1" Text="{Binding FromColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinPairLeftColumn_Drop" ToolTip="Glisse ici une colonne supplémentaire côté gauche." />
+                                                                                    <TextBlock Grid.Column="2" Text="=" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" />
+                                                                                    <TextBox Grid.Column="3" Text="{Binding ToColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}" AllowDrop="True" DragOver="Drop_DragOver" Drop="JoinPairRightColumn_Drop" ToolTip="Glisse ici une colonne supplémentaire côté droit." />
+                                                                                    <Button Grid.Column="4" Content="Retirer" MinWidth="105" Command="{Binding DataContext.RemoveJoinPairCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                                </Grid>
+                                                                            </DataTemplate>
+                                                                        </ItemsControl.ItemTemplate>
+                                                                    </ItemsControl>
+                                                                </Grid>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </ScrollViewer>
+                                        </DockPanel>
+                                    </Grid>
+                                </TabItem>
+
+                                <TabItem Header="Groupes / agrégats">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="*" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
+                                        <DockPanel Grid.Row="0" AllowDrop="True" Drop="Group_Drop" DragOver="Drop_DragOver" LastChildFill="True">
+                                            <TextBlock DockPanel.Dock="Top" Text="GROUP BY : dépose les colonnes par lesquelles regrouper." Style="{StaticResource SectionHint}" />
+                                            <DataGrid ItemsSource="{Binding GroupBy}">
                                                 <DataGrid.Columns>
-                                                    <DataGridTextColumn Header="Nom" Binding="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1*" MinWidth="150" />
-                                                    <DataGridTextColumn Header="Type" Binding="{Binding DeclaredType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="0.9*" MinWidth="120" />
-                                                    <DataGridTextColumn Header="Description" Binding="{Binding Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="260" />
-                                                    <DataGridTextColumn Header="Valeur par défaut" Binding="{Binding DefaultValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.2*" MinWidth="180" />
-                                                    <DataGridCheckBoxColumn Header="Obligatoire" Binding="{Binding Required, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="120" />
-                                                    <DataGridTemplateColumn Header="Action" Width="160" MinWidth="150">
+                                                    <DataGridTextColumn Header="Table" Binding="{Binding TableDisplayName}" IsReadOnly="True" Width="2*" MinWidth="260" />
+                                                    <DataGridTextColumn Header="Colonne" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="260" />
+                                                    <DataGridTemplateColumn Header="Action" Width="190" MinWidth="170">
                                                         <DataGridTemplateColumn.CellTemplate>
                                                             <DataTemplate>
-                                                                <Button Content="Retirer" MinWidth="120" Command="{Binding DataContext.RemoveParameterCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveGroupByCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                             </DataTemplate>
                                                         </DataGridTemplateColumn.CellTemplate>
                                                     </DataGridTemplateColumn>
                                                 </DataGrid.Columns>
                                             </DataGrid>
                                         </DockPanel>
-                                    </GroupBox>
+                                        <GridSplitter Grid.Row="1" Height="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
+                                        <DockPanel Grid.Row="2" AllowDrop="True" Drop="Aggregate_Drop" DragOver="Drop_DragOver" LastChildFill="True">
+                                            <StackPanel DockPanel.Dock="Top">
+                                                <TextBlock Text="Agrégats : COUNT, SUM, AVG, MIN, MAX. Dépose une colonne cible puis choisis la fonction." Style="{StaticResource SectionHint}" />
+                                                <TextBlock Text="Option conditionnelle : renseigne une colonne de condition pour générer COUNT/SUM/AVG ... uniquement pour les lignes qui respectent la condition, sans sous-requête." Style="{StaticResource SectionHint}" />
+                                            </StackPanel>
+                                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                                <ItemsControl ItemsSource="{Binding Aggregates}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="8" Background="#FFFFFF" Padding="10" Margin="6">
+                                                                <StackPanel>
+                                                                    <WrapPanel>
+                                                                        <TextBlock Text="Fonction" VerticalAlignment="Center" FontWeight="SemiBold" Margin="4" />
+                                                                        <ComboBox Width="130" ItemsSource="{Binding DataContext.AggregateFunctions, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Function, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
+                                                                        <TextBlock Text="Table cible" VerticalAlignment="Center" FontWeight="SemiBold" Margin="12,4,4,4" />
+                                                                        <TextBox Width="190" Text="{Binding Table, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Table de la colonne à compter/sommer/moyenner." />
 
-                                    <GroupBox Grid.Row="2" Header="Bibliothèque de requêtes sauvegardées" Margin="4">
-                                        <DataGrid ItemsSource="{Binding SavedQueries}" SelectedItem="{Binding SelectedSavedQuery, Mode=TwoWay}">
+                                                                        <TextBlock Text="Colonne cible" VerticalAlignment="Center" FontWeight="SemiBold" Margin="12,4,4,4" />
+                                                                        <TextBox Width="190" Text="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Colonne cible. Pour COUNT, elle peut être un identifiant de paiement. Pour SUM/AVG, choisis une colonne numérique." />
+
+                                                                        <CheckBox Content="Distinct" IsChecked="{Binding Distinct, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="COUNT(DISTINCT ...), SUM(DISTINCT ...), etc." />
+
+                                                                        <TextBlock Text="Alias" VerticalAlignment="Center" FontWeight="SemiBold" Margin="12,4,4,4" />
+                                                                        <TextBox Width="210" Text="{Binding Alias, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Nom de la colonne générée, ex: nb_paiements_cb, total_paye." />
+
+                                                                        <Button Content="+ Filtre" MinWidth="95" Padding="10,4" Command="{Binding DataContext.AddAggregateFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute cet agrégat comme filtre HAVING." />
+                                                                        <Button Content="+ Tri" MinWidth="85" Padding="10,4" Command="{Binding DataContext.AddAggregateOrderByCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute cet agrégat au ORDER BY." />
+                                                                        <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveAggregateCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                    </WrapPanel>
+
+                                                                    <Border BorderBrush="#E5E7EB" BorderThickness="1,0,0,0" Margin="4,8,4,0" Padding="8,6,0,0">
+                                                                        <StackPanel>
+                                                                            <TextBlock Text="Condition optionnelle de l'agrégat : ex. mode_reglement = CB ou statut = PAYE. Vide = agrégat normal." Foreground="#374151" FontWeight="Normal" Margin="0,0,0,4" />
+                                                                            <WrapPanel>
+                                                                                <TextBlock Text="Table condition" VerticalAlignment="Center" FontWeight="SemiBold" Margin="4" />
+                                                                                <TextBox Width="190" Text="{Binding ConditionTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                                                                <TextBlock Text="Colonne condition" VerticalAlignment="Center" FontWeight="SemiBold" Margin="12,4,4,4" />
+                                                                                <TextBox Width="190" Text="{Binding ConditionColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                                                                <TextBlock Text="Opérateur" VerticalAlignment="Center" FontWeight="SemiBold" Margin="12,4,4,4" />
+                                                                                <ComboBox Width="145" ItemsSource="{Binding DataContext.Operators, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding ConditionOperator, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                                                                <TextBlock Text="Valeur" VerticalAlignment="Center" FontWeight="SemiBold" Margin="12,4,4,4" />
+                                                                                <TextBox Width="190" Text="{Binding ConditionValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Ex: CB, PAYE, 2024-01-01. Les quotes SQL sont ajoutées automatiquement." />
+
+                                                                                <TextBlock Text="Valeur 2" VerticalAlignment="Center" FontWeight="SemiBold" Margin="12,4,4,4" />
+                                                                                <TextBox Width="170" Text="{Binding ConditionSecondValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Utilisé pour BETWEEN." />
+                                                                            </WrapPanel>
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </ScrollViewer>
+                                        </DockPanel>
+                                    </Grid>
+                                </TabItem>
+
+                                <TabItem Header="Tri">
+                                    <DockPanel AllowDrop="True" Drop="Order_Drop" DragOver="Drop_DragOver" LastChildFill="True">
+                                        <TextBlock DockPanel.Dock="Top" Text="ORDER BY : dépose une colonne normale, ou ajoute un agrégat / une colonne calculée depuis leurs onglets. Les tris sur alias restent lisibles." Style="{StaticResource SectionHint}" />
+                                        <DataGrid ItemsSource="{Binding OrderBy}">
                                             <DataGrid.Columns>
-                                                <DataGridTextColumn Header="Type" Binding="{Binding Kind}" Width="110" MinWidth="100" />
-                                                <DataGridTextColumn Header="Nom" Binding="{Binding Name}" Width="1.4*" MinWidth="180" />
-                                                <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="2.5*" MinWidth="300" />
-                                                <DataGridTextColumn Header="Base" Binding="{Binding BaseTableDisplayName}" Width="1*" MinWidth="140" />
-                                                <DataGridTextColumn Header="Params" Binding="{Binding Parameters}" Width="1.6*" MinWidth="220" />
-                                                <DataGridTextColumn Header="Nb champs" Binding="{Binding SelectCount}" Width="100" />
+                                                <DataGridTextColumn Header="Type" Binding="{Binding FieldKind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="0.9*" MinWidth="130" />
+                                                <DataGridTextColumn Header="Table / source" Binding="{Binding TableDisplayName}" IsReadOnly="True" Width="1.5*" MinWidth="210" />
+                                                <DataGridTextColumn Header="Colonne / alias" Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.8*" MinWidth="250" />
+                                                <DataGridTemplateColumn Header="Sens" Width="160" MinWidth="150">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <ComboBox ItemsSource="{Binding DataContext.SortDirections, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Direction, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTemplateColumn Header="Action" Width="190" MinWidth="170">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <Button Content="Retirer" HorizontalAlignment="Stretch" MinWidth="145" Padding="12,4" Command="{Binding DataContext.RemoveOrderByCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
                                             </DataGrid.Columns>
                                         </DataGrid>
-                                    </GroupBox>
-                                </Grid>
-                            </TabItem>
+                                    </DockPanel>
+                                </TabItem>
 
-                            <TabItem Header="Rétro-ingénierie SQL">
-                                <Grid Margin="8">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="1.6*" MinHeight="210" />
-                                        <RowDefinition Height="8" />
-                                        <RowDefinition Height="*" MinHeight="180" />
-                                    </Grid.RowDefinitions>
+                                <TabItem Header="Colonnes calculées">
+                                    <DockPanel AllowDrop="True" Drop="CustomCase_Drop" DragOver="Drop_DragOver" LastChildFill="True">
+                                        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                                            <TextBlock Text="CASE WHEN ou expression SELECT contrôlée. Dépose une colonne pour créer un CASE." VerticalAlignment="Center" Margin="8,4" FontWeight="Normal" />
+                                            <Button Content="Ajouter colonne personnalisée" Command="{Binding AddEmptyCustomColumnCommand}" />
+                                        </WrapPanel>
+                                        <DataGrid ItemsSource="{Binding CustomColumns}">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Alias" Binding="{Binding Alias, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.2*" MinWidth="160" />
+                                                <DataGridTextColumn Header="Expression brute" Binding="{Binding RawExpression, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2.2*" MinWidth="300" />
+                                                <DataGridTextColumn Header="Table CASE" Binding="{Binding CaseTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.4*" MinWidth="180" />
+                                                <DataGridTextColumn Header="Colonne CASE" Binding="{Binding CaseColumn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.4*" MinWidth="180" />
+                                                <DataGridTemplateColumn Header="Opérateur" Width="150" MinWidth="145">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <ComboBox ItemsSource="{Binding DataContext.Operators, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding CaseOperator, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTextColumn Header="Si valeur" Binding="{Binding CaseCompareValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1*" MinWidth="140" />
+                                                <DataGridTextColumn Header="Alors" Binding="{Binding CaseThenValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1*" MinWidth="140" />
+                                                <DataGridTextColumn Header="Sinon" Binding="{Binding CaseElseValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1*" MinWidth="140" />
+                                                <DataGridTemplateColumn Header="Action" Width="330" MinWidth="310">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch">
+                                                                <Button Content="+ Filtre" MinWidth="80" Padding="8,4" Command="{Binding DataContext.AddCustomFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute cette colonne calculée comme filtre." />
+                                                                <Button Content="+ Tri" MinWidth="70" Padding="8,4" Command="{Binding DataContext.AddCustomOrderByCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" ToolTip="Ajoute cette colonne calculée au ORDER BY." />
+                                                                <Button Content="Retirer" MinWidth="100" Padding="8,4" Command="{Binding DataContext.RemoveCustomColumnCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </DockPanel>
+                                </TabItem>
 
-                                    <TextBlock Grid.Row="0"
+                                <TabItem Header="Sous-requêtes / sauvegarde">
+                                    <Grid Margin="4">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
+
+                                        <Border Grid.Row="0" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="8" Background="#FFFFFF" Padding="8" Margin="4">
+                                            <DockPanel LastChildFill="True">
+                                                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                                    <TextBlock Text="Nom" FontWeight="SemiBold" VerticalAlignment="Center" Margin="4" />
+                                                    <TextBox Width="230" Text="{Binding QueryName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBlock Text="Description" FontWeight="SemiBold" VerticalAlignment="Center" Margin="14,4,4,4" />
+                                                    <TextBox Width="520" MinHeight="60" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Text="{Binding QueryDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" ToolTip="Description métier sauvegardée avec la requête JSON." />
+                                                    <Button Content="Sauvegarder requête" Command="{Binding SaveCurrentQueryCommand}" />
+                                                    <Button Content="Recharger bibliothèque" Command="{Binding ReloadSavedQueriesCommand}" />
+                                                    <Button Content="Charger sélection" Command="{Binding LoadSelectedQueryCommand}" />
+                                                    <Button Content="Utiliser comme sous-requête filtrante" Command="{Binding AddSelectedSavedQueryAsSubqueryFilterCommand}" ToolTip="Ajoute la requête sauvegardée sélectionnée comme filtre IN/=/EXISTS. Si une colonne est sélectionnée dans l'arbre de gauche, elle devient la colonne filtrée." />
+                                                </WrapPanel>
+                                                <TextBlock Text="Sauvegarde locale JSON dans le dossier saved_queries. Les presets peuvent être construits avec l'UI ou être du SQL brut SELECT. Les deux types peuvent être utilisés comme sous-requêtes filtrantes." TextWrapping="Wrap" Foreground="#475569" />
+                                            </DockPanel>
+                                        </Border>
+
+                                        <GroupBox Grid.Row="1" Header="Paramètres de la requête / sous-requête" Margin="4">
+                                            <DockPanel LastChildFill="True">
+                                                <Button DockPanel.Dock="Top" HorizontalAlignment="Left" Content="+ Paramètre" Command="{Binding AddParameterCommand}" />
+                                                <DataGrid ItemsSource="{Binding Parameters}" MinHeight="110">
+                                                    <DataGrid.Columns>
+                                                        <DataGridTextColumn Header="Nom" Binding="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1*" MinWidth="150" />
+                                                        <DataGridTextColumn Header="Type" Binding="{Binding DeclaredType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="0.9*" MinWidth="120" />
+                                                        <DataGridTextColumn Header="Description" Binding="{Binding Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*" MinWidth="260" />
+                                                        <DataGridTextColumn Header="Valeur par défaut" Binding="{Binding DefaultValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="1.2*" MinWidth="180" />
+                                                        <DataGridCheckBoxColumn Header="Obligatoire" Binding="{Binding Required, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="120" />
+                                                        <DataGridTemplateColumn Header="Action" Width="160" MinWidth="150">
+                                                            <DataGridTemplateColumn.CellTemplate>
+                                                                <DataTemplate>
+                                                                    <Button Content="Retirer" MinWidth="120" Command="{Binding DataContext.RemoveParameterCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                </DataTemplate>
+                                                            </DataGridTemplateColumn.CellTemplate>
+                                                        </DataGridTemplateColumn>
+                                                    </DataGrid.Columns>
+                                                </DataGrid>
+                                            </DockPanel>
+                                        </GroupBox>
+
+
+                                        <GroupBox Grid.Row="2" Header="Bibliothèque de requêtes sauvegardées" Margin="4">
+                                            <DataGrid ItemsSource="{Binding SavedQueries}" SelectedItem="{Binding SelectedSavedQuery, Mode=TwoWay}">
+                                                <DataGrid.Columns>
+                                                    <DataGridTextColumn Header="Type" Binding="{Binding Kind}" Width="110" MinWidth="100" />
+                                                    <DataGridTextColumn Header="Nom" Binding="{Binding Name}" Width="1.4*" MinWidth="180" />
+                                                    <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="2.5*" MinWidth="300" />
+                                                    <DataGridTextColumn Header="Base" Binding="{Binding BaseTableDisplayName}" Width="1*" MinWidth="140" />
+                                                    <DataGridTextColumn Header="Params" Binding="{Binding Parameters}" Width="1.6*" MinWidth="220" />
+                                                    <DataGridTextColumn Header="Nb champs" Binding="{Binding SelectCount}" Width="100" />
+                                                </DataGrid.Columns>
+                                            </DataGrid>
+                                        </GroupBox>
+                                    </Grid>
+                                </TabItem>
+
+                                <TabItem Header="Rétro-ingénierie SQL">
+                                    <Grid Margin="8">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="1.6*" MinHeight="210" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="*" MinHeight="180" />
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Grid.Row="0"
                                                Text="Charge un SELECT existant, réécris-le de manière conservatrice ou importe-le dans le constructeur visuel pour continuer l'édition."
                                                Style="{StaticResource SectionHint}" />
-                                    <WrapPanel Grid.Row="1" Margin="0,0,0,6">
-                                        <TextBlock Text="Profil source" VerticalAlignment="Center" Margin="8,4,4,4" FontWeight="SemiBold" />
-                                        <ComboBox Width="170" ItemsSource="{Binding SourceSqlDialects}" SelectedItem="{Binding SourceSqlDialect, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Profil de dialecte utilisé pendant la rétro-ingénierie et la réécriture." />
-                                        <Button Content="Importer fichier SQL brut" Click="OpenRawSql_Click" ToolTip="Charge un fichier .sql/.txt dans l'éditeur SQL brut." />
-                                        <Button Content="Depuis SQL généré" Command="{Binding UseGeneratedSqlAsRawInputCommand}" ToolTip="Copie la requête générée actuelle dans l'éditeur SQL brut." />
-                                        <Button Content="Sauvegarder SQL brut" Command="{Binding SaveRawSqlPresetCommand}" ToolTip="Sauvegarde le SQL brut comme preset réutilisable en sous-requête." />
-                                        <Button Content="Charger SQL brut sélectionné" Command="{Binding LoadSelectedRawSqlCommand}" ToolTip="Charge le preset sélectionné dans l'éditeur SQL brut." />
-                                        <Button Content="Réécrire SQL" Command="{Binding RewriteRawSqlCommand}" ToolTip="Génère une version modernisée du SQL brut sans modifier l'éditeur, avec jointures explicites et dédoublonnage conservateur." />
-                                        <Button Content="Charger dans le constructeur" Command="{Binding ReverseEngineerRawSqlCommand}" ToolTip="Analyse le SELECT collé, remplit le constructeur visuel et permet de continuer l'édition dans les onglets SELECT/JOIN/WHERE/GROUP BY/HAVING/ORDER BY." />
-                                    </WrapPanel>
-                                     <TextBox Grid.Row="2"
+                                        <WrapPanel Grid.Row="1" Margin="0,0,0,6">
+                                            <TextBlock Text="Profil source" VerticalAlignment="Center" Margin="8,4,4,4" FontWeight="SemiBold" />
+                                            <ComboBox Width="170" ItemsSource="{Binding SourceSqlDialects}" SelectedItem="{Binding SourceSqlDialect, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Profil de dialecte utilisé pendant la rétro-ingénierie et la réécriture." />
+                                            <Button Content="Importer fichier SQL brut" Click="OpenRawSql_Click" ToolTip="Charge un fichier .sql/.txt dans l'éditeur SQL brut." />
+                                            <Button Content="Depuis SQL généré" Command="{Binding UseGeneratedSqlAsRawInputCommand}" ToolTip="Copie la requête générée actuelle dans l'éditeur SQL brut." />
+                                            <Button Content="Sauvegarder SQL brut" Command="{Binding SaveRawSqlPresetCommand}" ToolTip="Sauvegarde le SQL brut comme preset réutilisable en sous-requête." />
+                                            <Button Content="Charger SQL brut sélectionné" Command="{Binding LoadSelectedRawSqlCommand}" ToolTip="Charge le preset sélectionné dans l'éditeur SQL brut." />
+                                            <Button Content="Réécrire SQL" Command="{Binding RewriteRawSqlCommand}" ToolTip="Génère une version modernisée du SQL brut sans modifier l'éditeur, avec jointures explicites et dédoublonnage conservateur." />
+                                            <Button Content="Charger dans le constructeur" Command="{Binding ReverseEngineerRawSqlCommand}" ToolTip="Analyse le SELECT collé, remplit le constructeur visuel et permet de continuer l'édition dans les onglets SELECT/JOIN/WHERE/GROUP BY/HAVING/ORDER BY." />
+                                        </WrapPanel>
+                                        <TextBox Grid.Row="2"
                                               x:Name="RawSqlEditorTextBox"
                                               Text="{Binding RawSqlText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=350}"
                                               FontFamily="Consolas"
@@ -745,68 +762,68 @@
                                               HorizontalScrollBarVisibility="Auto"
                                               TextWrapping="NoWrap"
                                               ToolTip="Colle ici un SELECT existant. Il peut être sauvegardé tel quel, réécrit en SQL plus moderne ou rechargé dans le constructeur visuel." />
-                                    <GridSplitter Grid.Row="3" Height="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
+                                        <GridSplitter Grid.Row="3" Height="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
 
-                                    <Grid Grid.Row="4" Margin="6">
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="*" />
-                                        </Grid.RowDefinitions>
+                                        <Grid Grid.Row="4" Margin="6">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="*" />
+                                            </Grid.RowDefinitions>
 
-                                        <Border Grid.Row="0" Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
-                                            <StackPanel>
-                                                <TextBlock Text="{Binding SqlComparisonSummary}" FontWeight="SemiBold" Foreground="#0F172A" TextWrapping="Wrap" />
-                                                <TextBlock Margin="0,6,0,0" Foreground="#475569" TextWrapping="Wrap">
+                                            <Border Grid.Row="0" Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding SqlComparisonSummary}" FontWeight="SemiBold" Foreground="#0F172A" TextWrapping="Wrap" />
+                                                    <TextBlock Margin="0,6,0,0" Foreground="#475569" TextWrapping="Wrap">
                                                     <Run Text="Lecture : " />
                                                     <Run Text="{Binding SqlComparisonSourceLabel}" FontWeight="SemiBold" />
                                                     <Run Text=" à gauche, " />
                                                     <Run Text="{Binding SqlComparisonTargetLabel}" FontWeight="SemiBold" />
                                                     <Run Text=" à droite." />
-                                                </TextBlock>
-                                                <TextBlock Margin="0,6,0,0"
+                                                    </TextBlock>
+                                                    <TextBlock Margin="0,6,0,0"
                                                            Foreground="#475569"
                                                            TextWrapping="Wrap"
                                                            Text="Les diagnostics détaillés de rétro-ingénierie restent visibles dans la colonne de droite, onglet Reverse SQL." />
-                                            </StackPanel>
-                                        </Border>
+                                                </StackPanel>
+                                            </Border>
 
-                                        <WrapPanel Grid.Row="1" Margin="0,0,0,8">
-                                            <Button Content="Brut / Réécrit"
+                                            <WrapPanel Grid.Row="1" Margin="0,0,0,8">
+                                                <Button Content="Brut / Réécrit"
                                                     Command="{Binding CompareRawVsRewrittenSqlCommand}"
                                                     ToolTip="Compare le SQL brut courant à la dernière version réécrite." />
-                                            <Button Content="Brut / Constructeur"
+                                                <Button Content="Brut / Constructeur"
                                                     Command="{Binding CompareRawVsBuilderSqlCommand}"
                                                     ToolTip="Compare le SQL brut courant au SQL régénéré depuis le constructeur visuel." />
-                                            <Button Content="Réécrit / Constructeur"
+                                                <Button Content="Réécrit / Constructeur"
                                                     Command="{Binding CompareRewrittenVsBuilderSqlCommand}"
                                                     ToolTip="Compare la dernière réécriture SQL au SQL régénéré depuis le constructeur visuel." />
-                                            <CheckBox Content="Ignorer espaces"
+                                                <CheckBox Content="Ignorer espaces"
                                                       IsChecked="{Binding IgnoreSqlComparisonWhitespaceChanges, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                       Margin="14,4,0,4"
                                                       VerticalAlignment="Center" />
-                                            <CheckBox Content="Ignorer casse"
+                                                <CheckBox Content="Ignorer casse"
                                                       IsChecked="{Binding IgnoreSqlComparisonCaseChanges, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                       Margin="8,4,0,4"
                                                       VerticalAlignment="Center" />
-                                        </WrapPanel>
+                                            </WrapPanel>
 
-                                        <DataGrid Grid.Row="2" ItemsSource="{Binding SqlComparisonLines}" IsReadOnly="True">
-                                            <DataGrid.Columns>
-                                                <DataGridTextColumn Header="Δ" Binding="{Binding KindLabel}" Width="52" />
-                                                <DataGridTextColumn Header="Source #" Binding="{Binding SourceLineNumber}" Width="78" />
-                                                <DataGridTextColumn Header="SQL source" Binding="{Binding SourceText}" Width="2.3*" MinWidth="280" />
-                                                <DataGridTextColumn Header="Résultat #" Binding="{Binding TargetLineNumber}" Width="82" />
-                                                <DataGridTextColumn Header="SQL résultat" Binding="{Binding TargetText}" Width="2.3*" MinWidth="280" />
-                                            </DataGrid.Columns>
-                                        </DataGrid>
+                                            <DataGrid Grid.Row="2" ItemsSource="{Binding SqlComparisonLines}" IsReadOnly="True">
+                                                <DataGrid.Columns>
+                                                    <DataGridTextColumn Header="Δ" Binding="{Binding KindLabel}" Width="52" />
+                                                    <DataGridTextColumn Header="Source #" Binding="{Binding SourceLineNumber}" Width="78" />
+                                                    <DataGridTextColumn Header="SQL source" Binding="{Binding SourceText}" Width="2.3*" MinWidth="280" />
+                                                    <DataGridTextColumn Header="Résultat #" Binding="{Binding TargetLineNumber}" Width="82" />
+                                                    <DataGridTextColumn Header="SQL résultat" Binding="{Binding TargetText}" Width="2.3*" MinWidth="280" />
+                                                </DataGrid.Columns>
+                                            </DataGrid>
+                                        </Grid>
                                     </Grid>
-                                </Grid>
-                            </TabItem>
-                        </TabControl>
-                    </Grid>
-                </GroupBox>
-            </Grid>
+                                </TabItem>
+                            </TabControl>
+                        </Grid>
+                    </GroupBox>
+                </Grid>
 
                 <GridSplitter Grid.Row="1" Height="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
 

@@ -521,6 +521,96 @@ GROUP BY REGION;
     }
 
     [Fact]
+    public void Generate_OracleSelectedColumnNotNull_UsesNvl()
+    {
+        const string sql = @"CREATE TABLE CUSTOMER (NAME VARCHAR2(100));";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+
+        QueryDefinition query = new() { BaseTable = "CUSTOMER" };
+        query.SelectedColumns.Add(new ColumnReference
+        {
+            Table = "CUSTOMER",
+            Column = "NAME",
+            NullAllowed = false
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(
+            query,
+            schema,
+            new SqlGeneratorOptions { Dialect = SqlDialect.Oracle });
+
+        Assert.Contains("NVL(CUSTOMER.NAME, '') AS NAME", result.Sql);
+    }
+
+    [Fact]
+    public void Generate_SQLiteSelectedColumnNotNull_UsesCoalesce()
+    {
+        const string sql = @"CREATE TABLE CUSTOMER (NAME TEXT);";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+
+        QueryDefinition query = new() { BaseTable = "CUSTOMER" };
+        query.SelectedColumns.Add(new ColumnReference
+        {
+            Table = "CUSTOMER",
+            Column = "NAME",
+            NullAllowed = false
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(
+            query,
+            schema,
+            new SqlGeneratorOptions { Dialect = SqlDialect.SQLite });
+
+        Assert.Contains("COALESCE(CUSTOMER.NAME, '') AS NAME", result.Sql);
+    }
+
+    [Fact]
+    public void Generate_OracleIntegerFixedLength_LeftPadsWithZeroes()
+    {
+        const string sql = @"CREATE TABLE CUSTOMER (CUSTOMER_ID INTEGER);";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+
+        QueryDefinition query = new() { BaseTable = "CUSTOMER" };
+        query.SelectedColumns.Add(new ColumnReference
+        {
+            Table = "CUSTOMER",
+            Column = "CUSTOMER_ID",
+            UseFixedLength = true,
+            FixedLength = 6
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(
+            query,
+            schema,
+            new SqlGeneratorOptions { Dialect = SqlDialect.Oracle });
+
+        Assert.Contains("SUBSTR(LPAD(TO_CHAR(NVL(CUSTOMER.CUSTOMER_ID, 0)), 6, '0'), 1, 6) AS CUSTOMER_ID", result.Sql);
+    }
+
+    [Fact]
+    public void Generate_OracleTextFixedLength_RightPadsWithSpaces()
+    {
+        const string sql = @"CREATE TABLE CUSTOMER (NAME VARCHAR2(100));";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+
+        QueryDefinition query = new() { BaseTable = "CUSTOMER" };
+        query.SelectedColumns.Add(new ColumnReference
+        {
+            Table = "CUSTOMER",
+            Column = "NAME",
+            UseFixedLength = true,
+            FixedLength = 10
+        });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(
+            query,
+            schema,
+            new SqlGeneratorOptions { Dialect = SqlDialect.Oracle });
+
+        Assert.Contains("SUBSTR(RPAD(TO_CHAR(NVL(CUSTOMER.NAME, '')), 10, ' '), 1, 10) AS NAME", result.Sql);
+    }
+
+    [Fact]
     public void BuildCreateMaterializedViewCommand_Oracle_WrapsCurrentQuery()
     {
         string ddl = new DdlCommandExportService().BuildCreateMaterializedViewCommand(

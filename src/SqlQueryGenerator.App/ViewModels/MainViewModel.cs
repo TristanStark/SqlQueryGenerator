@@ -286,6 +286,9 @@ public sealed class MainViewModel : ObservableObject
         AddAggregateFilterCommand = new RelayCommand(obj => AddAggregateToFilter(obj as AggregateRowViewModel));
         AddAggregateOrderByCommand = new RelayCommand(obj => AddAggregateToOrderBy(obj as AggregateRowViewModel));
         AddCustomFilterCommand = new RelayCommand(obj => AddCustomColumnToFilter(obj as CustomColumnRowViewModel));
+        OpenSelectedColumnPropertiesCommand = new RelayCommand(
+            obj => OpenSelectedColumnProperties(obj as SelectColumnRowViewModel),
+            obj => obj is SelectColumnRowViewModel);
         AddCustomOrderByCommand = new RelayCommand(obj => AddCustomColumnToOrderBy(obj as CustomColumnRowViewModel));
         AddParameterCommand = new RelayCommand(() => Parameters.Add(new QueryParameterRowViewModel
         {
@@ -449,6 +452,13 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de GenerateCommand.</value>
     public RelayCommand GenerateCommand { get; }
+
+    /// <summary>
+    /// Opens the selected-column output properties popup.
+    /// </summary>
+    /// <value>Command bound to the selected columns grid context menu.</value>
+    public RelayCommand OpenSelectedColumnPropertiesCommand { get; }
+
     /// <summary>
     /// Stocke la valeur interne UndoCommand.
     /// </summary>
@@ -1000,6 +1010,27 @@ public sealed class MainViewModel : ObservableObject
             }
         }
     }
+
+    /// <summary>
+    /// Opens the output properties popup for a selected column row.
+    /// </summary>
+    /// <param name="column">Selected column row to edit.</param>
+    private void OpenSelectedColumnProperties(SelectColumnRowViewModel? column)
+    {
+        if (column is null)
+        {
+            return;
+        }
+
+        SelectedColumnPropertiesWindow window = new(column)
+        {
+            Owner = Application.Current.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive)
+        };
+
+        window.ShowDialog();
+        GenerateSql();
+    }
+
 
     /// <summary>
     /// Loads a raw SQL SELECT file into the raw SQL editor for saving or reverse engineering.
@@ -1915,7 +1946,15 @@ public sealed class MainViewModel : ObservableObject
 
         foreach (SelectColumnRowViewModel row in SelectedColumns)
         {
-            query.SelectedColumns.Add(new ColumnReference { Table = row.Table, Column = row.Column, Alias = BlankToNull(row.Alias) });
+            query.SelectedColumns.Add(new ColumnReference
+            {
+                Table = row.Table,
+                Column = row.Column,
+                Alias = BlankToNull(row.Alias),
+                NullAllowed = row.NullAllowed,
+                UseFixedLength = row.UseFixedLength,
+                FixedLength = row.FixedLength
+            });
         }
 
         foreach (FilterRowViewModel row in Filters)
@@ -2961,7 +3000,19 @@ public sealed class MainViewModel : ObservableObject
                 _tableAliases[alias.Table] = alias.Alias;
             }
 
-            foreach (ColumnReference c in query.SelectedColumns) SelectedColumns.Add(new SelectColumnRowViewModel { Table = c.Table, Column = c.Column, Alias = c.Alias ?? string.Empty });
+            foreach (ColumnReference c in query.SelectedColumns)
+            {
+                SelectedColumns.Add(new SelectColumnRowViewModel
+                {
+                    Table = c.Table,
+                    Column = c.Column,
+                    Alias = c.Alias ?? string.Empty,
+                    NullAllowed = c.NullAllowed,
+                    UseFixedLength = c.UseFixedLength,
+                    FixedLength = c.FixedLength
+                });
+            }
+
             foreach (FilterCondition f in query.Filters)
             {
                 Filters.Add(new FilterRowViewModel
