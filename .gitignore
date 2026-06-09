@@ -6,3 +6,4 @@ TestResults/
 *.suo
 *.nupkg
 /AGENTS.md
+/.serena

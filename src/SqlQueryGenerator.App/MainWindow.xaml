@@ -320,7 +320,140 @@
                                         </DataGrid>
                                     </DockPanel>
                                 </TabItem>
+                                <TabItem Header="Sortie fixed-width">
+                                    <Grid Margin="4">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="1.1*" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
 
+                                        <Border Grid.Row="0"
+                BorderBrush="#CBD5E1"
+                BorderThickness="1"
+                CornerRadius="8"
+                Background="#FFFFFF"
+                Padding="8"
+                Margin="0,0,0,8">
+                                            <StackPanel>
+                                                <TextBlock Text="Profils de sortie"
+                           FontWeight="Bold"
+                           Margin="0,0,0,6" />
+
+                                                <WrapPanel>
+                                                    <TextBlock Text="Nom"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold"
+                               Margin="4" />
+                                                    <TextBox Width="220"
+                             Text="{Binding OutputProfileName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Nom du profil de sortie à sauvegarder." />
+
+                                                    <TextBlock Text="Description"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold"
+                               Margin="12,4,4,4" />
+                                                    <TextBox Width="360"
+                             Text="{Binding OutputProfileDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Description métier ou technique du profil." />
+
+                                                    <Button Content="Sauvegarder profil"
+                            Command="{Binding SaveOutputProfileCommand}"
+                            Margin="12,0,0,0" />
+
+                                                    <Button Content="Recharger"
+                            Command="{Binding ReloadOutputProfilesCommand}"
+                            Margin="6,0,0,0" />
+                                                </WrapPanel>
+
+                                                <WrapPanel Margin="0,8,0,0">
+                                                    <TextBlock Text="Profil existant"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold"
+                               Margin="4" />
+                                                    <ComboBox Width="320"
+                              ItemsSource="{Binding OutputProfiles}"
+                              SelectedItem="{Binding SelectedOutputProfile, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              DisplayMemberPath="Name" />
+
+                                                    <Button Content="Appliquer au SELECT"
+                            Command="{Binding ApplySelectedOutputProfileCommand}"
+                            Margin="12,0,0,0"
+                            ToolTip="Applique les propriétés du profil aux colonnes sélectionnées qui correspondent." />
+
+                                                    <Button Content="Supprimer profil"
+                            Command="{Binding DeleteSelectedOutputProfileCommand}"
+                            Margin="6,0,0,0" />
+
+                                                    <Button Content="Générer spec"
+                            Command="{Binding GenerateFixedWidthSpecCommand}"
+                            Margin="18,0,0,0" />
+
+                                                    <Button Content="Copier spec"
+                            Command="{Binding CopyFixedWidthSpecCommand}"
+                            Margin="6,0,0,0" />
+                                                </WrapPanel>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <DataGrid Grid.Row="1"
+                  ItemsSource="{Binding SelectedColumns}"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  Margin="0,0,0,8"
+                                                  AlternationCount="10000">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Ordre"
+                                    Binding="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=AlternationIndex}"
+                                    Width="70"
+                                    IsReadOnly="True" />
+                                                <DataGridTextColumn Header="Table"
+                                    Binding="{Binding TableDisplayName}"
+                                    IsReadOnly="True"
+                                    Width="1.7*"
+                                    MinWidth="180" />
+                                                <DataGridTextColumn Header="Colonne"
+                                    Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    Width="1.5*"
+                                    MinWidth="160" />
+                                                <DataGridTextColumn Header="Alias sortie"
+                                    Binding="{Binding Alias, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    Width="1.5*"
+                                    MinWidth="160" />
+                                                <DataGridCheckBoxColumn Header="Null allowed"
+                                        Binding="{Binding NullAllowed, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        Width="110" />
+                                                <DataGridCheckBoxColumn Header="FIXED"
+                                        Binding="{Binding UseFixedLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        Width="80" />
+                                                <DataGridTextColumn Header="Longueur"
+                                    Binding="{Binding FixedLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, TargetNullValue=''}"
+                                    Width="100" />
+                                                <DataGridTextColumn Header="Résumé"
+                                    Binding="{Binding OutputPropertiesSummary}"
+                                    Width="160"
+                                    IsReadOnly="True" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+
+                                        <GridSplitter Grid.Row="2"
+                      Height="8"
+                      HorizontalAlignment="Stretch"
+                      Background="#CBD5E1" />
+
+                                        <TextBox Grid.Row="3"
+                 Text="{Binding FixedWidthSpecMarkdown, Mode=OneWay}"
+                 FontFamily="Consolas"
+                 FontSize="13"
+                 AcceptsReturn="True"
+                 AcceptsTab="True"
+                 IsReadOnly="True"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Auto"
+                 TextWrapping="NoWrap" />
+                                    </Grid>
+                                </TabItem>
                                 <TabItem Header="Filtres">
                                     <DockPanel AllowDrop="True" Drop="Filter_Drop" DragOver="Drop_DragOver" LastChildFill="True">
                                         <TextBlock DockPanel.Dock="Top" Text="WHERE / HAVING : dépose une colonne normale, ou ajoute un agrégat / une colonne calculée depuis leurs onglets. Les filtres sur agrégats deviennent automatiquement HAVING." Style="{StaticResource SectionHint}" />

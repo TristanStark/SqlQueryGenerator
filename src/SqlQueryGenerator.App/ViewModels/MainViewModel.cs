@@ -64,6 +64,75 @@ public sealed class MainViewModel : ObservableObject
     /// <param name="saved_queries">Paramètre saved_queries.</param>
     /// <returns>Résultat du traitement.</returns>
     private readonly SavedQueryStore _savedQueryStore = new(Path.Combine(Environment.CurrentDirectory, "saved_queries"));
+
+    /// <summary>
+    /// Gets saved output profiles.
+    /// </summary>
+    /// <value>Output profile list.</value>
+    public ObservableCollection<OutputProfileItemViewModel> OutputProfiles { get; } = [];
+
+    /// <summary>
+    /// Gets or sets the selected output profile.
+    /// </summary>
+    /// <value>Selected output profile.</value>
+    public OutputProfileItemViewModel? SelectedOutputProfile
+    {
+        get => _selectedOutputProfile;
+        set
+        {
+            if (SetProperty(ref _selectedOutputProfile, value))
+            {
+                ApplySelectedOutputProfileCommand.RaiseCanExecuteChanged();
+                DeleteSelectedOutputProfileCommand.RaiseCanExecuteChanged();
+
+                if (value is not null)
+                {
+                    OutputProfileName = value.Definition.Name;
+                    OutputProfileDescription = value.Definition.Description ?? string.Empty;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the output profile name currently being edited.
+    /// </summary>
+    /// <value>Output profile name.</value>
+    public string OutputProfileName
+    {
+        get => _outputProfileName;
+        set => SetProperty(ref _outputProfileName, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the output profile description currently being edited.
+    /// </summary>
+    /// <value>Output profile description.</value>
+    public string OutputProfileDescription
+    {
+        get => _outputProfileDescription;
+        set => SetProperty(ref _outputProfileDescription, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the generated fixed-width Markdown specification.
+    /// </summary>
+    /// <value>Markdown specification.</value>
+    public string FixedWidthSpecMarkdown
+    {
+        get => _fixedWidthSpecMarkdown;
+        set
+        {
+            if (SetProperty(ref _fixedWidthSpecMarkdown, value))
+            {
+                CopyFixedWidthSpecCommand?.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    private readonly OutputProfileStore _outputProfileStore = new(Path.Combine(Environment.CurrentDirectory, "output_profiles"));
+    private readonly FixedWidthSpecGenerator _fixedWidthSpecGenerator = new();
+
     /// <summary>
     /// Exécute le traitement new.
     /// </summary>
@@ -104,6 +173,12 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de _performanceReport.</value>
     private string _performanceReport = "L'analyse de performance apparaîtra ici.";
+
+    private string _outputProfileName = "profil_sortie";
+    private string _outputProfileDescription = string.Empty;
+    private string _fixedWidthSpecMarkdown = "La spécification fixed-width apparaîtra ici.";
+    private OutputProfileItemViewModel? _selectedOutputProfile;
+
     /// <summary>
     /// Stocke la valeur interne  queryName.
     /// </summary>
@@ -285,6 +360,19 @@ public sealed class MainViewModel : ObservableObject
         AddEmptyCustomColumnCommand = new RelayCommand(() => CustomColumns.Add(new CustomColumnRowViewModel { Alias = BuildDefaultCustomAlias() }));
         AddAggregateFilterCommand = new RelayCommand(obj => AddAggregateToFilter(obj as AggregateRowViewModel));
         AddAggregateOrderByCommand = new RelayCommand(obj => AddAggregateToOrderBy(obj as AggregateRowViewModel));
+        SaveOutputProfileCommand = new RelayCommand(SaveCurrentOutputProfile);
+        ReloadOutputProfilesCommand = new RelayCommand(ReloadOutputProfiles);
+        ApplySelectedOutputProfileCommand = new RelayCommand(
+            ApplySelectedOutputProfile,
+            () => SelectedOutputProfile is not null);
+        DeleteSelectedOutputProfileCommand = new RelayCommand(
+            DeleteSelectedOutputProfile,
+            () => SelectedOutputProfile is not null);
+        GenerateFixedWidthSpecCommand = new RelayCommand(GenerateFixedWidthSpec);
+        CopyFixedWidthSpecCommand = new RelayCommand(
+            CopyFixedWidthSpec,
+            () => !string.IsNullOrWhiteSpace(FixedWidthSpecMarkdown)
+                  && !FixedWidthSpecMarkdown.StartsWith("La spécification", StringComparison.OrdinalIgnoreCase));
         AddCustomFilterCommand = new RelayCommand(obj => AddCustomColumnToFilter(obj as CustomColumnRowViewModel));
         OpenSelectedColumnPropertiesCommand = new RelayCommand(
             obj => OpenSelectedColumnProperties(obj as SelectColumnRowViewModel),
@@ -311,10 +399,12 @@ public sealed class MainViewModel : ObservableObject
         GenerateCreateMaterializedViewCommand = new RelayCommand(GenerateCreateMaterializedViewSql);
         OpenHelpCommand = new RelayCommand(OpenHelpDocumentation);
         ReloadSavedQueriesCommand = new RelayCommand(ReloadSavedQueries);
+
         LoadSelectedQueryCommand = new RelayCommand(_ => LoadSelectedSavedQuery(), _ => SelectedSavedQuery is not null);
         AddSelectedSavedQueryAsSubqueryFilterCommand = new RelayCommand(_ => AddSelectedSavedQueryAsSubqueryFilter(), _ => SelectedSavedQuery is not null);
         ClearColumnSearchCommand = new RelayCommand(() => ColumnSearchText = string.Empty);
         ReloadSavedQueries();
+        ReloadOutputProfiles();
 
         Joins.CollectionChanged += Joins_CollectionChanged;
 
@@ -539,6 +629,37 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de AddSelectedGroupByCommand.</value>
     public RelayCommand AddSelectedGroupByCommand { get; }
+
+    /// <summary>
+    /// Saves the current selected-column output properties as a reusable profile.
+    /// </summary>
+    public RelayCommand SaveOutputProfileCommand { get; }
+
+    /// <summary>
+    /// Reloads saved output profiles from disk.
+    /// </summary>
+    public RelayCommand ReloadOutputProfilesCommand { get; }
+
+    /// <summary>
+    /// Applies the selected output profile to matching selected columns.
+    /// </summary>
+    public RelayCommand ApplySelectedOutputProfileCommand { get; }
+
+    /// <summary>
+    /// Deletes the selected output profile.
+    /// </summary>
+    public RelayCommand DeleteSelectedOutputProfileCommand { get; }
+
+    /// <summary>
+    /// Generates a fixed-width specification from the current selected columns.
+    /// </summary>
+    public RelayCommand GenerateFixedWidthSpecCommand { get; }
+
+    /// <summary>
+    /// Copies the generated fixed-width specification to the clipboard.
+    /// </summary>
+    public RelayCommand CopyFixedWidthSpecCommand { get; }
+
     /// <summary>
     /// Stocke la valeur interne AddSelectedOrderByCommand.
     /// </summary>
@@ -2260,6 +2381,210 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Saves the current selected-column output formatting as a reusable profile.
+    /// </summary>
+    private void SaveCurrentOutputProfile()
+    {
+        try
+        {
+            if (SelectedColumns.Count == 0)
+            {
+                Status = "Impossible de sauvegarder un profil de sortie: aucune colonne sélectionnée.";
+                return;
+            }
+
+            OutputProfileDefinition profile = BuildCurrentOutputProfile();
+            string filePath = _outputProfileStore.Save(profile);
+
+            ReloadOutputProfiles();
+            SelectedOutputProfile = OutputProfiles.FirstOrDefault(profileItem =>
+                string.Equals(profileItem.Name, profile.Name, StringComparison.OrdinalIgnoreCase));
+
+            Status = $"Profil de sortie sauvegardé: {filePath}";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            Status = "Erreur pendant la sauvegarde du profil de sortie.";
+            Warnings = ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Builds an output profile from the current selected columns.
+    /// </summary>
+    /// <returns>Output profile definition.</returns>
+    private OutputProfileDefinition BuildCurrentOutputProfile()
+    {
+        string profileName = string.IsNullOrWhiteSpace(OutputProfileName)
+            ? $"{(string.IsNullOrWhiteSpace(QueryName) ? "requete" : QueryName.Trim())}_sortie"
+            : OutputProfileName.Trim();
+
+        OutputProfileDefinition profile = new()
+        {
+            Name = profileName,
+            Description = BlankToNull(OutputProfileDescription),
+            SourceQueryName = BlankToNull(QueryName)
+        };
+
+        int order = 1;
+        foreach (SelectColumnRowViewModel row in SelectedColumns)
+        {
+            profile.Fields.Add(new OutputProfileFieldDefinition
+            {
+                Order = order++,
+                Table = row.Table,
+                Column = row.Column,
+                Alias = BlankToNull(row.Alias),
+                NullAllowed = row.NullAllowed,
+                UseFixedLength = row.UseFixedLength,
+                FixedLength = row.FixedLength
+            });
+        }
+
+        return profile;
+    }
+
+    /// <summary>
+    /// Reloads output profiles from local storage.
+    /// </summary>
+    private void ReloadOutputProfiles()
+    {
+        OutputProfileItemViewModel? previous = SelectedOutputProfile;
+        OutputProfiles.Clear();
+
+        foreach (OutputProfileDefinition profile in _outputProfileStore.LoadAll())
+        {
+            OutputProfiles.Add(new OutputProfileItemViewModel(profile));
+        }
+
+        if (previous is not null)
+        {
+            SelectedOutputProfile = OutputProfiles.FirstOrDefault(profile =>
+                string.Equals(profile.Name, previous.Name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        ApplySelectedOutputProfileCommand.RaiseCanExecuteChanged();
+        DeleteSelectedOutputProfileCommand.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Applies the selected output profile to matching selected columns.
+    /// </summary>
+    private void ApplySelectedOutputProfile()
+    {
+        if (SelectedOutputProfile is null)
+        {
+            return;
+        }
+
+        OutputProfileDefinition profile = SelectedOutputProfile.Definition;
+        int applied = 0;
+        int missing = 0;
+
+        _suppressAutoGenerate = true;
+        try
+        {
+            foreach (OutputProfileFieldDefinition field in profile.Fields.OrderBy(field => field.Order))
+            {
+                SelectColumnRowViewModel? target = SelectedColumns.FirstOrDefault(row =>
+                    field.Matches(row.Table, row.Column, row.Alias));
+
+                target ??= SelectedColumns.FirstOrDefault(row =>
+                    string.Equals(row.Table, field.Table, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(row.Column, field.Column, StringComparison.OrdinalIgnoreCase));
+
+                if (target is null)
+                {
+                    missing++;
+                    continue;
+                }
+
+                target.Alias = field.Alias ?? target.Alias;
+                target.NullAllowed = field.NullAllowed;
+                target.UseFixedLength = field.UseFixedLength;
+                target.FixedLength = field.FixedLength;
+                applied++;
+            }
+        }
+        finally
+        {
+            _suppressAutoGenerate = false;
+        }
+
+        GenerateSql();
+        GenerateFixedWidthSpec();
+
+        Status = $"Profil de sortie appliqué: {applied} champ(s), {missing} champ(s) introuvable(s).";
+    }
+
+    /// <summary>
+    /// Deletes the selected output profile.
+    /// </summary>
+    private void DeleteSelectedOutputProfile()
+    {
+        if (SelectedOutputProfile is null)
+        {
+            return;
+        }
+
+        string profileName = SelectedOutputProfile.Name;
+        bool deleted = _outputProfileStore.Delete(profileName);
+        ReloadOutputProfiles();
+
+        Status = deleted
+            ? $"Profil de sortie supprimé: {profileName}"
+            : $"Profil de sortie introuvable: {profileName}";
+    }
+
+    /// <summary>
+    /// Generates the fixed-width Markdown specification for the current selected columns.
+    /// </summary>
+    private void GenerateFixedWidthSpec()
+    {
+        try
+        {
+            QueryDefinition query = BuildQueryDefinition();
+            FixedWidthSpecReport report = _fixedWidthSpecGenerator.Generate(
+                query,
+                _schema,
+                new FixedWidthSpecOptions
+                {
+                    ProfileName = BlankToNull(OutputProfileName),
+                    Description = BlankToNull(OutputProfileDescription)
+                });
+
+            FixedWidthSpecMarkdown = report.Markdown;
+
+            if (report.Warnings.Count > 0)
+            {
+                Warnings = string.Join(Environment.NewLine, report.Warnings);
+            }
+
+            Status = $"Spec fixed-width générée: {report.Fields.Count} champ(s), longueur totale {report.TotalLength} caractère(s).";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            FixedWidthSpecMarkdown = "-- Impossible de générer la spécification fixed-width.";
+            Warnings = ex.Message;
+            Status = "Erreur pendant la génération de la spec fixed-width.";
+        }
+    }
+
+    /// <summary>
+    /// Copies the fixed-width specification to the clipboard.
+    /// </summary>
+    private void CopyFixedWidthSpec()
+    {
+        if (string.IsNullOrWhiteSpace(FixedWidthSpecMarkdown))
+        {
+            return;
+        }
+
+        Clipboard.SetText(FixedWidthSpecMarkdown);
+        Status = "Spec fixed-width copiée dans le presse-papier.";
+    }
+
+    /// <summary>
     /// Exécute le traitement ClearQuery.
     /// </summary>
     private void ClearQuery()
@@ -2311,6 +2636,7 @@ public sealed class MainViewModel : ObservableObject
             };
             string path = _savedQueryStore.Save(saved);
             ReloadSavedQueries();
+            ReloadOutputProfiles();
             Status = $"Requête sauvegardée: {path}";
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
@@ -2350,6 +2676,7 @@ public sealed class MainViewModel : ObservableObject
 
             string path = _savedQueryStore.Save(saved);
             ReloadSavedQueries();
+            ReloadOutputProfiles();
             Status = $"Preset SQL brut sauvegardé: {path}";
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
