@@ -266,10 +266,16 @@ public sealed record JoinDefinition
     /// </summary>
     /// <value>Valeur de JoinType.</value>
     public JoinType JoinType { get; init; } = JoinType.Inner;
+
+    /// <summary>
+    /// Gets or sets whether the primary join column pair should be emitted.
+    /// </summary>
+    /// <value><c>true</c> when <see cref="FromColumn"/> / <see cref="ToColumn"/> are active.</value>
+    public bool PrimaryPairEnabled { get; init; } = true;
+
     /// <summary>
     /// Stocke la valeur interne AutoInferred.
     /// </summary>
-    /// <value>Valeur de AutoInferred.</value>
     public bool AutoInferred { get; init; }
 
     /// <summary>

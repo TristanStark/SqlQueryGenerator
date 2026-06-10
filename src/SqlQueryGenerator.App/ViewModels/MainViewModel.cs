@@ -2128,6 +2128,98 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Materializes generator-inferred joins into the editable join grid.
+    /// </summary>
+    /// <param name="joinPlan">Effective join plan returned by the SQL generator.</param>
+    /// <returns>Number of auto joins copied into the UI.</returns>
+    private int MaterializeAutoInferredJoins(IReadOnlyList<JoinDefinition> joinPlan)
+    {
+        JoinDefinition[] missingAutoJoins = joinPlan
+            .Where(join => join.AutoInferred)
+            .Where(join => !HasEditableJoinForAutoJoin(join))
+            .ToArray();
+
+        if (missingAutoJoins.Length == 0)
+        {
+            return 0;
+        }
+
+        _suppressAutoGenerate = true;
+        try
+        {
+            foreach (JoinDefinition join in missingAutoJoins)
+            {
+                Joins.Add(CreateJoinRowViewModel(join));
+            }
+        }
+        finally
+        {
+            _suppressAutoGenerate = false;
+        }
+
+        RefreshRelationshipUsage();
+        return missingAutoJoins.Length;
+    }
+
+    /// <summary>
+    /// Checks whether an inferred join is already represented by an editable join row.
+    /// </summary>
+    /// <param name="plannedJoin">Auto join to inspect.</param>
+    /// <returns><c>true</c> if the UI already contains the same join.</returns>
+    private bool HasEditableJoinForAutoJoin(JoinDefinition plannedJoin)
+    {
+        return Joins.Any(join => SameJoin(join, plannedJoin));
+    }
+
+    /// <summary>
+    /// Compares a UI join with a planned generator join, accepting reversed orientation.
+    /// </summary>
+    /// <param name="join">Editable join row.</param>
+    /// <param name="plannedJoin">Generated join definition.</param>
+    /// <returns><c>true</c> when both joins connect the same primary pair.</returns>
+    private static bool SameJoin(JoinRowViewModel join, JoinDefinition plannedJoin)
+    {
+        return SameJoinEndpoint(join.FromTable, plannedJoin.FromTable)
+               && SameJoinEndpoint(join.FromColumn, plannedJoin.FromColumn)
+               && SameJoinEndpoint(join.ToTable, plannedJoin.ToTable)
+               && SameJoinEndpoint(join.ToColumn, plannedJoin.ToColumn)
+            || SameJoinEndpoint(join.FromTable, plannedJoin.ToTable)
+               && SameJoinEndpoint(join.FromColumn, plannedJoin.ToColumn)
+               && SameJoinEndpoint(join.ToTable, plannedJoin.FromTable)
+               && SameJoinEndpoint(join.ToColumn, plannedJoin.FromColumn);
+    }
+
+    /// <summary>
+    /// Converts a query join definition into the editable WPF row model.
+    /// </summary>
+    /// <param name="join">Join definition to display.</param>
+    /// <returns>Editable join row.</returns>
+    private static JoinRowViewModel CreateJoinRowViewModel(JoinDefinition join)
+    {
+        JoinRowViewModel joinVm = new()
+        {
+            FromTable = join.FromTable,
+            FromColumn = join.FromColumn,
+            ToTable = join.ToTable,
+            ToColumn = join.ToColumn,
+            JoinType = join.JoinType,
+            PrimaryPairEnabled = join.PrimaryPairEnabled
+        };
+
+        foreach (JoinColumnPair pair in join.AdditionalColumnPairs)
+        {
+            joinVm.AdditionalPairs.Add(new JoinColumnPairRowViewModel
+            {
+                FromColumn = pair.FromColumn,
+                ToColumn = pair.ToColumn,
+                Enabled = pair.Enabled
+            });
+        }
+
+        return joinVm;
+    }
+
+    /// <summary>
     /// Exécute le traitement GenerateSql.
     /// </summary>
     private void GenerateSql()
@@ -2137,20 +2229,39 @@ public sealed class MainViewModel : ObservableObject
         {
             QueryDefinition query = BuildQueryDefinition();
             IReadOnlyList<string> validationErrors = _validator.Validate(query, _schema);
-            SqlGenerationResult result = _generator.Generate(query, _schema, new SqlGeneratorOptions
+            SqlGeneratorOptions options = new()
             {
                 Dialect = Dialect,
                 QuoteIdentifiers = QuoteIdentifiers,
                 AutoGroupSelectedColumnsWhenAggregating = AutoGroupSelectedColumns,
                 EmitOptimizationComments = false
-            });
+            };
+
+            SqlGenerationResult result = _generator.Generate(query, _schema, options);
+
+            int materializedAutoJoins = MaterializeAutoInferredJoins(result.JoinPlan);
+            if (materializedAutoJoins > 0)
+            {
+                query = BuildQueryDefinition();
+                validationErrors = _validator.Validate(query, _schema);
+                result = _generator.Generate(query, _schema, options);
+                _history.ReplaceCurrent(CaptureHistoryState());
+                UpdateHistoryCommands();
+            }
 
             RefreshRelationshipUsage();
             GeneratedSql = result.Sql;
             RefreshTrackedSqlComparison();
             QueryPurpose = _purposeDescriber.Describe(query, _schema);
             PerformanceReport = _performanceAnalyzer.Analyze(query, _schema).ToString();
-            string[] messages = validationErrors.Concat(result.Warnings).Concat(_schema.Warnings).Distinct().ToArray();
+
+            IEnumerable<string> warningMessages = validationErrors.Concat(result.Warnings).Concat(_schema.Warnings);
+            if (materializedAutoJoins > 0)
+            {
+                warningMessages = warningMessages.Append($"{materializedAutoJoins} jointure(s) automatique(s) ont été ajoutées dans l'onglet Jointures pour être éditées.");
+            }
+
+            string[] messages = warningMessages.Distinct().ToArray();
             Warnings = messages.Length == 0 ? "Aucun avertissement." : string.Join(Environment.NewLine, messages);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
@@ -2302,7 +2413,8 @@ public sealed class MainViewModel : ObservableObject
                 FromColumn = row.FromColumn,
                 ToTable = row.ToTable,
                 ToColumn = row.ToColumn,
-                JoinType = row.JoinType
+                JoinType = row.JoinType,
+                PrimaryPairEnabled = row.PrimaryPairEnabled
             };
 
             foreach (JoinColumnPairRowViewModel? pair in row.AdditionalPairs.Where(p => !string.IsNullOrWhiteSpace(p.FromColumn)
@@ -3569,20 +3681,7 @@ public sealed class MainViewModel : ObservableObject
             foreach (OrderByItem o in query.OrderBy) OrderBy.Add(new OrderByRowViewModel { Table = o.Column?.Table ?? (o.FieldKind == QueryFieldKind.Aggregate ? "Agrégat" : "Calculé"), Column = o.Column?.Column ?? o.FieldAlias ?? string.Empty, FieldKind = o.FieldKind, FieldAlias = o.FieldAlias ?? string.Empty, Direction = o.Direction });
             foreach (AggregateSelection a in query.Aggregates) Aggregates.Add(new AggregateRowViewModel { Table = a.Column?.Table ?? string.Empty, Column = a.Column?.Column ?? string.Empty, Function = a.Function, Alias = a.Alias ?? string.Empty, Distinct = a.Distinct, ConditionTable = a.ConditionColumn?.Table ?? string.Empty, ConditionColumn = a.ConditionColumn?.Column ?? string.Empty, ConditionOperator = a.ConditionOperator ?? "=", ConditionValue = a.ConditionValue ?? string.Empty, ConditionSecondValue = a.ConditionSecondValue ?? string.Empty });
             foreach (JoinDefinition j in query.Joins)
-            {
-                JoinRowViewModel joinVm = new() { FromTable = j.FromTable, FromColumn = j.FromColumn, ToTable = j.ToTable, ToColumn = j.ToColumn, JoinType = j.JoinType };
-                foreach (JoinColumnPair pair in j.AdditionalColumnPairs)
-                {
-                    joinVm.AdditionalPairs.Add(new JoinColumnPairRowViewModel
-                    {
-                        FromColumn = pair.FromColumn,
-                        ToColumn = pair.ToColumn,
-                        Enabled = pair.Enabled
-                    });
-                }
-
-                Joins.Add(joinVm);
-            }
+                Joins.Add(CreateJoinRowViewModel(j));
             foreach (CustomColumnSelection c in query.CustomColumns) CustomColumns.Add(new CustomColumnRowViewModel { Alias = c.Alias ?? string.Empty, RawExpression = c.RawExpression ?? string.Empty, CaseTable = c.CaseColumn?.Table ?? string.Empty, CaseColumn = c.CaseColumn?.Column ?? string.Empty, CaseOperator = c.CaseOperator ?? "=", CaseCompareValue = c.CaseCompareValue ?? string.Empty, CaseThenValue = c.CaseThenValue ?? string.Empty, CaseElseValue = c.CaseElseValue ?? string.Empty });
             foreach (QueryParameterDefinition p in query.Parameters) Parameters.Add(new QueryParameterRowViewModel
             {

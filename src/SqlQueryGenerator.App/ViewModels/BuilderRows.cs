@@ -629,6 +629,13 @@ public sealed class JoinRowViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de _joinType.</value>
     private JoinType _joinType = JoinType.Inner;
+
+    /// <summary>
+    /// Stocke si la paire principale de jointure est active.
+    /// </summary>
+    /// <value><c>true</c> lorsque la paire principale doit être émise.</value>
+    private bool _primaryPairEnabled = true;
+
     /// <summary>
     /// Stocke la valeur interne  columnNamesProvider.
     /// </summary>
@@ -749,6 +756,17 @@ public sealed class JoinRowViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de JoinType.</value>
     public JoinType JoinType { get => _joinType; set => SetProperty(ref _joinType, value); }
+
+    /// <summary>
+    /// Obtient ou définit si la paire principale <c>FromColumn = ToColumn</c> est active.
+    /// </summary>
+    /// <value><c>true</c> lorsque la paire principale est utilisée dans le ON.</value>
+    public bool PrimaryPairEnabled
+    {
+        get => _primaryPairEnabled;
+        set => SetProperty(ref _primaryPairEnabled, value);
+    }
+
     /// <summary>
     /// Stocke la valeur interne AdditionalPairs.
     /// </summary>

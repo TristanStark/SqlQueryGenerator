@@ -46,6 +46,7 @@ public static class QueryDefinitionCloner
                 ToTable = join.ToTable,
                 ToColumn = join.ToColumn,
                 JoinType = join.JoinType,
+                PrimaryPairEnabled = join.PrimaryPairEnabled,
                 AutoInferred = join.AutoInferred
             };
 

@@ -620,7 +620,7 @@
                                         </DockPanel>
                                         <GridSplitter Grid.Row="1" Height="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
                                         <DockPanel Grid.Row="2" LastChildFill="True">
-                                            <TextBlock DockPanel.Dock="Top" Text="Jointures forcées / manuelles : sélectionne les tables dans les listes, ou glisse une colonne depuis l'arbre vers Colonne gauche / droite. Le drop remplit aussi la table automatiquement." Style="{StaticResource SectionHint}" />
+                                            <TextBlock DockPanel.Dock="Top" Text="Jointures éditables : les jointures automatiques sont ajoutées ici comme des jointures manuelles. Désactive une paire de colonnes trop zélée, ajoute une paire supplémentaire, ou retire toute la jointure." Style="{StaticResource SectionHint}" />
                                             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                                                 <ItemsControl ItemsSource="{Binding Joins}">
                                                     <ItemsControl.ItemTemplate>
@@ -648,7 +648,10 @@
                                                                     <TextBlock Grid.Row="0" Grid.Column="4" Text="Table droite" FontWeight="SemiBold" Margin="4,0" />
                                                                     <TextBlock Grid.Row="0" Grid.Column="5" Text="Colonne droite" FontWeight="SemiBold" Margin="4,0" />
 
-                                                                    <ComboBox Grid.Row="1" Grid.Column="0" ItemsSource="{Binding DataContext.JoinTypes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding JoinType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                                    <StackPanel Grid.Row="1" Grid.Column="0">
+                                                                        <ComboBox ItemsSource="{Binding DataContext.JoinTypes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding JoinType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                                        <CheckBox Content="Paire active" IsChecked="{Binding PrimaryPairEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,4,0" ToolTip="Désactive la paire principale sans perdre les autres paires de la jointure composite." />
+                                                                    </StackPanel>
                                                                     <ComboBox Grid.Row="1" Grid.Column="1" IsEditable="True" IsTextSearchEnabled="True" ItemsSource="{Binding DataContext.TableNames, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding FromTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" Text="{Binding FromTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" ToolTip="Choisis la table gauche. L'affichage masque le préfixe schema mais la valeur complète est conservée.">
                                                                         <ComboBox.ItemTemplate>
                                                                             <DataTemplate>

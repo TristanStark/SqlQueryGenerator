@@ -44,8 +44,27 @@ public sealed class QueryValidator
 
         foreach (JoinDefinition join in query.Joins)
         {
+            int activePairCount = 0;
+
+            if (join.PrimaryPairEnabled)
+            {
+                activePairCount++;
+
+                if (schema.FindColumn(join.FromTable, join.FromColumn) is null)
+                {
+                    errors.Add($"Colonne de jointure inconnue: {join.FromTable}.{join.FromColumn}");
+                }
+
+                if (schema.FindColumn(join.ToTable, join.ToColumn) is null)
+                {
+                    errors.Add($"Colonne de jointure inconnue: {join.ToTable}.{join.ToColumn}");
+                }
+            }
+
             foreach (JoinColumnPair? pair in join.AdditionalColumnPairs.Where(p => p.Enabled))
             {
+                activePairCount++;
+
                 if (schema.FindColumn(join.FromTable, pair.FromColumn) is null)
                 {
                     errors.Add($"Colonne de jointure inconnue: {join.FromTable}.{pair.FromColumn}");
@@ -55,6 +74,11 @@ public sealed class QueryValidator
                 {
                     errors.Add($"Colonne de jointure inconnue: {join.ToTable}.{pair.ToColumn}");
                 }
+            }
+
+            if (activePairCount == 0)
+            {
+                errors.Add($"Jointure sans paire de colonnes active: {join.FromTable} -> {join.ToTable}.");
             }
         }
 
