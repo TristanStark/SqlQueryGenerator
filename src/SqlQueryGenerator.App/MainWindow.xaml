@@ -72,6 +72,12 @@
             <Setter Property="Margin" Value="8,4,8,6" />
             <Setter Property="FontWeight" Value="Normal" />
         </Style>
+        <Style x:Key="SchemaTooltipText" TargetType="{x:Type TextBlock}">
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="MaxWidth" Value="520" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="#111827" />
+        </Style>
     </Window.Resources>
 
     <Window.DataContext>
@@ -195,7 +201,13 @@
                                     </TreeView.ItemContainerStyle>
                                     <TreeView.Resources>
                                         <HierarchicalDataTemplate DataType="{x:Type vm:TableItemViewModel}" ItemsSource="{Binding Columns}">
-                                            <StackPanel Orientation="Horizontal" ToolTip="{Binding Comment}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <StackPanel.ToolTip>
+                                                    <ToolTip>
+                                                        <TextBlock Text="{Binding TooltipText}"
+                                                               Style="{StaticResource SchemaTooltipText}" />
+                                                    </ToolTip>
+                                                </StackPanel.ToolTip>
                                                 <StackPanel.ContextMenu>
                                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                                         <MenuItem Header="Ajouter table.* au SELECT" Click="AddTableWildcardMenu_Click" />
@@ -210,7 +222,12 @@
                                         </HierarchicalDataTemplate>
 
                                         <DataTemplate DataType="{x:Type vm:ColumnItemViewModel}">
-                                            <Grid Margin="0,2,0,2" ToolTip="{Binding DisplayName}" PreviewMouseLeftButtonDown="ColumnNode_PreviewMouseLeftButtonDown">
+                                            <Grid Margin="0,2,0,2" PreviewMouseLeftButtonDown="ColumnNode_PreviewMouseLeftButtonDown">
+                                                <Grid.ToolTip>
+                                                    <ToolTip>
+                                                        <TextBlock Text="{Binding TooltipText}" Style="{StaticResource SchemaTooltipText}" />
+                                                    </ToolTip>
+                                                </Grid.ToolTip>
                                                 <Grid.ContextMenu>
                                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                                         <MenuItem Header="Ajouter au SELECT" Click="AddColumnToSelectMenu_Click" />
@@ -245,7 +262,7 @@
                                                 <Border Grid.Column="5" Background="{Binding TypeBackground}" CornerRadius="4" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding TypeCategory}" Foreground="{Binding TypeForeground}" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                                 </Border>
-                                                <TextBlock Grid.Column="6" Text="{Binding Comment}" Foreground="#475569" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="6" Text="{Binding Comment}" ToolTip="{Binding Comment}" Foreground="#475569" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                             </Grid>
                                         </DataTemplate>
                                     </TreeView.Resources>

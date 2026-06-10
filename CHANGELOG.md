@@ -23,7 +23,8 @@ All release notes are centralized here.
 - Added app-level workflow regression coverage for join editing and undo after reverse/saved-query loads.
 - Added documentation for auxiliary-table filtering after DDL import.
 - Added documentation for the layout/ergonomics pass.
-
+- Added rich schema tooltips for tables and columns, showing comments/documentation plus technical metadata such as type, nullability, PK/FK and index information.
+- 
 ## v31.0.0
 
 - Added a conservative SQL rewrite flow for imported `SELECT` statements, including implicit join modernization, duplicate clause cleanup, alias preservation, and warnings for advanced constructs.
