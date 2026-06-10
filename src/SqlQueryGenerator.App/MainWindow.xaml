@@ -105,24 +105,17 @@
                     <Button Content="Importer doc CSV/TSV" Click="OpenDocumentation_Click" ToolTip="Importe une documentation table/colonne depuis un fichier CSV, TSV ou TXT exporté d'un tableau." />
                     <Button Content="Coller schéma" Click="PasteSchema_Click" ToolTip="Colle un schéma depuis le presse-papier." />
                     <Button Content="Copier SQL" Click="CopySql_Click" ToolTip="Copie la requête générée dans le presse-papier." />
-                    <Button Content="Annuler" Command="{Binding UndoCommand}" ToolTip="Annule la dernière modification du constructeur (`Ctrl+Z`)." />
-                    <Button Content="Rétablir" Command="{Binding RedoCommand}" ToolTip="Rétablit la dernière modification annulée (`Ctrl+Y`)." />
+                    <Button Content="Exporter SQL" Click="ExportSql_Click" ToolTip="Sauvegarde la requête générée dans un fichier .sql." />
+                    <Button Content="Copier doc MD" Click="CopyMarkdownDocumentation_Click" ToolTip="Copie la documentation Markdown de la requête courante dans le presse-papier." />
+                    <Button Content="Exporter doc MD" Click="ExportMarkdownDocumentation_Click" ToolTip="Sauvegarde la documentation de la requête courante dans un fichier .md." />
                     <Button Content="Vider requête" Command="{Binding ClearQueryCommand}" />
                     <Button Content="Générer l'export DDL" Click="OpenDdlExportWindow_Click" ToolTip="Ouvre la fenêtre dédiée à l'export DDL Oracle/SQLite." />
                     <Button Content="Aide" Command="{Binding OpenHelpCommand}" ToolTip="Ouvre la documentation." />
                 </WrapPanel>
 
-                <StackPanel Grid.Row="0"
-            Grid.Column="1"
-            Orientation="Vertical"
-            HorizontalAlignment="Right"
-            VerticalAlignment="Center"
-            Margin="10,0,0,0">
+                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" >
 
-                    <Border Background="#1F2937"
-            CornerRadius="6"
-            Padding="10,6"
-            Margin="0,0,0,4">
+                    <Border Background="#1F2937" CornerRadius="6" Padding="10,6" Margin="0,0,0,4">
                         <StackPanel Orientation="Horizontal"
                     VerticalAlignment="Center">
                             <TextBlock Text="{Binding ApplicationVersion}"

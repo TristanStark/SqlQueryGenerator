@@ -10,8 +10,8 @@
 
   <!-- Application version displayed in the UI and used by the release checker. -->
   <Version>31.0.0</Version>
-  <AssemblyVersion>31.0.0.0</AssemblyVersion>
-  <FileVersion>31.0.0.0</FileVersion>
+  <AssemblyVersion>31.0.3.0</AssemblyVersion>
+  <FileVersion>31.0.3.0</FileVersion>
   <InformationalVersion>31.0.0</InformationalVersion>
   <Product>SqlQueryGenerator</Product>
 </PropertyGroup>  <ItemGroup>
