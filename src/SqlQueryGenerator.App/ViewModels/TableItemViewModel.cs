@@ -1,6 +1,7 @@
 using SqlQueryGenerator.App.Infrastructure;
 using SqlQueryGenerator.Core.Models;
 using System.Collections.ObjectModel;
+using SqlQueryGenerator.App.Services;
 
 namespace SqlQueryGenerator.App.ViewModels;
 
@@ -20,6 +21,12 @@ public sealed class TableItemViewModel : ObservableObject
     /// </summary>
     /// <value>All columns belonging to the table, reused across searches to avoid WPF memory churn.</value>
     private readonly IReadOnlyList<ColumnItemViewModel> _allColumns;
+
+    /// <summary>
+    /// Stores whether the represented schema object is a view.
+    /// </summary>
+    /// <value><c>true</c> for a SQL view; otherwise <c>false</c>.</value>
+    private readonly bool _isView;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TableItemViewModel"/> class from raw schema columns.
@@ -56,9 +63,34 @@ public sealed class TableItemViewModel : ObservableObject
     {
         Name = table.FullName;
         Comment = table.Comment ?? string.Empty;
+        _isView = table.IsView;
         _allColumns = columns.OrderBy(c => c.Column, StringComparer.OrdinalIgnoreCase).ToArray();
         Columns = new ObservableCollection<ColumnItemViewModel>(_allColumns);
     }
+
+    /// <summary>
+    /// Gets whether this schema object is a view.
+    /// </summary>
+    /// <value><c>true</c> when this node represents a view.</value>
+    public bool IsView => _isView;
+
+    /// <summary>
+    /// Gets whether this table has imported or parsed documentation.
+    /// </summary>
+    /// <value><c>true</c> when a non-empty comment is available.</value>
+    public bool HasComment => !string.IsNullOrWhiteSpace(Comment);
+
+    /// <summary>
+    /// Gets the rich tooltip text shown when hovering the table in the schema tree.
+    /// </summary>
+    /// <value>Multiline tooltip with table metadata and documentation.</value>
+    public string TooltipText => SchemaTooltipBuilder.BuildTableTooltip(
+        Name,
+        DisplayName,
+        Comment,
+        TotalColumnCount,
+        ColumnCount,
+        IsView);
 
     /// <summary>
     /// Gets the complete database table name, including schema prefix when present.

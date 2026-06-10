@@ -72,6 +72,12 @@
             <Setter Property="Margin" Value="8,4,8,6" />
             <Setter Property="FontWeight" Value="Normal" />
         </Style>
+        <Style x:Key="SchemaTooltipText" TargetType="{x:Type TextBlock}">
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="MaxWidth" Value="520" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="#111827" />
+        </Style>
     </Window.Resources>
 
     <Window.DataContext>
@@ -99,17 +105,59 @@
                     <Button Content="Importer doc CSV/TSV" Click="OpenDocumentation_Click" ToolTip="Importe une documentation table/colonne depuis un fichier CSV, TSV ou TXT exporté d'un tableau." />
                     <Button Content="Coller schéma" Click="PasteSchema_Click" ToolTip="Colle un schéma depuis le presse-papier." />
                     <Button Content="Copier SQL" Click="CopySql_Click" ToolTip="Copie la requête générée dans le presse-papier." />
-                    <Button Content="Annuler" Command="{Binding UndoCommand}" ToolTip="Annule la dernière modification du constructeur (`Ctrl+Z`)." />
-                    <Button Content="Rétablir" Command="{Binding RedoCommand}" ToolTip="Rétablit la dernière modification annulée (`Ctrl+Y`)." />
+                    <Button Content="Exporter SQL" Click="ExportSql_Click" ToolTip="Sauvegarde la requête générée dans un fichier .sql." />
+                    <Button Content="Copier doc MD" Click="CopyMarkdownDocumentation_Click" ToolTip="Copie la documentation Markdown de la requête courante dans le presse-papier." />
+                    <Button Content="Exporter doc MD" Click="ExportMarkdownDocumentation_Click" ToolTip="Sauvegarde la documentation de la requête courante dans un fichier .md." />
                     <Button Content="Vider requête" Command="{Binding ClearQueryCommand}" />
                     <Button Content="Générer l'export DDL" Click="OpenDdlExportWindow_Click" ToolTip="Ouvre la fenêtre dédiée à l'export DDL Oracle/SQLite." />
                     <Button Content="Aide" Command="{Binding OpenHelpCommand}" ToolTip="Ouvre la documentation." />
                 </WrapPanel>
 
-                <Border Grid.Row="0" Grid.Column="1" Background="#1F2937" CornerRadius="6" Padding="10,6" VerticalAlignment="Center" Margin="10,0,0,0">
-                    <TextBlock Text="{Binding SchemaSummary}" Foreground="#E5E7EB" FontWeight="SemiBold" />
-                </Border>
+                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" >
 
+                    <Border Background="#1F2937" CornerRadius="6" Padding="10,6" Margin="0,0,0,4">
+                        <StackPanel Orientation="Horizontal"
+                    VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ApplicationVersion}"
+                       Foreground="#E5E7EB"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center" />
+
+                            <Button Content="↻"
+                    Command="{Binding CheckLatestReleaseCommand}"
+                    MinWidth="34"
+                    MinHeight="24"
+                    Padding="6,1"
+                    Margin="8,0,0,0"
+                    ToolTip="Vérifier discrètement la dernière release GitHub." />
+                        </StackPanel>
+                    </Border>
+
+                    <Button Content="{Binding UpdateStatusText}"
+            Command="{Binding OpenLatestReleaseCommand}"
+            Visibility="{Binding IsUpdateAvailable, Converter={StaticResource BoolToVisibility}}"
+            HorizontalAlignment="Right"
+            MinHeight="24"
+            Padding="8,2"
+            Margin="0,0,0,4"
+            ToolTip="Ouvrir la dernière release GitHub." />
+
+                    <TextBlock Text="{Binding UpdateStatusText}"
+               Visibility="{Binding IsUpdateMessageVisible, Converter={StaticResource BoolToVisibility}}"
+               Foreground="#CBD5E1"
+               FontSize="12"
+               HorizontalAlignment="Right"
+               Margin="0,0,0,4" />
+
+                    <Border Background="#1F2937"
+            CornerRadius="6"
+            Padding="10,6">
+                        <TextBlock Text="{Binding SchemaSummary}"
+                   Foreground="#E5E7EB"
+                   FontWeight="SemiBold" />
+                    </Border>
+                </StackPanel>
+                
                 <Border Grid.Row="1" Grid.ColumnSpan="2" Background="#1E293B" CornerRadius="6" Padding="10,8" Margin="0,10,0,0">
                     <TextBlock Text="{Binding Status}"
                                Foreground="#F8FAFC"
@@ -195,7 +243,13 @@
                                     </TreeView.ItemContainerStyle>
                                     <TreeView.Resources>
                                         <HierarchicalDataTemplate DataType="{x:Type vm:TableItemViewModel}" ItemsSource="{Binding Columns}">
-                                            <StackPanel Orientation="Horizontal" ToolTip="{Binding Comment}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <StackPanel.ToolTip>
+                                                    <ToolTip>
+                                                        <TextBlock Text="{Binding TooltipText}"
+                                                               Style="{StaticResource SchemaTooltipText}" />
+                                                    </ToolTip>
+                                                </StackPanel.ToolTip>
                                                 <StackPanel.ContextMenu>
                                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                                         <MenuItem Header="Ajouter table.* au SELECT" Click="AddTableWildcardMenu_Click" />
@@ -210,7 +264,12 @@
                                         </HierarchicalDataTemplate>
 
                                         <DataTemplate DataType="{x:Type vm:ColumnItemViewModel}">
-                                            <Grid Margin="0,2,0,2" ToolTip="{Binding DisplayName}" PreviewMouseLeftButtonDown="ColumnNode_PreviewMouseLeftButtonDown">
+                                            <Grid Margin="0,2,0,2" PreviewMouseLeftButtonDown="ColumnNode_PreviewMouseLeftButtonDown">
+                                                <Grid.ToolTip>
+                                                    <ToolTip>
+                                                        <TextBlock Text="{Binding TooltipText}" Style="{StaticResource SchemaTooltipText}" />
+                                                    </ToolTip>
+                                                </Grid.ToolTip>
                                                 <Grid.ContextMenu>
                                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                                         <MenuItem Header="Ajouter au SELECT" Click="AddColumnToSelectMenu_Click" />
@@ -245,7 +304,7 @@
                                                 <Border Grid.Column="5" Background="{Binding TypeBackground}" CornerRadius="4" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding TypeCategory}" Foreground="{Binding TypeForeground}" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                                 </Border>
-                                                <TextBlock Grid.Column="6" Text="{Binding Comment}" Foreground="#475569" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="6" Text="{Binding Comment}" ToolTip="{Binding Comment}" Foreground="#475569" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                             </Grid>
                                         </DataTemplate>
                                     </TreeView.Resources>
@@ -320,7 +379,140 @@
                                         </DataGrid>
                                     </DockPanel>
                                 </TabItem>
+                                <TabItem Header="Sortie fixed-width">
+                                    <Grid Margin="4">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="1.1*" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
 
+                                        <Border Grid.Row="0"
+                BorderBrush="#CBD5E1"
+                BorderThickness="1"
+                CornerRadius="8"
+                Background="#FFFFFF"
+                Padding="8"
+                Margin="0,0,0,8">
+                                            <StackPanel>
+                                                <TextBlock Text="Profils de sortie"
+                           FontWeight="Bold"
+                           Margin="0,0,0,6" />
+
+                                                <WrapPanel>
+                                                    <TextBlock Text="Nom"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold"
+                               Margin="4" />
+                                                    <TextBox Width="220"
+                             Text="{Binding OutputProfileName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Nom du profil de sortie à sauvegarder." />
+
+                                                    <TextBlock Text="Description"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold"
+                               Margin="12,4,4,4" />
+                                                    <TextBox Width="360"
+                             Text="{Binding OutputProfileDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Description métier ou technique du profil." />
+
+                                                    <Button Content="Sauvegarder profil"
+                            Command="{Binding SaveOutputProfileCommand}"
+                            Margin="12,0,0,0" />
+
+                                                    <Button Content="Recharger"
+                            Command="{Binding ReloadOutputProfilesCommand}"
+                            Margin="6,0,0,0" />
+                                                </WrapPanel>
+
+                                                <WrapPanel Margin="0,8,0,0">
+                                                    <TextBlock Text="Profil existant"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold"
+                               Margin="4" />
+                                                    <ComboBox Width="320"
+                              ItemsSource="{Binding OutputProfiles}"
+                              SelectedItem="{Binding SelectedOutputProfile, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              DisplayMemberPath="Name" />
+
+                                                    <Button Content="Appliquer au SELECT"
+                            Command="{Binding ApplySelectedOutputProfileCommand}"
+                            Margin="12,0,0,0"
+                            ToolTip="Applique les propriétés du profil aux colonnes sélectionnées qui correspondent." />
+
+                                                    <Button Content="Supprimer profil"
+                            Command="{Binding DeleteSelectedOutputProfileCommand}"
+                            Margin="6,0,0,0" />
+
+                                                    <Button Content="Générer spec"
+                            Command="{Binding GenerateFixedWidthSpecCommand}"
+                            Margin="18,0,0,0" />
+
+                                                    <Button Content="Copier spec"
+                            Command="{Binding CopyFixedWidthSpecCommand}"
+                            Margin="6,0,0,0" />
+                                                </WrapPanel>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <DataGrid Grid.Row="1"
+                  ItemsSource="{Binding SelectedColumns}"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  Margin="0,0,0,8"
+                                                  AlternationCount="10000">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Ordre"
+                                    Binding="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=AlternationIndex}"
+                                    Width="70"
+                                    IsReadOnly="True" />
+                                                <DataGridTextColumn Header="Table"
+                                    Binding="{Binding TableDisplayName}"
+                                    IsReadOnly="True"
+                                    Width="1.7*"
+                                    MinWidth="180" />
+                                                <DataGridTextColumn Header="Colonne"
+                                    Binding="{Binding Column, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    Width="1.5*"
+                                    MinWidth="160" />
+                                                <DataGridTextColumn Header="Alias sortie"
+                                    Binding="{Binding Alias, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                    Width="1.5*"
+                                    MinWidth="160" />
+                                                <DataGridCheckBoxColumn Header="Null allowed"
+                                        Binding="{Binding NullAllowed, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        Width="110" />
+                                                <DataGridCheckBoxColumn Header="FIXED"
+                                        Binding="{Binding UseFixedLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        Width="80" />
+                                                <DataGridTextColumn Header="Longueur"
+                                    Binding="{Binding FixedLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, TargetNullValue=''}"
+                                    Width="100" />
+                                                <DataGridTextColumn Header="Résumé"
+                                    Binding="{Binding OutputPropertiesSummary}"
+                                    Width="160"
+                                    IsReadOnly="True" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+
+                                        <GridSplitter Grid.Row="2"
+                      Height="8"
+                      HorizontalAlignment="Stretch"
+                      Background="#CBD5E1" />
+
+                                        <TextBox Grid.Row="3"
+                 Text="{Binding FixedWidthSpecMarkdown, Mode=OneWay}"
+                 FontFamily="Consolas"
+                 FontSize="13"
+                 AcceptsReturn="True"
+                 AcceptsTab="True"
+                 IsReadOnly="True"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Auto"
+                 TextWrapping="NoWrap" />
+                                    </Grid>
+                                </TabItem>
                                 <TabItem Header="Filtres">
                                     <DockPanel AllowDrop="True" Drop="Filter_Drop" DragOver="Drop_DragOver" LastChildFill="True">
                                         <TextBlock DockPanel.Dock="Top" Text="WHERE / HAVING : dépose une colonne normale, ou ajoute un agrégat / une colonne calculée depuis leurs onglets. Les filtres sur agrégats deviennent automatiquement HAVING." Style="{StaticResource SectionHint}" />
@@ -428,7 +620,7 @@
                                         </DockPanel>
                                         <GridSplitter Grid.Row="1" Height="8" HorizontalAlignment="Stretch" Background="#CBD5E1" />
                                         <DockPanel Grid.Row="2" LastChildFill="True">
-                                            <TextBlock DockPanel.Dock="Top" Text="Jointures forcées / manuelles : sélectionne les tables dans les listes, ou glisse une colonne depuis l'arbre vers Colonne gauche / droite. Le drop remplit aussi la table automatiquement." Style="{StaticResource SectionHint}" />
+                                            <TextBlock DockPanel.Dock="Top" Text="Jointures éditables : les jointures automatiques sont ajoutées ici comme des jointures manuelles. Désactive une paire de colonnes trop zélée, ajoute une paire supplémentaire, ou retire toute la jointure." Style="{StaticResource SectionHint}" />
                                             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                                                 <ItemsControl ItemsSource="{Binding Joins}">
                                                     <ItemsControl.ItemTemplate>
@@ -456,7 +648,10 @@
                                                                     <TextBlock Grid.Row="0" Grid.Column="4" Text="Table droite" FontWeight="SemiBold" Margin="4,0" />
                                                                     <TextBlock Grid.Row="0" Grid.Column="5" Text="Colonne droite" FontWeight="SemiBold" Margin="4,0" />
 
-                                                                    <ComboBox Grid.Row="1" Grid.Column="0" ItemsSource="{Binding DataContext.JoinTypes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding JoinType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                                    <StackPanel Grid.Row="1" Grid.Column="0">
+                                                                        <ComboBox ItemsSource="{Binding DataContext.JoinTypes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding JoinType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                                        <CheckBox Content="Paire active" IsChecked="{Binding PrimaryPairEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,4,0" ToolTip="Désactive la paire principale sans perdre les autres paires de la jointure composite." />
+                                                                    </StackPanel>
                                                                     <ComboBox Grid.Row="1" Grid.Column="1" IsEditable="True" IsTextSearchEnabled="True" ItemsSource="{Binding DataContext.TableNames, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding FromTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" Text="{Binding FromTable, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" ToolTip="Choisis la table gauche. L'affichage masque le préfixe schema mais la valeur complète est conservée.">
                                                                         <ComboBox.ItemTemplate>
                                                                             <DataTemplate>

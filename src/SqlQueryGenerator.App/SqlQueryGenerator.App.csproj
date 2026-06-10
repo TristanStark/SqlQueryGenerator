@@ -1,14 +1,20 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <UseWPF>true</UseWPF>
-    <UseAppHost>true</UseAppHost>
-    <AssemblyName>SqlQueryGenerator.App</AssemblyName>
-    <RootNamespace>SqlQueryGenerator</RootNamespace>
-    <ApplicationIcon>logo.ico</ApplicationIcon>
-  </PropertyGroup>
-  <ItemGroup>
+<PropertyGroup>
+  <OutputType>WinExe</OutputType>
+  <TargetFramework>net8.0-windows</TargetFramework>
+  <UseWPF>true</UseWPF>
+  <UseAppHost>true</UseAppHost>
+  <AssemblyName>SqlQueryGenerator.App</AssemblyName>
+  <RootNamespace>SqlQueryGenerator</RootNamespace>
+  <ApplicationIcon>logo.ico</ApplicationIcon>
+
+  <!-- Application version displayed in the UI and used by the release checker. -->
+  <Version>31.0.0</Version>
+  <AssemblyVersion>31.0.3.0</AssemblyVersion>
+  <FileVersion>31.0.3.0</FileVersion>
+  <InformationalVersion>31.0.0</InformationalVersion>
+  <Product>SqlQueryGenerator</Product>
+</PropertyGroup>  <ItemGroup>
     <Content Include="logo.ico" />
   </ItemGroup>
   <ItemGroup>

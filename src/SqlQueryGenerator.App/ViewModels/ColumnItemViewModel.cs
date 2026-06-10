@@ -1,5 +1,6 @@
 using SqlQueryGenerator.App.Infrastructure;
 using SqlQueryGenerator.Core.Models;
+using SqlQueryGenerator.App.Services;
 
 namespace SqlQueryGenerator.App.ViewModels;
 
@@ -19,6 +20,13 @@ public sealed class ColumnItemViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur indiquant si la colonne est cochée dans l'arbre des colonnes disponibles.</value>
     private bool _isBulkSelected;
+
+    /// <summary>
+    /// Stores the rich tooltip text shown when hovering this column in the schema tree.
+    /// </summary>
+    /// <value>Precomputed multiline tooltip text.</value>
+    private readonly string _tooltipText;
+
     /// <summary>
     /// Initialise une nouvelle instance de ColumnItemViewModel.
     /// </summary>
@@ -38,7 +46,32 @@ public sealed class ColumnItemViewModel : ObservableObject
         ForeignKeySummary = foreignKeySummary ?? string.Empty;
         IndexSummary = indexSummary ?? string.Empty;
         IsUniqueIndexed = isUniqueIndexed;
+        _tooltipText = SchemaTooltipBuilder.BuildColumnTooltip(
+            Table,
+            TableDisplayName,
+            Column,
+            DataType,
+            Comment,
+            IsNullable,
+            IsPrimaryKey,
+            IsDeclaredForeignKey,
+            ForeignKeySummary,
+            IndexSummary,
+            IsUniqueIndexed
+        );
     }
+
+    /// <summary>
+    /// Gets whether this column has imported or parsed documentation.
+    /// </summary>
+    /// <value><c>true</c> when a non-empty comment is available.</value>
+    public bool HasComment => !string.IsNullOrWhiteSpace(Comment);
+
+    /// <summary>
+    /// Gets the rich tooltip text shown when hovering the column in the schema tree.
+    /// </summary>
+    /// <value>Multiline tooltip with technical metadata and documentation.</value>
+    public string TooltipText => _tooltipText;
 
     /// <summary>
     /// Stocke la valeur interne Table.

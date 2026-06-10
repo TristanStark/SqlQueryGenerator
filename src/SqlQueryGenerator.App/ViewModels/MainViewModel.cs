@@ -37,6 +37,13 @@ public sealed class MainViewModel : ObservableObject
     private readonly QueryBuilderHistoryService _history = new();
     private readonly SchemaAuxiliaryTableDetector _auxiliaryTableDetector = new();
     private readonly DdlCommandExportService _ddlCommandExportService = new();
+
+    /// <summary>
+    /// Checks GitHub releases for a newer application version.
+    /// </summary>
+    /// <value>Reusable non-blocking release checker.</value>
+    private readonly GitHubLatestReleaseChecker _latestReleaseChecker = new();
+
     /// <summary>
     /// Exécute le traitement new.
     /// </summary>
@@ -64,6 +71,75 @@ public sealed class MainViewModel : ObservableObject
     /// <param name="saved_queries">Paramètre saved_queries.</param>
     /// <returns>Résultat du traitement.</returns>
     private readonly SavedQueryStore _savedQueryStore = new(Path.Combine(Environment.CurrentDirectory, "saved_queries"));
+
+    /// <summary>
+    /// Gets saved output profiles.
+    /// </summary>
+    /// <value>Output profile list.</value>
+    public ObservableCollection<OutputProfileItemViewModel> OutputProfiles { get; } = [];
+
+    /// <summary>
+    /// Gets or sets the selected output profile.
+    /// </summary>
+    /// <value>Selected output profile.</value>
+    public OutputProfileItemViewModel? SelectedOutputProfile
+    {
+        get => _selectedOutputProfile;
+        set
+        {
+            if (SetProperty(ref _selectedOutputProfile, value))
+            {
+                ApplySelectedOutputProfileCommand.RaiseCanExecuteChanged();
+                DeleteSelectedOutputProfileCommand.RaiseCanExecuteChanged();
+
+                if (value is not null)
+                {
+                    OutputProfileName = value.Definition.Name;
+                    OutputProfileDescription = value.Definition.Description ?? string.Empty;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the output profile name currently being edited.
+    /// </summary>
+    /// <value>Output profile name.</value>
+    public string OutputProfileName
+    {
+        get => _outputProfileName;
+        set => SetProperty(ref _outputProfileName, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the output profile description currently being edited.
+    /// </summary>
+    /// <value>Output profile description.</value>
+    public string OutputProfileDescription
+    {
+        get => _outputProfileDescription;
+        set => SetProperty(ref _outputProfileDescription, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the generated fixed-width Markdown specification.
+    /// </summary>
+    /// <value>Markdown specification.</value>
+    public string FixedWidthSpecMarkdown
+    {
+        get => _fixedWidthSpecMarkdown;
+        set
+        {
+            if (SetProperty(ref _fixedWidthSpecMarkdown, value))
+            {
+                CopyFixedWidthSpecCommand?.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    private readonly OutputProfileStore _outputProfileStore = new(Path.Combine(Environment.CurrentDirectory, "output_profiles"));
+    private readonly FixedWidthSpecGenerator _fixedWidthSpecGenerator = new();
+
     /// <summary>
     /// Exécute le traitement new.
     /// </summary>
@@ -104,6 +180,12 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de _performanceReport.</value>
     private string _performanceReport = "L'analyse de performance apparaîtra ici.";
+
+    private string _outputProfileName = "profil_sortie";
+    private string _outputProfileDescription = string.Empty;
+    private string _fixedWidthSpecMarkdown = "La spécification fixed-width apparaîtra ici.";
+    private OutputProfileItemViewModel? _selectedOutputProfile;
+
     /// <summary>
     /// Stocke la valeur interne  queryName.
     /// </summary>
@@ -135,6 +217,15 @@ public sealed class MainViewModel : ObservableObject
     private int _rawSqlSelectionLength;
     private string _ddlSchemaName = "main";
     private string _materializedViewName = "mv_nouvelle_requete";
+
+    private string _applicationVersion = AppVersionInfo.CurrentVersionLabel;
+    private string _updateStatusText = string.Empty;
+    private string _latestReleaseUrl = string.Empty;
+    private bool _isCheckingForUpdates;
+    private bool _isUpdateAvailable;
+    private bool _showUpdateStatus;
+    private bool _hasCheckedLatestReleaseThisSession;
+
     private string _createMaterializedViewSql = string.Empty;
     private string _ddlExportSql = string.Empty;
     /// <summary>
@@ -285,6 +376,19 @@ public sealed class MainViewModel : ObservableObject
         AddEmptyCustomColumnCommand = new RelayCommand(() => CustomColumns.Add(new CustomColumnRowViewModel { Alias = BuildDefaultCustomAlias() }));
         AddAggregateFilterCommand = new RelayCommand(obj => AddAggregateToFilter(obj as AggregateRowViewModel));
         AddAggregateOrderByCommand = new RelayCommand(obj => AddAggregateToOrderBy(obj as AggregateRowViewModel));
+        SaveOutputProfileCommand = new RelayCommand(SaveCurrentOutputProfile);
+        ReloadOutputProfilesCommand = new RelayCommand(ReloadOutputProfiles);
+        ApplySelectedOutputProfileCommand = new RelayCommand(
+            ApplySelectedOutputProfile,
+            () => SelectedOutputProfile is not null);
+        DeleteSelectedOutputProfileCommand = new RelayCommand(
+            DeleteSelectedOutputProfile,
+            () => SelectedOutputProfile is not null);
+        GenerateFixedWidthSpecCommand = new RelayCommand(GenerateFixedWidthSpec);
+        CopyFixedWidthSpecCommand = new RelayCommand(
+            CopyFixedWidthSpec,
+            () => !string.IsNullOrWhiteSpace(FixedWidthSpecMarkdown)
+                  && !FixedWidthSpecMarkdown.StartsWith("La spécification", StringComparison.OrdinalIgnoreCase));
         AddCustomFilterCommand = new RelayCommand(obj => AddCustomColumnToFilter(obj as CustomColumnRowViewModel));
         OpenSelectedColumnPropertiesCommand = new RelayCommand(
             obj => OpenSelectedColumnProperties(obj as SelectColumnRowViewModel),
@@ -310,11 +414,15 @@ public sealed class MainViewModel : ObservableObject
         GenerateDdlExportCommand = new RelayCommand(GenerateDdlExportSql);
         GenerateCreateMaterializedViewCommand = new RelayCommand(GenerateCreateMaterializedViewSql);
         OpenHelpCommand = new RelayCommand(OpenHelpDocumentation);
+        CheckLatestReleaseCommand = new RelayCommand(() => _ = CheckLatestReleaseAsync(userInitiated: true));
+        OpenLatestReleaseCommand = new RelayCommand(OpenLatestReleasePage, () => IsUpdateAvailable && !string.IsNullOrWhiteSpace(LatestReleaseUrl));
         ReloadSavedQueriesCommand = new RelayCommand(ReloadSavedQueries);
+
         LoadSelectedQueryCommand = new RelayCommand(_ => LoadSelectedSavedQuery(), _ => SelectedSavedQuery is not null);
         AddSelectedSavedQueryAsSubqueryFilterCommand = new RelayCommand(_ => AddSelectedSavedQueryAsSubqueryFilter(), _ => SelectedSavedQuery is not null);
         ClearColumnSearchCommand = new RelayCommand(() => ColumnSearchText = string.Empty);
         ReloadSavedQueries();
+        ReloadOutputProfiles();
 
         Joins.CollectionChanged += Joins_CollectionChanged;
 
@@ -327,6 +435,7 @@ public sealed class MainViewModel : ObservableObject
         WireAutoGenerate(CustomColumns);
         WireAutoGenerate(Parameters);
         ResetHistoryToCurrentState();
+        _ = CheckLatestReleaseAsync(userInitiated: false);
     }
 
     /// <summary>
@@ -539,6 +648,37 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de AddSelectedGroupByCommand.</value>
     public RelayCommand AddSelectedGroupByCommand { get; }
+
+    /// <summary>
+    /// Saves the current selected-column output properties as a reusable profile.
+    /// </summary>
+    public RelayCommand SaveOutputProfileCommand { get; }
+
+    /// <summary>
+    /// Reloads saved output profiles from disk.
+    /// </summary>
+    public RelayCommand ReloadOutputProfilesCommand { get; }
+
+    /// <summary>
+    /// Applies the selected output profile to matching selected columns.
+    /// </summary>
+    public RelayCommand ApplySelectedOutputProfileCommand { get; }
+
+    /// <summary>
+    /// Deletes the selected output profile.
+    /// </summary>
+    public RelayCommand DeleteSelectedOutputProfileCommand { get; }
+
+    /// <summary>
+    /// Generates a fixed-width specification from the current selected columns.
+    /// </summary>
+    public RelayCommand GenerateFixedWidthSpecCommand { get; }
+
+    /// <summary>
+    /// Copies the generated fixed-width specification to the clipboard.
+    /// </summary>
+    public RelayCommand CopyFixedWidthSpecCommand { get; }
+
     /// <summary>
     /// Stocke la valeur interne AddSelectedOrderByCommand.
     /// </summary>
@@ -689,6 +829,18 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ClearColumnSearchCommand { get; }
 
     /// <summary>
+    /// Checks GitHub releases for a newer version without blocking the UI.
+    /// </summary>
+    /// <value>Command bound to the small version check button.</value>
+    public RelayCommand CheckLatestReleaseCommand { get; }
+
+    /// <summary>
+    /// Opens the latest GitHub release page in the default browser.
+    /// </summary>
+    /// <value>Command bound to the non-intrusive update link.</value>
+    public RelayCommand OpenLatestReleaseCommand { get; }
+
+    /// <summary>
     /// Obtient ou définit LoadedFile.
     /// </summary>
     /// <value>Valeur de LoadedFile.</value>
@@ -698,6 +850,97 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de Status.</value>
     public string Status { get => _status; set => SetProperty(ref _status, value); }
+
+    /// <summary>
+    /// Gets the application version label displayed in the UI.
+    /// </summary>
+    /// <value>Example: <c>SqlQueryGenerator v31.0.0</c>.</value>
+    public string ApplicationVersion
+    {
+        get => _applicationVersion;
+        private set => SetProperty(ref _applicationVersion, value);
+    }
+
+    /// <summary>
+    /// Gets the update status text displayed discreetly in the top bar.
+    /// </summary>
+    /// <value>Update status text.</value>
+    public string UpdateStatusText
+    {
+        get => _updateStatusText;
+        private set => SetProperty(ref _updateStatusText, value);
+    }
+
+    /// <summary>
+    /// Gets the latest release URL.
+    /// </summary>
+    /// <value>GitHub latest release page URL.</value>
+    public string LatestReleaseUrl
+    {
+        get => _latestReleaseUrl;
+        private set
+        {
+            if (SetProperty(ref _latestReleaseUrl, value))
+            {
+                OpenLatestReleaseCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets whether an update check is currently running.
+    /// </summary>
+    /// <value><c>true</c> while the GitHub request is running.</value>
+    public bool IsCheckingForUpdates
+    {
+        get => _isCheckingForUpdates;
+        private set
+        {
+            if (SetProperty(ref _isCheckingForUpdates, value))
+            {
+                OnPropertyChanged(nameof(IsUpdateMessageVisible));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets whether a newer release exists.
+    /// </summary>
+    /// <value><c>true</c> when a newer GitHub release is available.</value>
+    public bool IsUpdateAvailable
+    {
+        get => _isUpdateAvailable;
+        private set
+        {
+            if (SetProperty(ref _isUpdateAvailable, value))
+            {
+                OnPropertyChanged(nameof(IsUpdateMessageVisible));
+                OpenLatestReleaseCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets whether update status text should be visible.
+    /// </summary>
+    /// <value><c>true</c> for user-initiated messages or available updates.</value>
+    public bool ShowUpdateStatus
+    {
+        get => _showUpdateStatus;
+        private set
+        {
+            if (SetProperty(ref _showUpdateStatus, value))
+            {
+                OnPropertyChanged(nameof(IsUpdateMessageVisible));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets whether the non-clickable update status message should be shown.
+    /// </summary>
+    /// <value><c>true</c> for checking/up-to-date/failure messages that are not update links.</value>
+    public bool IsUpdateMessageVisible => ShowUpdateStatus && !IsUpdateAvailable;
     /// <summary>
     /// Obtient ou définit GeneratedSql.
     /// </summary>
@@ -1885,6 +2128,98 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Materializes generator-inferred joins into the editable join grid.
+    /// </summary>
+    /// <param name="joinPlan">Effective join plan returned by the SQL generator.</param>
+    /// <returns>Number of auto joins copied into the UI.</returns>
+    private int MaterializeAutoInferredJoins(IReadOnlyList<JoinDefinition> joinPlan)
+    {
+        JoinDefinition[] missingAutoJoins = joinPlan
+            .Where(join => join.AutoInferred)
+            .Where(join => !HasEditableJoinForAutoJoin(join))
+            .ToArray();
+
+        if (missingAutoJoins.Length == 0)
+        {
+            return 0;
+        }
+
+        _suppressAutoGenerate = true;
+        try
+        {
+            foreach (JoinDefinition join in missingAutoJoins)
+            {
+                Joins.Add(CreateJoinRowViewModel(join));
+            }
+        }
+        finally
+        {
+            _suppressAutoGenerate = false;
+        }
+
+        RefreshRelationshipUsage();
+        return missingAutoJoins.Length;
+    }
+
+    /// <summary>
+    /// Checks whether an inferred join is already represented by an editable join row.
+    /// </summary>
+    /// <param name="plannedJoin">Auto join to inspect.</param>
+    /// <returns><c>true</c> if the UI already contains the same join.</returns>
+    private bool HasEditableJoinForAutoJoin(JoinDefinition plannedJoin)
+    {
+        return Joins.Any(join => SameJoin(join, plannedJoin));
+    }
+
+    /// <summary>
+    /// Compares a UI join with a planned generator join, accepting reversed orientation.
+    /// </summary>
+    /// <param name="join">Editable join row.</param>
+    /// <param name="plannedJoin">Generated join definition.</param>
+    /// <returns><c>true</c> when both joins connect the same primary pair.</returns>
+    private static bool SameJoin(JoinRowViewModel join, JoinDefinition plannedJoin)
+    {
+        return SameJoinEndpoint(join.FromTable, plannedJoin.FromTable)
+               && SameJoinEndpoint(join.FromColumn, plannedJoin.FromColumn)
+               && SameJoinEndpoint(join.ToTable, plannedJoin.ToTable)
+               && SameJoinEndpoint(join.ToColumn, plannedJoin.ToColumn)
+            || SameJoinEndpoint(join.FromTable, plannedJoin.ToTable)
+               && SameJoinEndpoint(join.FromColumn, plannedJoin.ToColumn)
+               && SameJoinEndpoint(join.ToTable, plannedJoin.FromTable)
+               && SameJoinEndpoint(join.ToColumn, plannedJoin.FromColumn);
+    }
+
+    /// <summary>
+    /// Converts a query join definition into the editable WPF row model.
+    /// </summary>
+    /// <param name="join">Join definition to display.</param>
+    /// <returns>Editable join row.</returns>
+    private static JoinRowViewModel CreateJoinRowViewModel(JoinDefinition join)
+    {
+        JoinRowViewModel joinVm = new()
+        {
+            FromTable = join.FromTable,
+            FromColumn = join.FromColumn,
+            ToTable = join.ToTable,
+            ToColumn = join.ToColumn,
+            JoinType = join.JoinType,
+            PrimaryPairEnabled = join.PrimaryPairEnabled
+        };
+
+        foreach (JoinColumnPair pair in join.AdditionalColumnPairs)
+        {
+            joinVm.AdditionalPairs.Add(new JoinColumnPairRowViewModel
+            {
+                FromColumn = pair.FromColumn,
+                ToColumn = pair.ToColumn,
+                Enabled = pair.Enabled
+            });
+        }
+
+        return joinVm;
+    }
+
+    /// <summary>
     /// Exécute le traitement GenerateSql.
     /// </summary>
     private void GenerateSql()
@@ -1894,20 +2229,39 @@ public sealed class MainViewModel : ObservableObject
         {
             QueryDefinition query = BuildQueryDefinition();
             IReadOnlyList<string> validationErrors = _validator.Validate(query, _schema);
-            SqlGenerationResult result = _generator.Generate(query, _schema, new SqlGeneratorOptions
+            SqlGeneratorOptions options = new()
             {
                 Dialect = Dialect,
                 QuoteIdentifiers = QuoteIdentifiers,
                 AutoGroupSelectedColumnsWhenAggregating = AutoGroupSelectedColumns,
                 EmitOptimizationComments = false
-            });
+            };
+
+            SqlGenerationResult result = _generator.Generate(query, _schema, options);
+
+            int materializedAutoJoins = MaterializeAutoInferredJoins(result.JoinPlan);
+            if (materializedAutoJoins > 0)
+            {
+                query = BuildQueryDefinition();
+                validationErrors = _validator.Validate(query, _schema);
+                result = _generator.Generate(query, _schema, options);
+                _history.ReplaceCurrent(CaptureHistoryState());
+                UpdateHistoryCommands();
+            }
 
             RefreshRelationshipUsage();
             GeneratedSql = result.Sql;
             RefreshTrackedSqlComparison();
             QueryPurpose = _purposeDescriber.Describe(query, _schema);
             PerformanceReport = _performanceAnalyzer.Analyze(query, _schema).ToString();
-            string[] messages = validationErrors.Concat(result.Warnings).Concat(_schema.Warnings).Distinct().ToArray();
+
+            IEnumerable<string> warningMessages = validationErrors.Concat(result.Warnings).Concat(_schema.Warnings);
+            if (materializedAutoJoins > 0)
+            {
+                warningMessages = warningMessages.Append($"{materializedAutoJoins} jointure(s) automatique(s) ont été ajoutées dans l'onglet Jointures pour être éditées.");
+            }
+
+            string[] messages = warningMessages.Distinct().ToArray();
             Warnings = messages.Length == 0 ? "Aucun avertissement." : string.Join(Environment.NewLine, messages);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
@@ -2059,7 +2413,8 @@ public sealed class MainViewModel : ObservableObject
                 FromColumn = row.FromColumn,
                 ToTable = row.ToTable,
                 ToColumn = row.ToColumn,
-                JoinType = row.JoinType
+                JoinType = row.JoinType,
+                PrimaryPairEnabled = row.PrimaryPairEnabled
             };
 
             foreach (JoinColumnPairRowViewModel? pair in row.AdditionalPairs.Where(p => !string.IsNullOrWhiteSpace(p.FromColumn)
@@ -2260,6 +2615,296 @@ public sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Saves the current selected-column output formatting as a reusable profile.
+    /// </summary>
+    private void SaveCurrentOutputProfile()
+    {
+        try
+        {
+            if (SelectedColumns.Count == 0)
+            {
+                Status = "Impossible de sauvegarder un profil de sortie: aucune colonne sélectionnée.";
+                return;
+            }
+
+            OutputProfileDefinition profile = BuildCurrentOutputProfile();
+            string filePath = _outputProfileStore.Save(profile);
+
+            ReloadOutputProfiles();
+            SelectedOutputProfile = OutputProfiles.FirstOrDefault(profileItem =>
+                string.Equals(profileItem.Name, profile.Name, StringComparison.OrdinalIgnoreCase));
+
+            Status = $"Profil de sortie sauvegardé: {filePath}";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            Status = "Erreur pendant la sauvegarde du profil de sortie.";
+            Warnings = ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Builds an output profile from the current selected columns.
+    /// </summary>
+    /// <returns>Output profile definition.</returns>
+    private OutputProfileDefinition BuildCurrentOutputProfile()
+    {
+        string profileName = string.IsNullOrWhiteSpace(OutputProfileName)
+            ? $"{(string.IsNullOrWhiteSpace(QueryName) ? "requete" : QueryName.Trim())}_sortie"
+            : OutputProfileName.Trim();
+
+        OutputProfileDefinition profile = new()
+        {
+            Name = profileName,
+            Description = BlankToNull(OutputProfileDescription),
+            SourceQueryName = BlankToNull(QueryName)
+        };
+
+        int order = 1;
+        foreach (SelectColumnRowViewModel row in SelectedColumns)
+        {
+            profile.Fields.Add(new OutputProfileFieldDefinition
+            {
+                Order = order++,
+                Table = row.Table,
+                Column = row.Column,
+                Alias = BlankToNull(row.Alias),
+                NullAllowed = row.NullAllowed,
+                UseFixedLength = row.UseFixedLength,
+                FixedLength = row.FixedLength
+            });
+        }
+
+        return profile;
+    }
+
+    /// <summary>
+    /// Reloads output profiles from local storage.
+    /// </summary>
+    private void ReloadOutputProfiles()
+    {
+        OutputProfileItemViewModel? previous = SelectedOutputProfile;
+        OutputProfiles.Clear();
+
+        foreach (OutputProfileDefinition profile in _outputProfileStore.LoadAll())
+        {
+            OutputProfiles.Add(new OutputProfileItemViewModel(profile));
+        }
+
+        if (previous is not null)
+        {
+            SelectedOutputProfile = OutputProfiles.FirstOrDefault(profile =>
+                string.Equals(profile.Name, previous.Name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        ApplySelectedOutputProfileCommand.RaiseCanExecuteChanged();
+        DeleteSelectedOutputProfileCommand.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Applies the selected output profile to matching selected columns.
+    /// </summary>
+    private void ApplySelectedOutputProfile()
+    {
+        if (SelectedOutputProfile is null)
+        {
+            return;
+        }
+
+        OutputProfileDefinition profile = SelectedOutputProfile.Definition;
+        int applied = 0;
+        int missing = 0;
+
+        _suppressAutoGenerate = true;
+        try
+        {
+            foreach (OutputProfileFieldDefinition field in profile.Fields.OrderBy(field => field.Order))
+            {
+                SelectColumnRowViewModel? target = SelectedColumns.FirstOrDefault(row =>
+                    field.Matches(row.Table, row.Column, row.Alias));
+
+                target ??= SelectedColumns.FirstOrDefault(row =>
+                    string.Equals(row.Table, field.Table, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(row.Column, field.Column, StringComparison.OrdinalIgnoreCase));
+
+                if (target is null)
+                {
+                    missing++;
+                    continue;
+                }
+
+                target.Alias = field.Alias ?? target.Alias;
+                target.NullAllowed = field.NullAllowed;
+                target.UseFixedLength = field.UseFixedLength;
+                target.FixedLength = field.FixedLength;
+                applied++;
+            }
+        }
+        finally
+        {
+            _suppressAutoGenerate = false;
+        }
+
+        GenerateSql();
+        GenerateFixedWidthSpec();
+
+        Status = $"Profil de sortie appliqué: {applied} champ(s), {missing} champ(s) introuvable(s).";
+    }
+
+    /// <summary>
+    /// Deletes the selected output profile.
+    /// </summary>
+    private void DeleteSelectedOutputProfile()
+    {
+        if (SelectedOutputProfile is null)
+        {
+            return;
+        }
+
+        string profileName = SelectedOutputProfile.Name;
+        bool deleted = _outputProfileStore.Delete(profileName);
+        ReloadOutputProfiles();
+
+        Status = deleted
+            ? $"Profil de sortie supprimé: {profileName}"
+            : $"Profil de sortie introuvable: {profileName}";
+    }
+
+    /// <summary>
+    /// Generates the fixed-width Markdown specification for the current selected columns.
+    /// </summary>
+    private void GenerateFixedWidthSpec()
+    {
+        try
+        {
+            QueryDefinition query = BuildQueryDefinition();
+            FixedWidthSpecReport report = _fixedWidthSpecGenerator.Generate(
+                query,
+                _schema,
+                new FixedWidthSpecOptions
+                {
+                    ProfileName = BlankToNull(OutputProfileName),
+                    Description = BlankToNull(OutputProfileDescription)
+                });
+
+            FixedWidthSpecMarkdown = report.Markdown;
+
+            if (report.Warnings.Count > 0)
+            {
+                Warnings = string.Join(Environment.NewLine, report.Warnings);
+            }
+
+            Status = $"Spec fixed-width générée: {report.Fields.Count} champ(s), longueur totale {report.TotalLength} caractère(s).";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            FixedWidthSpecMarkdown = "-- Impossible de générer la spécification fixed-width.";
+            Warnings = ex.Message;
+            Status = "Erreur pendant la génération de la spec fixed-width.";
+        }
+    }
+
+    /// <summary>
+    /// Copies the fixed-width specification to the clipboard.
+    /// </summary>
+    private void CopyFixedWidthSpec()
+    {
+        if (string.IsNullOrWhiteSpace(FixedWidthSpecMarkdown))
+        {
+            return;
+        }
+
+        Clipboard.SetText(FixedWidthSpecMarkdown);
+        Status = "Spec fixed-width copiée dans le presse-papier.";
+    }
+
+    /// <summary>
+    /// Checks the latest GitHub release asynchronously without blocking the UI.
+    /// </summary>
+    /// <param name="userInitiated">Whether the user explicitly requested the check.</param>
+    private async Task CheckLatestReleaseAsync(bool userInitiated)
+    {
+        if (_hasCheckedLatestReleaseThisSession && !userInitiated)
+        {
+            return;
+        }
+
+        _hasCheckedLatestReleaseThisSession = true;
+
+        if (userInitiated)
+        {
+            UpdateStatusText = "Vérification de la dernière version...";
+            ShowUpdateStatus = true;
+        }
+
+        IsCheckingForUpdates = true;
+
+        try
+        {
+            GitHubReleaseCheckResult result = await _latestReleaseChecker
+                .CheckLatestReleaseAsync(
+                    AppVersionInfo.CurrentVersion,
+                    includePrereleases: false,
+                    timeout: TimeSpan.FromSeconds(3))
+                .ConfigureAwait(true);
+
+            if (result.Succeeded && result.UpdateAvailable && result.ReleaseUri is not null)
+            {
+                LatestReleaseUrl = result.ReleaseUri.ToString();
+                UpdateStatusText = $"Nouvelle version disponible : {result.LatestTag}";
+                IsUpdateAvailable = true;
+                ShowUpdateStatus = true;
+                return;
+            }
+
+            IsUpdateAvailable = false;
+            LatestReleaseUrl = string.Empty;
+
+            if (userInitiated)
+            {
+                UpdateStatusText = result.Succeeded
+                    ? "Version à jour."
+                    : "Impossible de vérifier la version pour le moment.";
+                ShowUpdateStatus = true;
+            }
+            else
+            {
+                UpdateStatusText = string.Empty;
+                ShowUpdateStatus = false;
+            }
+        }
+        finally
+        {
+            IsCheckingForUpdates = false;
+        }
+    }
+
+    /// <summary>
+    /// Opens the latest GitHub release page in the user's default browser.
+    /// </summary>
+    private void OpenLatestReleasePage()
+    {
+        if (string.IsNullOrWhiteSpace(LatestReleaseUrl))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = LatestReleaseUrl,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            Status = "Impossible d'ouvrir la page de release GitHub.";
+        }
+    }
+
+
+    /// <summary>
     /// Exécute le traitement ClearQuery.
     /// </summary>
     private void ClearQuery()
@@ -2311,6 +2956,7 @@ public sealed class MainViewModel : ObservableObject
             };
             string path = _savedQueryStore.Save(saved);
             ReloadSavedQueries();
+            ReloadOutputProfiles();
             Status = $"Requête sauvegardée: {path}";
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
@@ -2350,6 +2996,7 @@ public sealed class MainViewModel : ObservableObject
 
             string path = _savedQueryStore.Save(saved);
             ReloadSavedQueries();
+            ReloadOutputProfiles();
             Status = $"Preset SQL brut sauvegardé: {path}";
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
@@ -3034,20 +3681,7 @@ public sealed class MainViewModel : ObservableObject
             foreach (OrderByItem o in query.OrderBy) OrderBy.Add(new OrderByRowViewModel { Table = o.Column?.Table ?? (o.FieldKind == QueryFieldKind.Aggregate ? "Agrégat" : "Calculé"), Column = o.Column?.Column ?? o.FieldAlias ?? string.Empty, FieldKind = o.FieldKind, FieldAlias = o.FieldAlias ?? string.Empty, Direction = o.Direction });
             foreach (AggregateSelection a in query.Aggregates) Aggregates.Add(new AggregateRowViewModel { Table = a.Column?.Table ?? string.Empty, Column = a.Column?.Column ?? string.Empty, Function = a.Function, Alias = a.Alias ?? string.Empty, Distinct = a.Distinct, ConditionTable = a.ConditionColumn?.Table ?? string.Empty, ConditionColumn = a.ConditionColumn?.Column ?? string.Empty, ConditionOperator = a.ConditionOperator ?? "=", ConditionValue = a.ConditionValue ?? string.Empty, ConditionSecondValue = a.ConditionSecondValue ?? string.Empty });
             foreach (JoinDefinition j in query.Joins)
-            {
-                JoinRowViewModel joinVm = new() { FromTable = j.FromTable, FromColumn = j.FromColumn, ToTable = j.ToTable, ToColumn = j.ToColumn, JoinType = j.JoinType };
-                foreach (JoinColumnPair pair in j.AdditionalColumnPairs)
-                {
-                    joinVm.AdditionalPairs.Add(new JoinColumnPairRowViewModel
-                    {
-                        FromColumn = pair.FromColumn,
-                        ToColumn = pair.ToColumn,
-                        Enabled = pair.Enabled
-                    });
-                }
-
-                Joins.Add(joinVm);
-            }
+                Joins.Add(CreateJoinRowViewModel(j));
             foreach (CustomColumnSelection c in query.CustomColumns) CustomColumns.Add(new CustomColumnRowViewModel { Alias = c.Alias ?? string.Empty, RawExpression = c.RawExpression ?? string.Empty, CaseTable = c.CaseColumn?.Table ?? string.Empty, CaseColumn = c.CaseColumn?.Column ?? string.Empty, CaseOperator = c.CaseOperator ?? "=", CaseCompareValue = c.CaseCompareValue ?? string.Empty, CaseThenValue = c.CaseThenValue ?? string.Empty, CaseElseValue = c.CaseElseValue ?? string.Empty });
             foreach (QueryParameterDefinition p in query.Parameters) Parameters.Add(new QueryParameterRowViewModel
             {

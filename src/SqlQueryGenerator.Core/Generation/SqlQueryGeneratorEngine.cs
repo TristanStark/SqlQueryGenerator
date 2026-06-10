@@ -122,7 +122,8 @@ public sealed class SqlQueryGeneratorEngine
         return new SqlGenerationResult
         {
             Sql = sb.ToString().TrimEnd() + Environment.NewLine,
-            Warnings = warnings
+            Warnings = warnings,
+            JoinPlan = CloneJoinPlan(joins)
         };
     }
 
@@ -134,10 +135,12 @@ public sealed class SqlQueryGeneratorEngine
     /// <returns>Résultat du traitement.</returns>
     private static string BuildJoinOnClause(JoinDefinition join, SqlGeneratorOptions options, IReadOnlyDictionary<string, string> tableAliases)
     {
-        List<string> predicates =
-        [
-            $"{TableReferenceSql(join.FromTable, tableAliases, options)}.{Q(join.FromColumn, options)} = {TableReferenceSql(join.ToTable, tableAliases, options)}.{Q(join.ToColumn, options)}"
-        ];
+        List<string> predicates = [];
+
+        if (join.PrimaryPairEnabled)
+        {
+            predicates.Add($"{TableReferenceSql(join.FromTable, tableAliases, options)}.{Q(join.FromColumn, options)} = {TableReferenceSql(join.ToTable, tableAliases, options)}.{Q(join.ToColumn, options)}");
+        }
 
         foreach (JoinColumnPair? pair in join.AdditionalColumnPairs.Where(p => p.Enabled
                      && !string.IsNullOrWhiteSpace(p.FromColumn)
@@ -150,7 +153,9 @@ public sealed class SqlQueryGeneratorEngine
             }
         }
 
-        return string.Join(" AND ", predicates);
+        return predicates.Count == 0
+            ? "1 = 0"
+            : string.Join(" AND ", predicates);
     }
 
     /// <summary>
@@ -2380,6 +2385,44 @@ public sealed class SqlQueryGeneratorEngine
     /// <param name="reference">Référence de colonne à inspecter.</param>
     /// <returns><c>true</c> lorsque la colonne vaut <c>*</c> ; sinon <c>false</c>.</returns>
     private static bool IsWildcardColumn(ColumnReference reference) => reference.Column.Trim() == "*";
+
+    /// <summary>
+    /// Creates an immutable copy of the effective join plan exposed to the UI.
+    /// </summary>
+    /// <param name="joins">Join plan produced by the generator.</param>
+    /// <returns>Detached join plan copy.</returns>
+    private static IReadOnlyList<JoinDefinition> CloneJoinPlan(IEnumerable<JoinDefinition> joins)
+    {
+        List<JoinDefinition> clone = [];
+
+        foreach (JoinDefinition join in joins)
+        {
+            JoinDefinition copied = new()
+            {
+                FromTable = join.FromTable,
+                FromColumn = join.FromColumn,
+                ToTable = join.ToTable,
+                ToColumn = join.ToColumn,
+                JoinType = join.JoinType,
+                PrimaryPairEnabled = join.PrimaryPairEnabled,
+                AutoInferred = join.AutoInferred
+            };
+
+            foreach (JoinColumnPair pair in join.AdditionalColumnPairs)
+            {
+                copied.AdditionalColumnPairs.Add(new JoinColumnPair
+                {
+                    FromColumn = pair.FromColumn,
+                    ToColumn = pair.ToColumn,
+                    Enabled = pair.Enabled
+                });
+            }
+
+            clone.Add(copied);
+        }
+
+        return clone;
+    }
 
     /// <summary>
     /// Exécute le traitement Q.

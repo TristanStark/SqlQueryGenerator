@@ -1,0 +1,1151 @@
+diff --git a/src/SqlQueryGenerator.Core/Export/QueryDocumentationExportContext.cs b/src/SqlQueryGenerator.Core/Export/QueryDocumentationExportContext.cs
+new file mode 100644
+index 0000000..e5f3a91
+--- /dev/null
++++ b/src/SqlQueryGenerator.Core/Export/QueryDocumentationExportContext.cs
+@@ -0,0 +1,176 @@
++namespace SqlQueryGenerator.Core.Export;
++
++/// <summary>
++/// Contains every user-visible element required to export a generated query documentation document.
++/// </summary>
++/// <remarks>
++/// The context is deliberately UI-agnostic so the Markdown exporter can be tested without WPF.
++/// </remarks>
++public sealed class QueryDocumentationExportContext
++{
++    /// <summary>
++    /// Gets the human-readable query name used as the Markdown title.
++    /// </summary>
++    /// <value>Current query name, or a safe fallback when the UI field is empty.</value>
++    public string QueryName { get; init; } = "query";
++
++    /// <summary>
++    /// Gets the optional user-provided query description.
++    /// </summary>
++    /// <value>Free-form description text.</value>
++    public string Description { get; init; } = string.Empty;
++
++    /// <summary>
++    /// Gets the SQL statement to include in the generated document.
++    /// </summary>
++    /// <value>Generated or reverse-imported SQL text.</value>
++    public string GeneratedSql { get; init; } = string.Empty;
++
++    /// <summary>
++    /// Gets the timestamp associated with the export operation.
++    /// </summary>
++    /// <value>Date and time at which the Markdown was generated.</value>
++    public DateTimeOffset GeneratedAt { get; init; } = DateTimeOffset.Now;
++
++    /// <summary>
++    /// Gets the SQL dialect selected in the builder.
++    /// </summary>
++    /// <value>Display name of the SQL dialect.</value>
++    public string Dialect { get; init; } = string.Empty;
++
++    /// <summary>
++    /// Gets the current base table selected in the query builder.
++    /// </summary>
++    /// <value>Fully qualified base table name when available.</value>
++    public string BaseTable { get; init; } = string.Empty;
++
++    /// <summary>
++    /// Gets whether the query uses SELECT DISTINCT.
++    /// </summary>
++    /// <value><c>true</c> when DISTINCT is enabled.</value>
++    public bool Distinct { get; init; }
++
++    /// <summary>
++    /// Gets the optional row limit requested by the user.
++    /// </summary>
++    /// <value>Maximum number of rows, or <c>null</c> when no limit is configured.</value>
++    public int? LimitRows { get; init; }
++
++    /// <summary>
++    /// Gets the natural language purpose generated for the current query.
++    /// </summary>
++    /// <value>Query purpose summary.</value>
++    public string Purpose { get; init; } = string.Empty;
++
++    /// <summary>
++    /// Gets validation and safety warnings for the query.
++    /// </summary>
++    /// <value>Warning text produced by the validator.</value>
++    public string Warnings { get; init; } = string.Empty;
++
++    /// <summary>
++    /// Gets performance notes and heuristic recommendations for the query.
++    /// </summary>
++    /// <value>Performance analysis text.</value>
++    public string PerformanceNotes { get; init; } = string.Empty;
++
++    /// <summary>
++    /// Gets selected output columns.
++    /// </summary>
++    /// <value>Columns present in the SELECT clause.</value>
++    public IReadOnlyList<QueryDocumentationColumn> SelectedColumns { get; init; } = Array.Empty<QueryDocumentationColumn>();
++
++    /// <summary>
++    /// Gets joins used by the generated query.
++    /// </summary>
++    /// <value>Join definitions and additional join pairs.</value>
++    public IReadOnlyList<QueryDocumentationJoin> Joins { get; init; } = Array.Empty<QueryDocumentationJoin>();
++
++    /// <summary>
++    /// Gets filters used by the generated query.
++    /// </summary>
++    /// <value>WHERE and HAVING filter rows.</value>
++    public IReadOnlyList<QueryDocumentationFilter> Filters { get; init; } = Array.Empty<QueryDocumentationFilter>();
++
++    /// <summary>
++    /// Gets group-by columns.
++    /// </summary>
++    /// <value>Columns present in the GROUP BY clause.</value>
++    public IReadOnlyList<string> GroupByColumns { get; init; } = Array.Empty<string>();
++
++    /// <summary>
++    /// Gets aggregate expressions selected by the user.
++    /// </summary>
++    /// <value>Aggregate functions, aliases and optional conditions.</value>
++    public IReadOnlyList<QueryDocumentationAggregate> Aggregates { get; init; } = Array.Empty<QueryDocumentationAggregate>();
++
++    /// <summary>
++    /// Gets sort expressions.
++    /// </summary>
++    /// <value>ORDER BY expressions and directions.</value>
++    public IReadOnlyList<QueryDocumentationOrder> Sorting { get; init; } = Array.Empty<QueryDocumentationOrder>();
++
++    /// <summary>
++    /// Gets calculated columns.
++    /// </summary>
++    /// <value>Raw or CASE-based calculated column definitions.</value>
++    public IReadOnlyList<QueryDocumentationCalculatedColumn> CalculatedColumns { get; init; } = Array.Empty<QueryDocumentationCalculatedColumn>();
++
++    /// <summary>
++    /// Gets declared query parameters.
++    /// </summary>
++    /// <value>Parameters referenced by the generated SQL.</value>
++    public IReadOnlyList<QueryDocumentationParameter> Parameters { get; init; } = Array.Empty<QueryDocumentationParameter>();
++}
++
++/// <summary>
++/// Describes one selected column in the exported query documentation.
++/// </summary>
++public sealed record QueryDocumentationColumn(string Table, string Column, string Alias);
++
++/// <summary>
++/// Describes one join in the exported query documentation.
++/// </summary>
++public sealed record QueryDocumentationJoin(
++    string JoinType,
++    string FromTable,
++    string FromColumn,
++    string ToTable,
++    string ToColumn,
++    IReadOnlyList<QueryDocumentationJoinPair> AdditionalPairs);
++
++/// <summary>
++/// Describes an additional enabled column pair attached to a join.
++/// </summary>
++public sealed record QueryDocumentationJoinPair(string FromColumn, string ToColumn);
++
++/// <summary>
++/// Describes one filter condition in the exported query documentation.
++/// </summary>
++public sealed record QueryDocumentationFilter(string Connector, string Field, string Operator, string ValueKind, string Value);
++
++/// <summary>
++/// Describes one aggregate expression in the exported query documentation.
++/// </summary>
++public sealed record QueryDocumentationAggregate(string Function, string Table, string Column, string Alias, bool Distinct, string Condition);
++
++/// <summary>
++/// Describes one sort expression in the exported query documentation.
++/// </summary>
++public sealed record QueryDocumentationOrder(string Field, string Direction);
++
++/// <summary>
++/// Describes one calculated column in the exported query documentation.
++/// </summary>
++public sealed record QueryDocumentationCalculatedColumn(string Alias, string Expression);
++
++/// <summary>
++/// Describes one parameter in the exported query documentation.
++/// </summary>
++public sealed record QueryDocumentationParameter(
++    string Name,
++    string DeclaredType,
++    bool Required,
++    bool UseCognosPrompt,
++    string DefaultValue,
++    string Description);
+diff --git a/src/SqlQueryGenerator.Core/Export/QueryDocumentationMarkdownExporter.cs b/src/SqlQueryGenerator.Core/Export/QueryDocumentationMarkdownExporter.cs
+new file mode 100644
+index 0000000..15f748c
+--- /dev/null
++++ b/src/SqlQueryGenerator.Core/Export/QueryDocumentationMarkdownExporter.cs
+@@ -0,0 +1,426 @@
++using System.Globalization;
++using System.Text;
++
++namespace SqlQueryGenerator.Core.Export;
++
++/// <summary>
++/// Generates readable Markdown documentation for a SQL query produced by the builder or reverse-import workflow.
++/// </summary>
++public sealed class QueryDocumentationMarkdownExporter
++{
++    /// <summary>
++    /// Generates a complete Markdown document for the supplied query documentation context.
++    /// </summary>
++    /// <param name="context">Current query documentation data.</param>
++    /// <returns>A Markdown document containing SQL, metadata, builder sections, warnings and performance notes.</returns>
++    /// <exception cref="ArgumentNullException">Thrown when <paramref name="context"/> is <c>null</c>.</exception>
++    public string GenerateMarkdown(QueryDocumentationExportContext context)
++    {
++        ArgumentNullException.ThrowIfNull(context);
++
++        StringBuilder builder = new();
++        string queryName = string.IsNullOrWhiteSpace(context.QueryName) ? "query" : context.QueryName.Trim();
++
++        builder.Append("# Query: ").AppendLine(EscapeHeading(queryName));
++        builder.AppendLine();
++
++        AppendSummary(builder, context);
++        AppendGeneratedSql(builder, context.GeneratedSql);
++        AppendSelectedColumns(builder, context.SelectedColumns);
++        AppendJoins(builder, context.Joins);
++        AppendFilters(builder, context.Filters);
++        AppendSimpleListSection(builder, "Grouping", context.GroupByColumns);
++        AppendAggregates(builder, context.Aggregates);
++        AppendSorting(builder, context.Sorting);
++        AppendCalculatedColumns(builder, context.CalculatedColumns);
++        AppendParameters(builder, context.Parameters);
++        AppendTextSection(builder, "Warnings", context.Warnings);
++        AppendTextSection(builder, "Performance notes", context.PerformanceNotes);
++
++        return builder.ToString().TrimEnd() + Environment.NewLine;
++    }
++
++    /// <summary>
++    /// Appends the high-level summary section and metadata table.
++    /// </summary>
++    private static void AppendSummary(StringBuilder builder, QueryDocumentationExportContext context)
++    {
++        AppendSectionTitle(builder, "Summary");
++
++        if (!string.IsNullOrWhiteSpace(context.Description))
++        {
++            builder.AppendLine(EscapeParagraph(context.Description.Trim()));
++            builder.AppendLine();
++        }
++
++        if (!string.IsNullOrWhiteSpace(context.Purpose))
++        {
++            builder.Append("**Purpose:** ").AppendLine(EscapeParagraph(context.Purpose.Trim()));
++            builder.AppendLine();
++        }
++
++        builder.AppendLine("| Property | Value |");
++        builder.AppendLine("| --- | --- |");
++        AppendTableRow(builder, "Generated at", context.GeneratedAt.ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture));
++        AppendTableRow(builder, "Dialect", EmptyFallback(context.Dialect));
++        AppendTableRow(builder, "Base table", EmptyFallback(context.BaseTable));
++        AppendTableRow(builder, "DISTINCT", context.Distinct ? "Yes" : "No");
++        AppendTableRow(builder, "Limit", context.LimitRows?.ToString(CultureInfo.InvariantCulture) ?? "None");
++        builder.AppendLine();
++    }
++
++    /// <summary>
++    /// Appends the generated SQL section as a fenced code block.
++    /// </summary>
++    private static void AppendGeneratedSql(StringBuilder builder, string generatedSql)
++    {
++        AppendSectionTitle(builder, "Generated SQL");
++        AppendFencedCodeBlock(builder, "sql", generatedSql);
++    }
++
++    /// <summary>
++    /// Appends the SELECT column table when columns are present.
++    /// </summary>
++    private static void AppendSelectedColumns(StringBuilder builder, IReadOnlyList<QueryDocumentationColumn> columns)
++    {
++        if (columns.Count == 0)
++        {
++            return;
++        }
++
++        AppendSectionTitle(builder, "Selected columns");
++        builder.AppendLine("| Table | Column | Alias |");
++        builder.AppendLine("| --- | --- | --- |");
++
++        foreach (QueryDocumentationColumn column in columns)
++        {
++            AppendTableRow(builder, column.Table, column.Column, column.Alias);
++        }
++
++        builder.AppendLine();
++    }
++
++    /// <summary>
++    /// Appends join definitions and enabled additional join pairs.
++    /// </summary>
++    private static void AppendJoins(StringBuilder builder, IReadOnlyList<QueryDocumentationJoin> joins)
++    {
++        if (joins.Count == 0)
++        {
++            return;
++        }
++
++        AppendSectionTitle(builder, "Joins");
++        builder.AppendLine("| Type | From | To | Additional pairs |");
++        builder.AppendLine("| --- | --- | --- | --- |");
++
++        foreach (QueryDocumentationJoin join in joins)
++        {
++            string from = Qualified(join.FromTable, join.FromColumn);
++            string to = Qualified(join.ToTable, join.ToColumn);
++            string additionalPairs = join.AdditionalPairs.Count == 0
++                ? string.Empty
++                : string.Join("<br>", join.AdditionalPairs.Select(pair => $"{pair.FromColumn} = {pair.ToColumn}"));
++
++            AppendTableRow(builder, join.JoinType, from, to, additionalPairs);
++        }
++
++        builder.AppendLine();
++    }
++
++    /// <summary>
++    /// Appends WHERE or HAVING filter documentation rows.
++    /// </summary>
++    private static void AppendFilters(StringBuilder builder, IReadOnlyList<QueryDocumentationFilter> filters)
++    {
++        if (filters.Count == 0)
++        {
++            return;
++        }
++
++        AppendSectionTitle(builder, "Filters");
++        builder.AppendLine("| Connector | Field | Operator | Value kind | Value |");
++        builder.AppendLine("| --- | --- | --- | --- | --- |");
++
++        foreach (QueryDocumentationFilter filter in filters)
++        {
++            AppendTableRow(builder, filter.Connector, filter.Field, filter.Operator, filter.ValueKind, filter.Value);
++        }
++
++        builder.AppendLine();
++    }
++
++    /// <summary>
++    /// Appends aggregate expressions and their optional conditions.
++    /// </summary>
++    private static void AppendAggregates(StringBuilder builder, IReadOnlyList<QueryDocumentationAggregate> aggregates)
++    {
++        if (aggregates.Count == 0)
++        {
++            return;
++        }
++
++        AppendSectionTitle(builder, "Aggregates");
++        builder.AppendLine("| Function | Column | Alias | DISTINCT | Condition |");
++        builder.AppendLine("| --- | --- | --- | --- | --- |");
++
++        foreach (QueryDocumentationAggregate aggregate in aggregates)
++        {
++            AppendTableRow(
++                builder,
++                aggregate.Function,
++                Qualified(aggregate.Table, aggregate.Column),
++                aggregate.Alias,
++                aggregate.Distinct ? "Yes" : "No",
++                aggregate.Condition);
++        }
++
++        builder.AppendLine();
++    }
++
++    /// <summary>
++    /// Appends ORDER BY documentation rows.
++    /// </summary>
++    private static void AppendSorting(StringBuilder builder, IReadOnlyList<QueryDocumentationOrder> sorting)
++    {
++        if (sorting.Count == 0)
++        {
++            return;
++        }
++
++        AppendSectionTitle(builder, "Sorting");
++        builder.AppendLine("| Field | Direction |");
++        builder.AppendLine("| --- | --- |");
++
++        foreach (QueryDocumentationOrder order in sorting)
++        {
++            AppendTableRow(builder, order.Field, order.Direction);
++        }
++
++        builder.AppendLine();
++    }
++
++    /// <summary>
++    /// Appends calculated column aliases and expressions.
++    /// </summary>
++    private static void AppendCalculatedColumns(StringBuilder builder, IReadOnlyList<QueryDocumentationCalculatedColumn> calculatedColumns)
++    {
++        if (calculatedColumns.Count == 0)
++        {
++            return;
++        }
++
++        AppendSectionTitle(builder, "Calculated columns");
++        builder.AppendLine("| Alias | Expression |");
++        builder.AppendLine("| --- | --- |");
++
++        foreach (QueryDocumentationCalculatedColumn column in calculatedColumns)
++        {
++            AppendTableRow(builder, column.Alias, column.Expression);
++        }
++
++        builder.AppendLine();
++    }
++
++    /// <summary>
++    /// Appends query parameter metadata rows.
++    /// </summary>
++    private static void AppendParameters(StringBuilder builder, IReadOnlyList<QueryDocumentationParameter> parameters)
++    {
++        if (parameters.Count == 0)
++        {
++            return;
++        }
++
++        AppendSectionTitle(builder, "Parameters");
++        builder.AppendLine("| Name | Type | Required | Cognos prompt | Default | Description |");
++        builder.AppendLine("| --- | --- | --- | --- | --- | --- |");
++
++        foreach (QueryDocumentationParameter parameter in parameters)
++        {
++            AppendTableRow(
++                builder,
++                parameter.Name,
++                parameter.DeclaredType,
++                parameter.Required ? "Yes" : "No",
++                parameter.UseCognosPrompt ? "Yes" : "No",
++                parameter.DefaultValue,
++                parameter.Description);
++        }
++
++        builder.AppendLine();
++    }
++
++    /// <summary>
++    /// Appends a bullet-list section for simple string values.
++    /// </summary>
++    private static void AppendSimpleListSection(StringBuilder builder, string title, IReadOnlyList<string> values)
++    {
++        if (values.Count == 0)
++        {
++            return;
++        }
++
++        AppendSectionTitle(builder, title);
++
++        foreach (string value in values.Where(value => !string.IsNullOrWhiteSpace(value)))
++        {
++            builder.Append("- ").AppendLine(EscapeParagraph(value.Trim()));
++        }
++
++        builder.AppendLine();
++    }
++
++    /// <summary>
++    /// Appends a multiline textual section as bullet points.
++    /// </summary>
++    private static void AppendTextSection(StringBuilder builder, string title, string text)
++    {
++        if (string.IsNullOrWhiteSpace(text))
++        {
++            return;
++        }
++
++        AppendSectionTitle(builder, title);
++
++        foreach (string line in NormalizeLines(text))
++        {
++            builder.Append("- ").AppendLine(EscapeParagraph(line));
++        }
++
++        builder.AppendLine();
++    }
++
++    /// <summary>
++    /// Normalizes multiline text into trimmed non-empty lines.
++    /// </summary>
++    private static IEnumerable<string> NormalizeLines(string text)
++    {
++        return text
++            .Replace("\r\n", "\n", StringComparison.Ordinal)
++            .Replace('\r', '\n')
++            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
++            .Where(line => !string.IsNullOrWhiteSpace(line));
++    }
++
++    /// <summary>
++    /// Appends a level-two Markdown section title.
++    /// </summary>
++    private static void AppendSectionTitle(StringBuilder builder, string title)
++    {
++        builder.Append("## ").AppendLine(title);
++        builder.AppendLine();
++    }
++
++    /// <summary>
++    /// Appends a fenced Markdown code block using a safe fence length.
++    /// </summary>
++    private static void AppendFencedCodeBlock(StringBuilder builder, string language, string code)
++    {
++        string safeCode = code ?? string.Empty;
++        string fence = BuildFence(safeCode);
++
++        builder.Append(fence).AppendLine(language);
++        builder.AppendLine(safeCode.TrimEnd());
++        builder.AppendLine(fence);
++        builder.AppendLine();
++    }
++
++    /// <summary>
++    /// Builds a Markdown fence longer than any backtick sequence in the SQL body.
++    /// </summary>
++    private static string BuildFence(string code)
++    {
++        int longestFence = 0;
++        int currentFence = 0;
++
++        foreach (char character in code)
++        {
++            if (character == '`')
++            {
++                currentFence++;
++                longestFence = Math.Max(longestFence, currentFence);
++            }
++            else
++            {
++                currentFence = 0;
++            }
++        }
++
++        return new string('`', Math.Max(3, longestFence + 1));
++    }
++
++    /// <summary>
++    /// Appends one escaped Markdown table row.
++    /// </summary>
++    private static void AppendTableRow(StringBuilder builder, params string?[] values)
++    {
++        builder.Append('|');
++
++        foreach (string? value in values)
++        {
++            builder.Append(' ').Append(EscapeTableCell(value)).Append(' ').Append('|');
++        }
++
++        builder.AppendLine();
++    }
++
++    /// <summary>
++    /// Escapes a value for safe use inside a Markdown table cell.
++    /// </summary>
++    private static string EscapeTableCell(string? value)
++    {
++        string normalized = string.IsNullOrWhiteSpace(value) ? "—" : value.Trim();
++        return EscapeParagraph(normalized)
++            .Replace("\r\n", "<br>", StringComparison.Ordinal)
++            .Replace("\n", "<br>", StringComparison.Ordinal)
++            .Replace("|", "\\|", StringComparison.Ordinal);
++    }
++
++    /// <summary>
++    /// Escapes a value for safe use inside a Markdown heading.
++    /// </summary>
++    private static string EscapeHeading(string value)
++    {
++        return EscapeParagraph(value).Replace("#", "\\#", StringComparison.Ordinal);
++    }
++
++    /// <summary>
++    /// Escapes lightweight Markdown formatting characters in plain text.
++    /// </summary>
++    private static string EscapeParagraph(string value)
++    {
++        return value
++            .Replace("\\", "\\\\", StringComparison.Ordinal)
++            .Replace("*", "\\*", StringComparison.Ordinal)
++            .Replace("_", "\\_", StringComparison.Ordinal)
++            .Replace("[", "\\[", StringComparison.Ordinal)
++            .Replace("]", "\\]", StringComparison.Ordinal);
++    }
++
++    /// <summary>
++    /// Returns an em dash when a display value is empty.
++    /// </summary>
++    private static string EmptyFallback(string value)
++    {
++        return string.IsNullOrWhiteSpace(value) ? "—" : value.Trim();
++    }
++
++    /// <summary>
++    /// Builds a readable qualified column name from table and column parts.
++    /// </summary>
++    private static string Qualified(string table, string column)
++    {
++        if (string.IsNullOrWhiteSpace(table))
++        {
++            return column;
++        }
++
++        if (string.IsNullOrWhiteSpace(column))
++        {
++            return table;
++        }
++
++        return $"{table}.{column}";
++    }
++}
+diff --git a/src/SqlQueryGenerator.App/Export/QueryDocumentationExportContextFactory.cs b/src/SqlQueryGenerator.App/Export/QueryDocumentationExportContextFactory.cs
+new file mode 100644
+index 0000000..85757c0
+--- /dev/null
++++ b/src/SqlQueryGenerator.App/Export/QueryDocumentationExportContextFactory.cs
+@@ -0,0 +1,217 @@
++using SqlQueryGenerator.App.ViewModels;
++using SqlQueryGenerator.Core.Export;
++using SqlQueryGenerator.Core.Query;
++
++namespace SqlQueryGenerator.App.Export;
++
++/// <summary>
++/// Converts the WPF query builder state into the UI-agnostic Markdown export context.
++/// </summary>
++public static class QueryDocumentationExportContextFactory
++{
++    /// <summary>
++    /// Creates a Markdown export context from the current main view model state.
++    /// </summary>
++    /// <param name="viewModel">Current main view model.</param>
++    /// <param name="generatedAt">Timestamp to include in the exported document.</param>
++    /// <param name="sql">SQL text to document.</param>
++    /// <returns>A complete query documentation context.</returns>
++    public static QueryDocumentationExportContext FromViewModel(MainViewModel viewModel, DateTimeOffset generatedAt, string sql)
++    {
++        ArgumentNullException.ThrowIfNull(viewModel);
++
++        return new QueryDocumentationExportContext
++        {
++            QueryName = string.IsNullOrWhiteSpace(viewModel.QueryName) ? "query" : viewModel.QueryName.Trim(),
++            Description = viewModel.QueryDescription?.Trim() ?? string.Empty,
++            GeneratedSql = sql?.Trim() ?? string.Empty,
++            GeneratedAt = generatedAt,
++            Dialect = viewModel.Dialect.ToString(),
++            BaseTable = viewModel.BaseTable,
++            Distinct = viewModel.Distinct,
++            LimitRows = viewModel.LimitRows,
++            Purpose = CleanGeneratedText(viewModel.QueryPurpose, "Charge un schéma"),
++            Warnings = CleanGeneratedText(viewModel.Warnings, string.Empty),
++            PerformanceNotes = CleanGeneratedText(viewModel.PerformanceReport, "L'analyse de performance apparaîtra ici"),
++            SelectedColumns = viewModel.SelectedColumns
++                .Select(column => new QueryDocumentationColumn(column.Table, column.Column, column.Alias))
++                .ToList(),
++            Joins = viewModel.Joins
++                .Select(join => new QueryDocumentationJoin(
++                    join.JoinType.ToString(),
++                    join.FromTable,
++                    join.FromColumn,
++                    join.ToTable,
++                    join.ToColumn,
++                    join.AdditionalPairs
++                        .Where(pair => pair.Enabled)
++                        .Select(pair => new QueryDocumentationJoinPair(pair.FromColumn, pair.ToColumn))
++                        .ToList()))
++                .ToList(),
++            Filters = viewModel.Filters
++                .Select(filter => new QueryDocumentationFilter(
++                    filter.Connector.ToString(),
++                    BuildFilterField(filter),
++                    filter.Operator,
++                    filter.ValueKind.ToString(),
++                    BuildFilterValue(filter)))
++                .ToList(),
++            GroupByColumns = viewModel.GroupBy
++                .Select(group => Qualified(group.Table, group.Column))
++                .Where(value => !string.IsNullOrWhiteSpace(value))
++                .ToList(),
++            Aggregates = viewModel.Aggregates
++                .Select(aggregate => new QueryDocumentationAggregate(
++                    aggregate.Function.ToString(),
++                    aggregate.Table,
++                    aggregate.Column,
++                    aggregate.Alias,
++                    aggregate.Distinct,
++                    BuildAggregateCondition(aggregate)))
++                .ToList(),
++            Sorting = viewModel.OrderBy
++                .Select(order => new QueryDocumentationOrder(BuildOrderField(order), order.Direction.ToString()))
++                .ToList(),
++            CalculatedColumns = viewModel.CustomColumns
++                .Select(column => new QueryDocumentationCalculatedColumn(column.Alias, BuildCalculatedColumnExpression(column)))
++                .ToList(),
++            Parameters = viewModel.Parameters
++                .Select(parameter => new QueryDocumentationParameter(
++                    parameter.Name,
++                    parameter.DeclaredType,
++                    parameter.Required,
++                    parameter.UseCognosPrompt,
++                    parameter.DefaultValue,
++                    parameter.Description))
++                .ToList()
++        };
++    }
++
++    /// <summary>
++    /// Resolves a filter field from either a column reference or a calculated alias.
++    /// </summary>
++    private static string BuildFilterField(FilterRowViewModel filter)
++    {
++        return filter.FieldKind == QueryFieldKind.Column
++            ? Qualified(filter.Table, filter.Column)
++            : filter.FieldAlias;
++    }
++
++    /// <summary>
++    /// Resolves an ORDER BY field from either a column reference or an alias.
++    /// </summary>
++    private static string BuildOrderField(OrderByRowViewModel order)
++    {
++        return order.FieldKind == QueryFieldKind.Column
++            ? Qualified(order.Table, order.Column)
++            : order.FieldAlias;
++    }
++
++    /// <summary>
++    /// Builds a readable filter value representation for documentation.
++    /// </summary>
++    private static string BuildFilterValue(FilterRowViewModel filter)
++    {
++        if (filter.Operator.Equals("BETWEEN", StringComparison.OrdinalIgnoreCase))
++        {
++            return $"{filter.Value} AND {filter.SecondValue}".Trim();
++        }
++
++        if (filter.Operator.Equals("IS NULL", StringComparison.OrdinalIgnoreCase)
++            || filter.Operator.Equals("IS NOT NULL", StringComparison.OrdinalIgnoreCase))
++        {
++            return string.Empty;
++        }
++
++        if (!string.IsNullOrWhiteSpace(filter.SubqueryName))
++        {
++            return string.IsNullOrWhiteSpace(filter.Value)
++                ? filter.SubqueryName
++                : $"{filter.Value} ({filter.SubqueryName})";
++        }
++
++        return filter.Value;
++    }
++
++    /// <summary>
++    /// Builds the optional aggregate condition displayed in the Markdown export.
++    /// </summary>
++    private static string BuildAggregateCondition(AggregateRowViewModel aggregate)
++    {
++        string conditionColumn = Qualified(aggregate.ConditionTable, aggregate.ConditionColumn);
++        if (string.IsNullOrWhiteSpace(conditionColumn))
++        {
++            return string.Empty;
++        }
++
++        if (aggregate.ConditionOperator.Equals("BETWEEN", StringComparison.OrdinalIgnoreCase))
++        {
++            return $"{conditionColumn} BETWEEN {aggregate.ConditionValue} AND {aggregate.ConditionSecondValue}";
++        }
++
++        if (aggregate.ConditionOperator.Equals("IS NULL", StringComparison.OrdinalIgnoreCase)
++            || aggregate.ConditionOperator.Equals("IS NOT NULL", StringComparison.OrdinalIgnoreCase))
++        {
++            return $"{conditionColumn} {aggregate.ConditionOperator}";
++        }
++
++        return $"{conditionColumn} {aggregate.ConditionOperator} {aggregate.ConditionValue}".Trim();
++    }
++
++    /// <summary>
++    /// Builds a raw or CASE-based calculated column expression for documentation.
++    /// </summary>
++    private static string BuildCalculatedColumnExpression(CustomColumnRowViewModel column)
++    {
++        if (!string.IsNullOrWhiteSpace(column.RawExpression))
++        {
++            return column.RawExpression;
++        }
++
++        string caseColumn = Qualified(column.CaseTable, column.CaseColumn);
++        if (string.IsNullOrWhiteSpace(caseColumn))
++        {
++            return string.Empty;
++        }
++
++        return $"CASE WHEN {caseColumn} {column.CaseOperator} {column.CaseCompareValue} THEN {column.CaseThenValue} ELSE {column.CaseElseValue} END";
++    }
++
++    /// <summary>
++    /// Builds a readable qualified column name from table and column parts.
++    /// </summary>
++    private static string Qualified(string table, string column)
++    {
++        if (string.IsNullOrWhiteSpace(table))
++        {
++            return column?.Trim() ?? string.Empty;
++        }
++
++        if (string.IsNullOrWhiteSpace(column))
++        {
++            return table.Trim();
++        }
++
++        return $"{table.Trim()}.{column.Trim()}";
++    }
++
++    /// <summary>
++    /// Removes empty or placeholder generated UI text before export.
++    /// </summary>
++    private static string CleanGeneratedText(string? value, string placeholderPrefix)
++    {
++        if (string.IsNullOrWhiteSpace(value))
++        {
++            return string.Empty;
++        }
++
++        string trimmed = value.Trim();
++        if (!string.IsNullOrWhiteSpace(placeholderPrefix)
++            && trimmed.StartsWith(placeholderPrefix, StringComparison.OrdinalIgnoreCase))
++        {
++            return string.Empty;
++        }
++
++        return trimmed;
++    }
++}
+diff --git a/src/SqlQueryGenerator.App/MainWindow.xaml.cs b/src/SqlQueryGenerator.App/MainWindow.xaml.cs
+index 99a1720..4d8d962 100644
+--- a/src/SqlQueryGenerator.App/MainWindow.xaml.cs
++++ b/src/SqlQueryGenerator.App/MainWindow.xaml.cs
+@@ -1,5 +1,7 @@
+ using Microsoft.Win32;
++using SqlQueryGenerator.App.Export;
+ using SqlQueryGenerator.App.ViewModels;
++using SqlQueryGenerator.Core.Export;
+ using System.ComponentModel;
+ using System.IO;
+ using System.Windows;
+@@ -28,6 +30,11 @@ public partial class MainWindow : Window
+     /// <value>Colonne d'ancrage utilisée par Shift+clic, ou <c>null</c> si aucune colonne n'a encore été choisie.</value>
+     private ColumnItemViewModel? _bulkSelectionAnchor;
+     private DdlExportWindow? _ddlExportWindow;
++    /// <summary>
++    /// Generates Markdown content for the current query documentation export actions.
++    /// </summary>
++    /// <value>Reusable stateless Markdown exporter.</value>
++    private readonly QueryDocumentationMarkdownExporter _markdownExporter = new();
+ 
+     /// <summary>
+     /// Initialise une nouvelle instance de MainWindow.
+@@ -166,5 +170,156 @@ public partial class MainWindow : Window
+         Clipboard.SetText(ViewModel.GeneratedSql ?? string.Empty);
+     }
++
++    /// <summary>
++    /// Copies the current query documentation as Markdown to the clipboard.
++    /// </summary>
++    /// <param name="sender">Event source.</param>
++    /// <param name="e">Event arguments.</param>
++    private void CopyMarkdownDocumentation_Click(object sender, RoutedEventArgs e)
++    {
++        if (!TryBuildCurrentDocumentationMarkdown(out string markdown))
++        {
++            return;
++        }
++
++        Clipboard.SetText(markdown);
++        ViewModel.Status = "Documentation Markdown copiée dans le presse-papier.";
++    }
++
++    /// <summary>
++    /// Saves the current query documentation as a Markdown file.
++    /// </summary>
++    /// <param name="sender">Event source.</param>
++    /// <param name="e">Event arguments.</param>
++    private void ExportMarkdownDocumentation_Click(object sender, RoutedEventArgs e)
++    {
++        if (!TryBuildCurrentDocumentationMarkdown(out string markdown))
++        {
++            return;
++        }
++
++        if (TrySaveTextFile(
++            "Exporter la documentation Markdown",
++            "Markdown (*.md)|*.md|Texte (*.txt)|*.txt|Tous les fichiers (*.*)|*.*",
++            ".md",
++            BuildSafeFileName(ViewModel.QueryName, ".md"),
++            markdown))
++        {
++            ViewModel.Status = "Documentation Markdown exportée.";
++        }
++    }
++
++    /// <summary>
++    /// Saves the current generated SQL query as a .sql file.
++    /// </summary>
++    /// <param name="sender">Event source.</param>
++    /// <param name="e">Event arguments.</param>
++    private void ExportSql_Click(object sender, RoutedEventArgs e)
++    {
++        if (!TryGetExportableSql(out string sql))
++        {
++            MessageBox.Show(this, "Aucune requête SQL exportable. Génère une requête ou importe un SQL brut avant d'exporter.", "Exporter SQL", MessageBoxButton.OK, MessageBoxImage.Information);
++            return;
++        }
++
++        if (TrySaveTextFile(
++            "Exporter la requête SQL",
++            "SQL (*.sql)|*.sql|Texte (*.txt)|*.txt|Tous les fichiers (*.*)|*.*",
++            ".sql",
++            BuildSafeFileName(ViewModel.QueryName, ".sql"),
++            sql))
++        {
++            ViewModel.Status = "Requête SQL exportée.";
++        }
++    }
++
++    /// <summary>
++    /// Builds the Markdown document for the current query state when exportable SQL is available.
++    /// </summary>
++    private bool TryBuildCurrentDocumentationMarkdown(out string markdown)
++    {
++        markdown = string.Empty;
++        if (!TryGetExportableSql(out string sql))
++        {
++            MessageBox.Show(this, "Aucune requête SQL exportable. Génère une requête ou importe un SQL brut avant de créer la documentation.", "Documentation Markdown", MessageBoxButton.OK, MessageBoxImage.Information);
++            return false;
++        }
++
++        QueryDocumentationExportContext context = QueryDocumentationExportContextFactory.FromViewModel(ViewModel, DateTimeOffset.Now, sql);
++        markdown = _markdownExporter.GenerateMarkdown(context);
++        return true;
++    }
++
++    /// <summary>
++    /// Resolves the SQL text to export, preferring generated SQL and falling back to raw SQL.
++    /// </summary>
++    private bool TryGetExportableSql(out string sql)
++    {
++        sql = string.Empty;
++        string generatedSql = ViewModel.GeneratedSql ?? string.Empty;
++        if (!IsPlaceholderSql(generatedSql))
++        {
++            sql = generatedSql.Trim();
++            return true;
++        }
++
++        string rawSql = ViewModel.RawSqlText ?? string.Empty;
++        if (!string.IsNullOrWhiteSpace(rawSql))
++        {
++            sql = rawSql.Trim();
++            return true;
++        }
++
++        return false;
++    }
++
++    /// <summary>
++    /// Detects the initial generated SQL placeholder text.
++    /// </summary>
++    private static bool IsPlaceholderSql(string sql)
++    {
++        return string.IsNullOrWhiteSpace(sql)
++            || sql.TrimStart().StartsWith("-- La requête générée apparaîtra ici.", StringComparison.OrdinalIgnoreCase);
++    }
++
++    /// <summary>
++    /// Opens a save dialog and writes UTF-8 text to the selected file.
++    /// </summary>
++    private bool TrySaveTextFile(string title, string filter, string defaultExtension, string fileName, string text)
++    {
++        SaveFileDialog dialog = new()
++        {
++            Title = title,
++            Filter = filter,
++            DefaultExt = defaultExtension,
++            AddExtension = true,
++            OverwritePrompt = true,
++            FileName = fileName
++        };
++
++        if (dialog.ShowDialog(this) != true)
++        {
++            return false;
++        }
++
++        File.WriteAllText(dialog.FileName, text);
++        return true;
++    }
++
++    /// <summary>
++    /// Builds a timestamped filename safe for the current operating system.
++    /// </summary>
++    private static string BuildSafeFileName(string baseName, string extension)
++    {
++        string safeName = string.IsNullOrWhiteSpace(baseName) ? "query" : baseName.Trim();
++        foreach (char invalidCharacter in Path.GetInvalidFileNameChars())
++        {
++            safeName = safeName.Replace(invalidCharacter, '_');
++        }
++
++        safeName = safeName.Replace(' ', '_');
++        return $"{safeName}_{DateTime.Now:yyyyMMdd_HHmmss}{extension}";
++    }
+ 
+     private void ImportSchemaTextWithReview(string schemaText, string sourceName)
+     {
+diff --git a/src/SqlQueryGenerator.App/MainWindow.xaml b/src/SqlQueryGenerator.App/MainWindow.xaml
+index 49f6d77..af2a518 100644
+--- a/src/SqlQueryGenerator.App/MainWindow.xaml
++++ b/src/SqlQueryGenerator.App/MainWindow.xaml
+@@ -99,11 +99,14 @@
+                 <WrapPanel Grid.Row="0" Grid.Column="0" VerticalAlignment="Center">
+                     <Button Content="Charger schéma SQL/TXT" Click="OpenSchema_Click" ToolTip="Charge un fichier .sql ou .txt contenant des CREATE TABLE et/ou COMMENT ON COLUMN." />
+                     <Button Content="Importer doc CSV/TSV" Click="OpenDocumentation_Click" ToolTip="Importe une documentation table/colonne depuis un fichier CSV, TSV ou TXT exporté d'un tableau." />
+                     <Button Content="Coller schéma" Click="PasteSchema_Click" ToolTip="Colle un schéma depuis le presse-papier." />
+                     <Button Content="Copier SQL" Click="CopySql_Click" ToolTip="Copie la requête générée dans le presse-papier." />
++                    <Button Content="Exporter SQL" Click="ExportSql_Click" ToolTip="Sauvegarde la requête générée dans un fichier .sql." />
++                    <Button Content="Copier doc MD" Click="CopyMarkdownDocumentation_Click" ToolTip="Copie la documentation Markdown de la requête courante dans le presse-papier." />
++                    <Button Content="Exporter doc MD" Click="ExportMarkdownDocumentation_Click" ToolTip="Sauvegarde la documentation de la requête courante dans un fichier .md." />
+                     <Button Content="Annuler" Command="{Binding UndoCommand}" ToolTip="Annule la dernière modification du constructeur (`Ctrl+Z`)." />
+                     <Button Content="Rétablir" Command="{Binding RedoCommand}" ToolTip="Rétablit la dernière modification annulée (`Ctrl+Y`)." />
+                     <Button Content="Vider requête" Command="{Binding ClearQueryCommand}" />
+                     <Button Content="Générer l'export DDL" Click="OpenDdlExportWindow_Click" ToolTip="Ouvre la fenêtre dédiée à l'export DDL Oracle/SQLite." />
+                     <Button Content="Aide" Command="{Binding OpenHelpCommand}" ToolTip="Ouvre la documentation." />
+                 </WrapPanel>
+
+diff --git a/tests/SqlQueryGenerator.Tests/QueryDocumentationMarkdownExporterTests.cs b/tests/SqlQueryGenerator.Tests/QueryDocumentationMarkdownExporterTests.cs
+new file mode 100644
+index 0000000..7ce3e24
+--- /dev/null
++++ b/tests/SqlQueryGenerator.Tests/QueryDocumentationMarkdownExporterTests.cs
+@@ -0,0 +1,107 @@
++using SqlQueryGenerator.Core.Export;
++
++namespace SqlQueryGenerator.Tests;
++
++/// <summary>
++/// Covers Markdown generation for query documentation exports.
++/// </summary>
++public sealed class QueryDocumentationMarkdownExporterTests
++{
++    [Fact]
++    public void GenerateMarkdown_IncludesCoreQueryDocumentationSections()
++    {
++        QueryDocumentationMarkdownExporter exporter = new();
++        QueryDocumentationExportContext context = new()
++        {
++            QueryName = "monthly_sales",
++            Description = "Documents monthly sales by customer.",
++            GeneratedAt = new DateTimeOffset(2026, 6, 10, 21, 30, 0, TimeSpan.FromHours(2)),
++            Dialect = "Oracle",
++            BaseTable = "SALES.ORDERS",
++            Distinct = true,
++            LimitRows = 100,
++            Purpose = "Returns customer sales totals.",
++            GeneratedSql = "SELECT customer_id, SUM(amount) AS total_amount\nFROM SALES.ORDERS\nGROUP BY customer_id",
++            SelectedColumns = new[]
++            {
++                new QueryDocumentationColumn("SALES.ORDERS", "CUSTOMER_ID", "customer_id")
++            },
++            Joins = new[]
++            {
++                new QueryDocumentationJoin(
++                    "Inner",
++                    "SALES.ORDERS",
++                    "CUSTOMER_ID",
++                    "CRM.CUSTOMERS",
++                    "ID",
++                    new[] { new QueryDocumentationJoinPair("TENANT_ID", "TENANT_ID") })
++            },
++            Filters = new[]
++            {
++                new QueryDocumentationFilter("And", "SALES.ORDERS.STATUS", "=", "Literal", "PAID")
++            },
++            GroupByColumns = new[] { "SALES.ORDERS.CUSTOMER_ID" },
++            Aggregates = new[]
++            {
++                new QueryDocumentationAggregate("Sum", "SALES.ORDERS", "AMOUNT", "total_amount", false, "SALES.ORDERS.STATUS = PAID")
++            },
++            Sorting = new[]
++            {
++                new QueryDocumentationOrder("total_amount", "Descending")
++            },
++            CalculatedColumns = new[]
++            {
++                new QueryDocumentationCalculatedColumn("bucket", "CASE WHEN amount > 100 THEN 'large' ELSE 'small' END")
++            },
++            Parameters = new[]
++            {
++                new QueryDocumentationParameter("p_year", "number", true, false, "2026", "Fiscal year")
++            },
++            Warnings = "No LIMIT configured.",
++            PerformanceNotes = "Index ORDERS_CUSTOMER_ID may help."
++        };
++
++        string markdown = exporter.GenerateMarkdown(context);
++
++        Assert.Contains("# Query: monthly\\_sales", markdown);
++        Assert.Contains("## Summary", markdown);
++        Assert.Contains("| Generated at | 2026-06-10 21:30:00 +02:00 |", markdown);
++        Assert.Contains("## Generated SQL", markdown);
++        Assert.Contains("```sql", markdown);
++        Assert.Contains("SUM(amount) AS total_amount", markdown);
++        Assert.Contains("## Selected columns", markdown);
++        Assert.Contains("| SALES.ORDERS | CUSTOMER\\_ID | customer\\_id |", markdown);
++        Assert.Contains("## Joins", markdown);
++        Assert.Contains("TENANT\\_ID = TENANT\\_ID", markdown);
++        Assert.Contains("## Filters", markdown);
++        Assert.Contains("## Grouping", markdown);
++        Assert.Contains("## Aggregates", markdown);
++        Assert.Contains("## Sorting", markdown);
++        Assert.Contains("## Calculated columns", markdown);
++        Assert.Contains("## Parameters", markdown);
++        Assert.Contains("## Warnings", markdown);
++        Assert.Contains("No LIMIT configured.", markdown);
++        Assert.Contains("## Performance notes", markdown);
++        Assert.Contains("Index ORDERS\\_CUSTOMER\\_ID may help.", markdown);
++    }
++
++    [Fact]
++    public void GenerateMarkdown_EscapesTablePipesAndUsesLongerFenceWhenSqlContainsBackticks()
++    {
++        QueryDocumentationMarkdownExporter exporter = new();
++        QueryDocumentationExportContext context = new()
++        {
++            QueryName = "pipe_test",
++            GeneratedSql = "SELECT '```' AS fence_marker",
++            SelectedColumns = new[]
++            {
++                new QueryDocumentationColumn("A|B", "C|D", "alias|value")
++            }
++        };
++
++        string markdown = exporter.GenerateMarkdown(context);
++
++        Assert.Contains("````sql", markdown);
++        Assert.Contains("| A\\|B | C\\|D | alias\\|value |", markdown);
++    }
++}

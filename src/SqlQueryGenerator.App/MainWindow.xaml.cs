@@ -1,5 +1,7 @@
 using Microsoft.Win32;
+using SqlQueryGenerator.App.Export;
 using SqlQueryGenerator.App.ViewModels;
+using SqlQueryGenerator.Core.Export;
 using System.ComponentModel;
 using System.IO;
 using System.Windows;
@@ -26,6 +28,11 @@ public partial class MainWindow : Window
     /// <value>Colonne d'ancrage utilisée par Shift+clic, ou <c>null</c> si aucune colonne n'a encore été choisie.</value>
     private ColumnItemViewModel? _bulkSelectionAnchor;
     private DdlExportWindow? _ddlExportWindow;
+    /// <summary>
+    /// Generates Markdown content for the current query documentation export actions.
+    /// </summary>
+    /// <value>Reusable stateless Markdown exporter.</value>
+    private readonly QueryDocumentationMarkdownExporter _markdownExporter = new();
 
     /// <summary>
     /// Initialise une nouvelle instance de MainWindow.
@@ -162,6 +169,157 @@ public partial class MainWindow : Window
     private void CopySql_Click(object sender, RoutedEventArgs e)
     {
         Clipboard.SetText(ViewModel.GeneratedSql ?? string.Empty);
+    }
+
+    /// <summary>
+    /// Copies the current query documentation as Markdown to the clipboard.
+    /// </summary>
+    /// <param name="sender">Event source.</param>
+    /// <param name="e">Event arguments.</param>
+    private void CopyMarkdownDocumentation_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryBuildCurrentDocumentationMarkdown(out string markdown))
+        {
+            return;
+        }
+
+        Clipboard.SetText(markdown);
+        ViewModel.Status = "Documentation Markdown copiée dans le presse-papier.";
+    }
+
+    /// <summary>
+    /// Saves the current query documentation as a Markdown file.
+    /// </summary>
+    /// <param name="sender">Event source.</param>
+    /// <param name="e">Event arguments.</param>
+    private void ExportMarkdownDocumentation_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryBuildCurrentDocumentationMarkdown(out string markdown))
+        {
+            return;
+        }
+
+        if (TrySaveTextFile(
+            "Exporter la documentation Markdown",
+            "Markdown (*.md)|*.md|Texte (*.txt)|*.txt|Tous les fichiers (*.*)|*.*",
+            ".md",
+            BuildSafeFileName(ViewModel.QueryName, ".md"),
+            markdown))
+        {
+            ViewModel.Status = "Documentation Markdown exportée.";
+        }
+    }
+
+    /// <summary>
+    /// Saves the current generated SQL query as a .sql file.
+    /// </summary>
+    /// <param name="sender">Event source.</param>
+    /// <param name="e">Event arguments.</param>
+    private void ExportSql_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryGetExportableSql(out string sql))
+        {
+            MessageBox.Show(this, "Aucune requête SQL exportable. Génère une requête ou importe un SQL brut avant d'exporter.", "Exporter SQL", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (TrySaveTextFile(
+            "Exporter la requête SQL",
+            "SQL (*.sql)|*.sql|Texte (*.txt)|*.txt|Tous les fichiers (*.*)|*.*",
+            ".sql",
+            BuildSafeFileName(ViewModel.QueryName, ".sql"),
+            sql))
+        {
+            ViewModel.Status = "Requête SQL exportée.";
+        }
+    }
+
+    /// <summary>
+    /// Builds the Markdown document for the current query state when exportable SQL is available.
+    /// </summary>
+    private bool TryBuildCurrentDocumentationMarkdown(out string markdown)
+    {
+        markdown = string.Empty;
+        if (!TryGetExportableSql(out string sql))
+        {
+            MessageBox.Show(this, "Aucune requête SQL exportable. Génère une requête ou importe un SQL brut avant de créer la documentation.", "Documentation Markdown", MessageBoxButton.OK, MessageBoxImage.Information);
+            return false;
+        }
+
+        QueryDocumentationExportContext context = QueryDocumentationExportContextFactory.FromViewModel(ViewModel, DateTimeOffset.Now, sql);
+        markdown = _markdownExporter.GenerateMarkdown(context);
+        return true;
+    }
+
+    /// <summary>
+    /// Resolves the SQL text to export, preferring generated SQL and falling back to raw SQL.
+    /// </summary>
+    private bool TryGetExportableSql(out string sql)
+    {
+        sql = string.Empty;
+        string generatedSql = ViewModel.GeneratedSql ?? string.Empty;
+        if (!IsPlaceholderSql(generatedSql))
+        {
+            sql = generatedSql.Trim();
+            return true;
+        }
+
+        string rawSql = ViewModel.RawSqlText ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(rawSql))
+        {
+            sql = rawSql.Trim();
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Detects the initial generated SQL placeholder text.
+    /// </summary>
+    private static bool IsPlaceholderSql(string sql)
+    {
+        return string.IsNullOrWhiteSpace(sql)
+            || sql.TrimStart().StartsWith("-- La requête générée apparaîtra ici.", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Opens a save dialog and writes UTF-8 text to the selected file.
+    /// </summary>
+    private bool TrySaveTextFile(string title, string filter, string defaultExtension, string fileName, string text)
+    {
+        SaveFileDialog dialog = new()
+        {
+            Title = title,
+            Filter = filter,
+            DefaultExt = defaultExtension,
+            AddExtension = true,
+            OverwritePrompt = true,
+            FileName = fileName
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return false;
+        }
+
+        File.WriteAllText(dialog.FileName, text);
+        return true;
+    }
+
+    /// <summary>
+    /// Builds a timestamped filename safe for the current operating system.
+    /// </summary>
+    private static string BuildSafeFileName(string baseName, string extension)
+    {
+        string safeName = string.IsNullOrWhiteSpace(baseName) ? "query" : baseName.Trim();
+        foreach (char invalidCharacter in Path.GetInvalidFileNameChars())
+        {
+            safeName = safeName.Replace(invalidCharacter, '_');
+        }
+
+        safeName = safeName.Replace(' ', '_');
+        return $"{safeName}_{DateTime.Now:yyyyMMdd_HHmmss}{extension}";
     }
 
     private void ImportSchemaTextWithReview(string schemaText, string sourceName)
