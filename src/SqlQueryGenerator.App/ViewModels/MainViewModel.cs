@@ -37,6 +37,13 @@ public sealed class MainViewModel : ObservableObject
     private readonly QueryBuilderHistoryService _history = new();
     private readonly SchemaAuxiliaryTableDetector _auxiliaryTableDetector = new();
     private readonly DdlCommandExportService _ddlCommandExportService = new();
+
+    /// <summary>
+    /// Checks GitHub releases for a newer application version.
+    /// </summary>
+    /// <value>Reusable non-blocking release checker.</value>
+    private readonly GitHubLatestReleaseChecker _latestReleaseChecker = new();
+
     /// <summary>
     /// Exécute le traitement new.
     /// </summary>
@@ -210,6 +217,15 @@ public sealed class MainViewModel : ObservableObject
     private int _rawSqlSelectionLength;
     private string _ddlSchemaName = "main";
     private string _materializedViewName = "mv_nouvelle_requete";
+
+    private string _applicationVersion = AppVersionInfo.CurrentVersionLabel;
+    private string _updateStatusText = string.Empty;
+    private string _latestReleaseUrl = string.Empty;
+    private bool _isCheckingForUpdates;
+    private bool _isUpdateAvailable;
+    private bool _showUpdateStatus;
+    private bool _hasCheckedLatestReleaseThisSession;
+
     private string _createMaterializedViewSql = string.Empty;
     private string _ddlExportSql = string.Empty;
     /// <summary>
@@ -398,6 +414,8 @@ public sealed class MainViewModel : ObservableObject
         GenerateDdlExportCommand = new RelayCommand(GenerateDdlExportSql);
         GenerateCreateMaterializedViewCommand = new RelayCommand(GenerateCreateMaterializedViewSql);
         OpenHelpCommand = new RelayCommand(OpenHelpDocumentation);
+        CheckLatestReleaseCommand = new RelayCommand(() => _ = CheckLatestReleaseAsync(userInitiated: true));
+        OpenLatestReleaseCommand = new RelayCommand(OpenLatestReleasePage, () => IsUpdateAvailable && !string.IsNullOrWhiteSpace(LatestReleaseUrl));
         ReloadSavedQueriesCommand = new RelayCommand(ReloadSavedQueries);
 
         LoadSelectedQueryCommand = new RelayCommand(_ => LoadSelectedSavedQuery(), _ => SelectedSavedQuery is not null);
@@ -417,6 +435,7 @@ public sealed class MainViewModel : ObservableObject
         WireAutoGenerate(CustomColumns);
         WireAutoGenerate(Parameters);
         ResetHistoryToCurrentState();
+        _ = CheckLatestReleaseAsync(userInitiated: false);
     }
 
     /// <summary>
@@ -810,6 +829,18 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ClearColumnSearchCommand { get; }
 
     /// <summary>
+    /// Checks GitHub releases for a newer version without blocking the UI.
+    /// </summary>
+    /// <value>Command bound to the small version check button.</value>
+    public RelayCommand CheckLatestReleaseCommand { get; }
+
+    /// <summary>
+    /// Opens the latest GitHub release page in the default browser.
+    /// </summary>
+    /// <value>Command bound to the non-intrusive update link.</value>
+    public RelayCommand OpenLatestReleaseCommand { get; }
+
+    /// <summary>
     /// Obtient ou définit LoadedFile.
     /// </summary>
     /// <value>Valeur de LoadedFile.</value>
@@ -819,6 +850,97 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de Status.</value>
     public string Status { get => _status; set => SetProperty(ref _status, value); }
+
+    /// <summary>
+    /// Gets the application version label displayed in the UI.
+    /// </summary>
+    /// <value>Example: <c>SqlQueryGenerator v31.0.0</c>.</value>
+    public string ApplicationVersion
+    {
+        get => _applicationVersion;
+        private set => SetProperty(ref _applicationVersion, value);
+    }
+
+    /// <summary>
+    /// Gets the update status text displayed discreetly in the top bar.
+    /// </summary>
+    /// <value>Update status text.</value>
+    public string UpdateStatusText
+    {
+        get => _updateStatusText;
+        private set => SetProperty(ref _updateStatusText, value);
+    }
+
+    /// <summary>
+    /// Gets the latest release URL.
+    /// </summary>
+    /// <value>GitHub latest release page URL.</value>
+    public string LatestReleaseUrl
+    {
+        get => _latestReleaseUrl;
+        private set
+        {
+            if (SetProperty(ref _latestReleaseUrl, value))
+            {
+                OpenLatestReleaseCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets whether an update check is currently running.
+    /// </summary>
+    /// <value><c>true</c> while the GitHub request is running.</value>
+    public bool IsCheckingForUpdates
+    {
+        get => _isCheckingForUpdates;
+        private set
+        {
+            if (SetProperty(ref _isCheckingForUpdates, value))
+            {
+                OnPropertyChanged(nameof(IsUpdateMessageVisible));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets whether a newer release exists.
+    /// </summary>
+    /// <value><c>true</c> when a newer GitHub release is available.</value>
+    public bool IsUpdateAvailable
+    {
+        get => _isUpdateAvailable;
+        private set
+        {
+            if (SetProperty(ref _isUpdateAvailable, value))
+            {
+                OnPropertyChanged(nameof(IsUpdateMessageVisible));
+                OpenLatestReleaseCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets whether update status text should be visible.
+    /// </summary>
+    /// <value><c>true</c> for user-initiated messages or available updates.</value>
+    public bool ShowUpdateStatus
+    {
+        get => _showUpdateStatus;
+        private set
+        {
+            if (SetProperty(ref _showUpdateStatus, value))
+            {
+                OnPropertyChanged(nameof(IsUpdateMessageVisible));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets whether the non-clickable update status message should be shown.
+    /// </summary>
+    /// <value><c>true</c> for checking/up-to-date/failure messages that are not update links.</value>
+    public bool IsUpdateMessageVisible => ShowUpdateStatus && !IsUpdateAvailable;
     /// <summary>
     /// Obtient ou définit GeneratedSql.
     /// </summary>
@@ -2583,6 +2705,92 @@ public sealed class MainViewModel : ObservableObject
         Clipboard.SetText(FixedWidthSpecMarkdown);
         Status = "Spec fixed-width copiée dans le presse-papier.";
     }
+
+    /// <summary>
+    /// Checks the latest GitHub release asynchronously without blocking the UI.
+    /// </summary>
+    /// <param name="userInitiated">Whether the user explicitly requested the check.</param>
+    private async Task CheckLatestReleaseAsync(bool userInitiated)
+    {
+        if (_hasCheckedLatestReleaseThisSession && !userInitiated)
+        {
+            return;
+        }
+
+        _hasCheckedLatestReleaseThisSession = true;
+
+        if (userInitiated)
+        {
+            UpdateStatusText = "Vérification de la dernière version...";
+            ShowUpdateStatus = true;
+        }
+
+        IsCheckingForUpdates = true;
+
+        try
+        {
+            GitHubReleaseCheckResult result = await _latestReleaseChecker
+                .CheckLatestReleaseAsync(
+                    AppVersionInfo.CurrentVersion,
+                    includePrereleases: false,
+                    timeout: TimeSpan.FromSeconds(3))
+                .ConfigureAwait(true);
+
+            if (result.Succeeded && result.UpdateAvailable && result.ReleaseUri is not null)
+            {
+                LatestReleaseUrl = result.ReleaseUri.ToString();
+                UpdateStatusText = $"Nouvelle version disponible : {result.LatestTag}";
+                IsUpdateAvailable = true;
+                ShowUpdateStatus = true;
+                return;
+            }
+
+            IsUpdateAvailable = false;
+            LatestReleaseUrl = string.Empty;
+
+            if (userInitiated)
+            {
+                UpdateStatusText = result.Succeeded
+                    ? "Version à jour."
+                    : "Impossible de vérifier la version pour le moment.";
+                ShowUpdateStatus = true;
+            }
+            else
+            {
+                UpdateStatusText = string.Empty;
+                ShowUpdateStatus = false;
+            }
+        }
+        finally
+        {
+            IsCheckingForUpdates = false;
+        }
+    }
+
+    /// <summary>
+    /// Opens the latest GitHub release page in the user's default browser.
+    /// </summary>
+    private void OpenLatestReleasePage()
+    {
+        if (string.IsNullOrWhiteSpace(LatestReleaseUrl))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = LatestReleaseUrl,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            Status = "Impossible d'ouvrir la page de release GitHub.";
+        }
+    }
+
 
     /// <summary>
     /// Exécute le traitement ClearQuery.
