@@ -1017,3 +1017,290 @@ public sealed class SavedQueryItemViewModel : ObservableObject
         set => SetProperty(ref _isSubqueryCandidate, value);
     }
 }
+
+/// <summary>
+/// Represents one table node in the current-query join graph.
+/// </summary>
+public sealed class JoinGraphNodeViewModel : ObservableObject
+{
+    private string _table = string.Empty;
+    private string _alias = string.Empty;
+    private string _displayName = string.Empty;
+    private string _details = string.Empty;
+    private double _x;
+    private double _y;
+    private bool _isBaseTable;
+    private bool _isWarning;
+
+    /// <summary>
+    /// Gets or sets the table name represented by this graph node.
+    /// </summary>
+    public string Table
+    {
+        get => _table;
+        set => SetProperty(ref _table, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the SQL alias displayed for this table.
+    /// </summary>
+    public string Alias
+    {
+        get => _alias;
+        set => SetProperty(ref _alias, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the compact node title.
+    /// </summary>
+    public string DisplayName
+    {
+        get => _displayName;
+        set => SetProperty(ref _displayName, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the tooltip/details text.
+    /// </summary>
+    public string Details
+    {
+        get => _details;
+        set => SetProperty(ref _details, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the X position on the graph canvas.
+    /// </summary>
+    public double X
+    {
+        get => _x;
+        set => SetProperty(ref _x, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the Y position on the graph canvas.
+    /// </summary>
+    public double Y
+    {
+        get => _y;
+        set => SetProperty(ref _y, value);
+    }
+
+    /// <summary>
+    /// Gets or sets whether this node is the query base table.
+    /// </summary>
+    public bool IsBaseTable
+    {
+        get => _isBaseTable;
+        set
+        {
+            if (SetProperty(ref _isBaseTable, value))
+            {
+                OnPropertyChanged(nameof(Background));
+                OnPropertyChanged(nameof(BorderBrush));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets whether the graph detected a suspicious state for this table.
+    /// </summary>
+    public bool IsWarning
+    {
+        get => _isWarning;
+        set
+        {
+            if (SetProperty(ref _isWarning, value))
+            {
+                OnPropertyChanged(nameof(Background));
+                OnPropertyChanged(nameof(BorderBrush));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the node background brush as a WPF-compatible color string.
+    /// </summary>
+    public string Background => IsWarning
+        ? "#FEF2F2"
+        : IsBaseTable
+            ? "#DBEAFE"
+            : "#FFFFFF";
+
+    /// <summary>
+    /// Gets the node border brush as a WPF-compatible color string.
+    /// </summary>
+    public string BorderBrush => IsWarning
+        ? "#DC2626"
+        : IsBaseTable
+            ? "#2563EB"
+            : "#64748B";
+}
+
+/// <summary>
+/// Represents one join edge in the current-query join graph.
+/// </summary>
+public sealed class JoinGraphEdgeViewModel : ObservableObject
+{
+    private string _fromTable = string.Empty;
+    private string _toTable = string.Empty;
+    private string _joinType = string.Empty;
+    private string _label = string.Empty;
+    private string _details = string.Empty;
+    private double _x1;
+    private double _y1;
+    private double _x2;
+    private double _y2;
+    private double _labelX;
+    private double _labelY;
+    private bool _isAutoInferred;
+    private bool _isWarning;
+
+    /// <summary>
+    /// Gets or sets the source table.
+    /// </summary>
+    public string FromTable
+    {
+        get => _fromTable;
+        set => SetProperty(ref _fromTable, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the target table.
+    /// </summary>
+    public string ToTable
+    {
+        get => _toTable;
+        set => SetProperty(ref _toTable, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the displayed SQL join type.
+    /// </summary>
+    public string JoinType
+    {
+        get => _joinType;
+        set => SetProperty(ref _joinType, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the compact edge label.
+    /// </summary>
+    public string Label
+    {
+        get => _label;
+        set => SetProperty(ref _label, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the full join details.
+    /// </summary>
+    public string Details
+    {
+        get => _details;
+        set => SetProperty(ref _details, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the source X coordinate.
+    /// </summary>
+    public double X1
+    {
+        get => _x1;
+        set => SetProperty(ref _x1, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the source Y coordinate.
+    /// </summary>
+    public double Y1
+    {
+        get => _y1;
+        set => SetProperty(ref _y1, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the target X coordinate.
+    /// </summary>
+    public double X2
+    {
+        get => _x2;
+        set => SetProperty(ref _x2, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the target Y coordinate.
+    /// </summary>
+    public double Y2
+    {
+        get => _y2;
+        set => SetProperty(ref _y2, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the label X coordinate.
+    /// </summary>
+    public double LabelX
+    {
+        get => _labelX;
+        set => SetProperty(ref _labelX, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the label Y coordinate.
+    /// </summary>
+    public double LabelY
+    {
+        get => _labelY;
+        set => SetProperty(ref _labelY, value);
+    }
+
+    /// <summary>
+    /// Gets or sets whether this edge was inferred by the generator.
+    /// </summary>
+    public bool IsAutoInferred
+    {
+        get => _isAutoInferred;
+        set
+        {
+            if (SetProperty(ref _isAutoInferred, value))
+            {
+                OnPropertyChanged(nameof(Stroke));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets whether this edge is suspicious or incomplete.
+    /// </summary>
+    public bool IsWarning
+    {
+        get => _isWarning;
+        set
+        {
+            if (SetProperty(ref _isWarning, value))
+            {
+                OnPropertyChanged(nameof(Stroke));
+                OnPropertyChanged(nameof(LabelBackground));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the edge stroke brush as a WPF-compatible color string.
+    /// </summary>
+    public string Stroke => IsWarning
+        ? "#DC2626"
+        : IsAutoInferred
+            ? "#7C3AED"
+            : "#334155";
+
+    /// <summary>
+    /// Gets the label background brush as a WPF-compatible color string.
+    /// </summary>
+    public string LabelBackground => IsWarning
+        ? "#FEE2E2"
+        : IsAutoInferred
+            ? "#F3E8FF"
+            : "#F8FAFC";
+}

@@ -187,6 +187,20 @@ public sealed class MainViewModel : ObservableObject
     private OutputProfileItemViewModel? _selectedOutputProfile;
 
     /// <summary>
+    /// Graph
+    /// </summary>
+    private string _joinGraphSummary = "Aucune requête générée.";
+
+    /// <summary>
+    /// Gets or sets the current join graph summary.
+    /// </summary>
+    public string JoinGraphSummary
+    {
+        get => _joinGraphSummary;
+        set => SetProperty(ref _joinGraphSummary, value);
+    }
+
+    /// <summary>
     /// Stocke la valeur interne  queryName.
     /// </summary>
     /// <value>Valeur de _queryName.</value>
@@ -513,6 +527,17 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de TableNames.</value>
     public ObservableCollection<string> TableNames { get; } = [];
+
+    /// <summary>
+    /// Gets the current-query graph table nodes.
+    /// </summary>
+    public ObservableCollection<JoinGraphNodeViewModel> JoinGraphNodes { get; } = [];
+
+    /// <summary>
+    /// Gets the current-query graph join edges.
+    /// </summary>
+    public ObservableCollection<JoinGraphEdgeViewModel> JoinGraphEdges { get; } = [];
+
     /// <summary>
     /// Obtient ou définit ColumnNamesByTable.
     /// </summary>
@@ -2254,6 +2279,7 @@ public sealed class MainViewModel : ObservableObject
             RefreshTrackedSqlComparison();
             QueryPurpose = _purposeDescriber.Describe(query, _schema);
             PerformanceReport = _performanceAnalyzer.Analyze(query, _schema).ToString();
+            UpdateJoinGraph(query, result, validationErrors);
 
             IEnumerable<string> warningMessages = validationErrors.Concat(result.Warnings).Concat(_schema.Warnings);
             if (materializedAutoJoins > 0)
@@ -2271,7 +2297,321 @@ public sealed class MainViewModel : ObservableObject
             PerformanceReport = "Analyse performance indisponible tant que la requête contient des erreurs.";
             SuspendTrackedSqlComparison("Comparaison SQL indisponible tant que la génération du constructeur échoue.");
             Warnings = ex.Message;
+            ClearJoinGraph("Graphe indisponible tant que la requête contient des erreurs.");
         }
+    }
+
+    /// <summary>
+    /// Rebuilds the visual join graph from the current query and generated join plan.
+    /// </summary>
+    /// <param name="query">Current query definition.</param>
+    /// <param name="generationResult">SQL generation result containing the effective join plan.</param>
+    /// <param name="validationErrors">Validation errors emitted before generation.</param>
+    private void UpdateJoinGraph(
+        QueryDefinition query,
+        SqlGenerationResult generationResult,
+        IReadOnlyList<string> validationErrors)
+    {
+        JoinGraphNodes.Clear();
+        JoinGraphEdges.Clear();
+
+        HashSet<string> tables = CollectGraphTables(query, generationResult.JoinPlan);
+        if (tables.Count == 0)
+        {
+            JoinGraphSummary = "Aucune table à afficher.";
+            return;
+        }
+
+        Dictionary<string, string> aliases = _tableAliases.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value,
+            StringComparer.OrdinalIgnoreCase);
+
+        Dictionary<string, JoinGraphNodeViewModel> nodes = BuildGraphNodes(query, tables, aliases);
+        MarkDisconnectedNodes(query, generationResult.JoinPlan, nodes);
+
+        foreach (JoinGraphNodeViewModel node in nodes.Values.OrderBy(node => node.Table, StringComparer.OrdinalIgnoreCase))
+        {
+            JoinGraphNodes.Add(node);
+        }
+
+        foreach (JoinDefinition join in generationResult.JoinPlan)
+        {
+            if (!nodes.TryGetValue(join.FromTable, out JoinGraphNodeViewModel? fromNode)
+                || !nodes.TryGetValue(join.ToTable, out JoinGraphNodeViewModel? toNode))
+            {
+                continue;
+            }
+
+            JoinGraphEdges.Add(BuildGraphEdge(join, fromNode, toNode));
+        }
+
+        if (validationErrors.Count > 0)
+        {
+            foreach (JoinGraphNodeViewModel node in JoinGraphNodes)
+            {
+                node.IsWarning = true;
+            }
+        }
+
+        int inferredCount = JoinGraphEdges.Count(edge => edge.IsAutoInferred);
+        int warningCount = JoinGraphNodes.Count(node => node.IsWarning) + JoinGraphEdges.Count(edge => edge.IsWarning);
+
+        JoinGraphSummary = $"{JoinGraphNodes.Count} table(s), {JoinGraphEdges.Count} jointure(s)"
+            + (inferredCount > 0 ? $", {inferredCount} inférée(s)" : string.Empty)
+            + (warningCount > 0 ? $", {warningCount} alerte(s)" : string.Empty)
+            + ".";
+    }
+
+    /// <summary>
+    /// Clears the current visual join graph.
+    /// </summary>
+    /// <param name="summary">Summary text to display.</param>
+    private void ClearJoinGraph(string summary)
+    {
+        JoinGraphNodes.Clear();
+        JoinGraphEdges.Clear();
+        JoinGraphSummary = summary;
+    }
+
+    /// <summary>
+    /// Collects every table that should appear in the current-query graph.
+    /// </summary>
+    /// <param name="query">Current query definition.</param>
+    /// <param name="joinPlan">Effective join plan.</param>
+    /// <returns>Tables used by the current query.</returns>
+    private static HashSet<string> CollectGraphTables(QueryDefinition query, IReadOnlyList<JoinDefinition> joinPlan)
+    {
+        HashSet<string> result = new(StringComparer.OrdinalIgnoreCase);
+
+        void Add(string? table)
+        {
+            if (!string.IsNullOrWhiteSpace(table)
+                && !string.Equals(table, "Agrégat", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(table, "Calculé", StringComparison.OrdinalIgnoreCase))
+            {
+                result.Add(table.Trim());
+            }
+        }
+
+        Add(query.BaseTable);
+
+        foreach (ColumnReference column in query.SelectedColumns) Add(column.Table);
+        foreach (FilterCondition filter in query.Filters.Where(filter => filter.Column is not null)) Add(filter.Column!.Table);
+        foreach (ColumnReference column in query.GroupBy) Add(column.Table);
+        foreach (OrderByItem order in query.OrderBy.Where(order => order.Column is not null)) Add(order.Column!.Table);
+        foreach (AggregateSelection aggregate in query.Aggregates.Where(aggregate => aggregate.Column is not null)) Add(aggregate.Column!.Table);
+        foreach (AggregateSelection aggregate in query.Aggregates.Where(aggregate => aggregate.ConditionColumn is not null)) Add(aggregate.ConditionColumn!.Table);
+        foreach (CustomColumnSelection custom in query.CustomColumns.Where(custom => custom.CaseColumn is not null)) Add(custom.CaseColumn!.Table);
+
+        foreach (JoinDefinition join in query.Joins)
+        {
+            Add(join.FromTable);
+            Add(join.ToTable);
+        }
+
+        foreach (JoinDefinition join in joinPlan)
+        {
+            Add(join.FromTable);
+            Add(join.ToTable);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Builds positioned graph nodes.
+    /// </summary>
+    /// <param name="query">Current query definition.</param>
+    /// <param name="tables">Tables to display.</param>
+    /// <param name="aliases">Known aliases keyed by table name.</param>
+    /// <returns>Node lookup keyed by table name.</returns>
+    private static Dictionary<string, JoinGraphNodeViewModel> BuildGraphNodes(
+        QueryDefinition query,
+        HashSet<string> tables,
+        IReadOnlyDictionary<string, string> aliases)
+    {
+        Dictionary<string, JoinGraphNodeViewModel> nodes = new(StringComparer.OrdinalIgnoreCase);
+
+        string[] orderedTables = tables
+            .OrderBy(table => string.Equals(table, query.BaseTable, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(table => table, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        const double centerX = 620;
+        const double centerY = 330;
+        const double radiusX = 460;
+        const double radiusY = 220;
+
+        for (int i = 0; i < orderedTables.Length; i++)
+        {
+            string table = orderedTables[i];
+            bool isBaseTable = string.Equals(table, query.BaseTable, StringComparison.OrdinalIgnoreCase);
+            string alias = aliases.TryGetValue(table, out string? foundAlias) ? foundAlias : string.Empty;
+
+            double x;
+            double y;
+
+            if (orderedTables.Length == 1)
+            {
+                x = centerX - 90;
+                y = centerY - 40;
+            }
+            else if (isBaseTable)
+            {
+                x = centerX - 90;
+                y = centerY - 40;
+            }
+            else
+            {
+                double angle = (Math.PI * 2 * i) / Math.Max(orderedTables.Length - 1, 1);
+                x = centerX + Math.Cos(angle) * radiusX - 90;
+                y = centerY + Math.Sin(angle) * radiusY - 40;
+            }
+
+            string displayName = string.IsNullOrWhiteSpace(alias)
+                ? SqlObjectDisplayName.Table(table)
+                : $"{SqlObjectDisplayName.Table(table)} {alias}";
+
+            nodes[table] = new JoinGraphNodeViewModel
+            {
+                Table = table,
+                Alias = alias,
+                DisplayName = displayName,
+                Details = string.IsNullOrWhiteSpace(alias)
+                    ? table
+                    : $"{table}{Environment.NewLine}Alias: {alias}",
+                X = Math.Max(20, x),
+                Y = Math.Max(20, y),
+                IsBaseTable = isBaseTable
+            };
+        }
+
+        return nodes;
+    }
+
+    /// <summary>
+    /// Marks tables that are not connected by the effective join plan.
+    /// </summary>
+    /// <param name="query">Current query definition.</param>
+    /// <param name="joinPlan">Effective joins.</param>
+    /// <param name="nodes">Graph node lookup.</param>
+    private static void MarkDisconnectedNodes(
+        QueryDefinition query,
+        IReadOnlyList<JoinDefinition> joinPlan,
+        Dictionary<string, JoinGraphNodeViewModel> nodes)
+    {
+        if (nodes.Count <= 1)
+        {
+            return;
+        }
+
+        string? baseTable = string.IsNullOrWhiteSpace(query.BaseTable)
+            ? nodes.Keys.OrderBy(table => table, StringComparer.OrdinalIgnoreCase).FirstOrDefault()
+            : query.BaseTable;
+
+        if (string.IsNullOrWhiteSpace(baseTable))
+        {
+            return;
+        }
+
+        HashSet<string> connected = new(StringComparer.OrdinalIgnoreCase) { baseTable };
+        bool changed;
+
+        do
+        {
+            changed = false;
+
+            foreach (JoinDefinition join in joinPlan)
+            {
+                if (connected.Contains(join.FromTable) && connected.Add(join.ToTable))
+                {
+                    changed = true;
+                }
+
+                if (connected.Contains(join.ToTable) && connected.Add(join.FromTable))
+                {
+                    changed = true;
+                }
+            }
+        }
+        while (changed);
+
+        foreach (JoinGraphNodeViewModel node in nodes.Values)
+        {
+            if (!connected.Contains(node.Table))
+            {
+                node.IsWarning = true;
+                node.Details += $"{Environment.NewLine}Alerte: table utilisée mais non connectée au graphe de jointures effectif.";
+            }
+        }
+    }
+
+    /// <summary>
+    /// Builds a visual graph edge for one join.
+    /// </summary>
+    /// <param name="join">Join definition.</param>
+    /// <param name="fromNode">Source graph node.</param>
+    /// <param name="toNode">Target graph node.</param>
+    /// <returns>Graph edge view model.</returns>
+    private static JoinGraphEdgeViewModel BuildGraphEdge(
+        JoinDefinition join,
+        JoinGraphNodeViewModel fromNode,
+        JoinGraphNodeViewModel toNode)
+    {
+        const double nodeWidth = 180;
+        const double nodeHeight = 78;
+
+        double x1 = fromNode.X + nodeWidth / 2;
+        double y1 = fromNode.Y + nodeHeight / 2;
+        double x2 = toNode.X + nodeWidth / 2;
+        double y2 = toNode.Y + nodeHeight / 2;
+
+        string joinType = join.JoinType == JoinType.Left ? "LEFT JOIN" : "INNER JOIN";
+        string primaryPair = $"{SqlObjectDisplayName.Table(join.FromTable)}.{join.FromColumn} = {SqlObjectDisplayName.Table(join.ToTable)}.{join.ToColumn}";
+
+        List<string> pairs = [primaryPair];
+        foreach (JoinColumnPair pair in join.AdditionalColumnPairs.Where(pair => pair.Enabled))
+        {
+            pairs.Add($"{SqlObjectDisplayName.Table(join.FromTable)}.{pair.FromColumn} = {SqlObjectDisplayName.Table(join.ToTable)}.{pair.ToColumn}");
+        }
+
+        bool isWarning = pairs.Count == 0
+            || string.IsNullOrWhiteSpace(join.FromColumn)
+            || string.IsNullOrWhiteSpace(join.ToColumn);
+
+        string label = pairs.Count == 1
+            ? $"{joinType}: {join.FromColumn} = {join.ToColumn}"
+            : $"{joinType}: {pairs.Count} paires";
+
+        string details = string.Join(Environment.NewLine, pairs);
+
+        if (join.AutoInferred)
+        {
+            details += $"{Environment.NewLine}Origine: jointure inférée automatiquement.";
+        }
+
+        if (isWarning)
+        {
+            details += $"{Environment.NewLine}Alerte: jointure incomplète ou ambiguë.";
+        }
+
+        return new JoinGraphEdgeViewModel
+        {
+            FromTable = join.FromTable,
+            ToTable = join.ToTable,
+            JoinType = joinType,
+            Label = label,
+            Details = details,
+            X1 = x1,
+            Y1 = y1,
+            X2 = x2,
+            Y2 = y2,
+            LabelX = (x1 + x2) / 2 - 120,
+            LabelY = (y1 + y2) / 2 - 18,
+            IsAutoInferred = join.AutoInferred,
+            IsWarning = isWarning
+        };
     }
 
     /// <summary>

@@ -92,6 +92,32 @@ CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, AMOUNT N
         Assert.Contains(@"WHERE CUSTOMER.CUSTOMER_ID = #prompt(""Customer Id"", ""integer"")#", result.Sql);
     }
 
+    [Fact]
+    public void Generate_QueryWithAutoJoin_ExposesJoinPlanForVisualization()
+    {
+        const string sql = @"
+CREATE TABLE CUSTOMER (CUSTOMER_ID INTEGER PRIMARY KEY, NAME TEXT);
+CREATE TABLE ORDERS (ORDER_ID INTEGER PRIMARY KEY, CUSTOMER_ID INTEGER, STATUS TEXT);
+";
+        DatabaseSchema schema = new SqlSchemaParser().Parse(sql);
+        QueryDefinition query = new() { BaseTable = "ORDERS" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "CUSTOMER", Column = "NAME" });
+
+        SqlGenerationResult result = new SqlQueryGeneratorEngine().Generate(
+            query,
+            schema,
+            new SqlGeneratorOptions { Dialect = SqlDialect.SQLite });
+
+        JoinDefinition join = Assert.Single(result.JoinPlan);
+
+        Assert.True(join.AutoInferred);
+        Assert.Equal("ORDERS", join.FromTable);
+        Assert.Equal("CUSTOMER_ID", join.FromColumn);
+        Assert.Equal("CUSTOMER", join.ToTable);
+        Assert.Equal("CUSTOMER_ID", join.ToColumn);
+        Assert.Contains("INNER JOIN CUSTOMER", result.Sql);
+    }
+
     /// <summary>
     /// Ensures Cognos Analytics keeps automatic GROUP BY enabled for normal selected columns.
     /// </summary>

@@ -21,6 +21,25 @@ public sealed class MainViewModelWorkflowTests
         """;
 
     [Fact]
+    public void JoinGraph_UpdatesWhenQueryUsesJoinedTable()
+    {
+        MainViewModel vm = CreateViewModelWithSchema();
+        vm.BaseTable = "ORDERS";
+        vm.SelectedColumns.Add(new SelectColumnRowViewModel
+        {
+            Table = "CUSTOMER",
+            Column = "NAME"
+        });
+
+        Assert.Equal(2, vm.JoinGraphNodes.Count);
+        Assert.Single(vm.JoinGraphEdges);
+        Assert.Contains(vm.JoinGraphNodes, node => string.Equals(node.Table, "ORDERS", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(vm.JoinGraphNodes, node => string.Equals(node.Table, "CUSTOMER", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("2 table", vm.JoinGraphSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("1 jointure", vm.JoinGraphSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void AddRelationshipCandidate_UpdatesCurrentJoinState_AndGeneratedSql()
     {
         MainViewModel vm = CreateViewModelWithSchema();
