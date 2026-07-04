@@ -131,4 +131,43 @@ public sealed class PerformanceAnalyzerTests
 
         Assert.Contains(report.Hints, hint => hint.Severity == QueryPerformanceSeverity.Critical && hint.Message.Contains("sans jointure explicite", StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>
+    /// Ensures weak join keys are highlighted and the formatted report stays grouped by severity.
+    /// </summary>
+    [Fact]
+    public void Analyze_NonUniqueJoin_EmitsCardinalityWarning_AndGroupedText()
+    {
+        DatabaseSchema schema = new SqlSchemaParser().Parse("""
+            CREATE TABLE SALES (
+                ID INTEGER PRIMARY KEY,
+                STATUS TEXT,
+                CHANNEL TEXT
+            );
+            CREATE TABLE SALES_TARGET (
+                ID INTEGER PRIMARY KEY,
+                STATUS TEXT,
+                CHANNEL TEXT
+            );
+            """);
+
+        QueryDefinition query = new() { BaseTable = "SALES" };
+        query.SelectedColumns.Add(new ColumnReference { Table = "SALES", Column = "ID" });
+        query.SelectedColumns.Add(new ColumnReference { Table = "SALES_TARGET", Column = "ID" });
+        query.Joins.Add(new JoinDefinition
+        {
+            FromTable = "SALES",
+            FromColumn = "STATUS",
+            ToTable = "SALES_TARGET",
+            ToColumn = "CHANNEL",
+            JoinType = JoinType.Inner
+        });
+
+        QueryPerformanceReport report = new QueryPerformanceAnalyzer().Analyze(query, schema);
+        string rendered = report.ToString();
+
+        Assert.Contains(report.Hints, hint => hint.Message.Contains("aucune extrémité PK/unique", StringComparison.OrdinalIgnoreCase) && hint.Severity == QueryPerformanceSeverity.Warning);
+        Assert.StartsWith("[Warning]", rendered, StringComparison.Ordinal);
+        Assert.Contains("- Jointure SALES.STATUS -> SALES_TARGET.CHANNEL", rendered, StringComparison.OrdinalIgnoreCase);
+    }
 }

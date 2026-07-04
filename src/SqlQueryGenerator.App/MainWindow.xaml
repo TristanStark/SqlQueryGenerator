@@ -101,15 +101,15 @@
                 </Grid.ColumnDefinitions>
 
                 <WrapPanel Grid.Row="0" Grid.Column="0" VerticalAlignment="Center">
-                    <Button Content="Charger schéma SQL/TXT" Click="OpenSchema_Click" ToolTip="Charge un fichier .sql ou .txt contenant des CREATE TABLE et/ou COMMENT ON COLUMN." />
-                    <Button Content="Importer doc CSV/TSV" Click="OpenDocumentation_Click" ToolTip="Importe une documentation table/colonne depuis un fichier CSV, TSV ou TXT exporté d'un tableau." />
+                    <Button Content="Charger schéma" Click="OpenSchema_Click" ToolTip="Charge un fichier .sql ou .txt contenant des CREATE TABLE et/ou COMMENT ON COLUMN." />
+                    <Button Content="Importer doc" Click="OpenDocumentation_Click" ToolTip="Importe une documentation table/colonne depuis un fichier CSV, TSV ou TXT exporté d'un tableau." />
                     <Button Content="Coller schéma" Click="PasteSchema_Click" ToolTip="Colle un schéma depuis le presse-papier." />
                     <Button Content="Copier SQL" Click="CopySql_Click" ToolTip="Copie la requête générée dans le presse-papier." />
                     <Button Content="Exporter SQL" Click="ExportSql_Click" ToolTip="Sauvegarde la requête générée dans un fichier .sql." />
                     <Button Content="Copier doc MD" Click="CopyMarkdownDocumentation_Click" ToolTip="Copie la documentation Markdown de la requête courante dans le presse-papier." />
                     <Button Content="Exporter doc MD" Click="ExportMarkdownDocumentation_Click" ToolTip="Sauvegarde la documentation de la requête courante dans un fichier .md." />
                     <Button Content="Vider requête" Command="{Binding ClearQueryCommand}" />
-                    <Button Content="Générer l'export DDL" Click="OpenDdlExportWindow_Click" ToolTip="Ouvre la fenêtre dédiée à l'export DDL Oracle/SQLite." />
+                    <Button Content="Générer DDL" Click="OpenDdlExportWindow_Click" ToolTip="Ouvre la fenêtre dédiée à l'export DDL Oracle/SQLite." />
                     <Button Content="Aide" Command="{Binding OpenHelpCommand}" ToolTip="Ouvre la documentation." />
                 </WrapPanel>
 
@@ -137,9 +137,6 @@
             Command="{Binding OpenLatestReleaseCommand}"
             Visibility="{Binding IsUpdateAvailable, Converter={StaticResource BoolToVisibility}}"
             HorizontalAlignment="Right"
-            MinHeight="24"
-            Padding="8,2"
-            Margin="0,0,0,4"
             ToolTip="Ouvrir la dernière release GitHub." />
 
                     <TextBlock Text="{Binding UpdateStatusText}"
@@ -709,7 +706,120 @@
                                         </DockPanel>
                                     </Grid>
                                 </TabItem>
+                                <TabItem Header="Graphe jointures">
+                                    <Grid Margin="4">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
 
+                                        <Border Grid.Row="0"
+                BorderBrush="#CBD5E1"
+                BorderThickness="1"
+                CornerRadius="8"
+                Background="#FFFFFF"
+                Padding="8"
+                Margin="0,0,0,8">
+                                            <StackPanel>
+                                                <TextBlock Text="Graphe visuel de la requête courante"
+                           FontWeight="Bold"
+                           Margin="0,0,0,4" />
+                                                <TextBlock Text="{Binding JoinGraphSummary}"
+                           Foreground="#475569"
+                           TextWrapping="Wrap" />
+                                                <TextBlock Text="Bleu = table de départ, violet = jointure inférée, rouge = table ou jointure suspecte/incomplète. Le graphe est en lecture seule et ne modifie jamais la requête."
+                           Foreground="#64748B"
+                           TextWrapping="Wrap"
+                           Margin="0,4,0,0" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <ScrollViewer Grid.Row="1"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      Background="#F8FAFC">
+                                            <Canvas Width="1300" Height="760">
+                                                <ItemsControl ItemsSource="{Binding JoinGraphEdges}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <Canvas />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Canvas>
+                                                                <Line X1="{Binding X1}"
+                                      Y1="{Binding Y1}"
+                                      X2="{Binding X2}"
+                                      Y2="{Binding Y2}"
+                                      Stroke="{Binding Stroke}"
+                                      StrokeThickness="2" />
+
+                                                                <Border Canvas.Left="{Binding LabelX}"
+                                        Canvas.Top="{Binding LabelY}"
+                                        Background="{Binding LabelBackground}"
+                                        BorderBrush="{Binding Stroke}"
+                                        BorderThickness="1"
+                                        CornerRadius="5"
+                                        Padding="6,3"
+                                        MaxWidth="260"
+                                        ToolTip="{Binding Details}">
+                                                                    <TextBlock Text="{Binding Label}"
+                                               Foreground="#0F172A"
+                                               FontSize="11"
+                                               TextWrapping="Wrap" />
+                                                                </Border>
+                                                            </Canvas>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+
+                                                <ItemsControl ItemsSource="{Binding JoinGraphNodes}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <Canvas />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemContainerStyle>
+                                                        <Style TargetType="ContentPresenter">
+                                                            <Setter Property="Canvas.Left" Value="{Binding X}" />
+                                                            <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                                                        </Style>
+                                                    </ItemsControl.ItemContainerStyle>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Width="180"
+                                    MinHeight="78"
+                                    Background="{Binding Background}"
+                                    BorderBrush="{Binding BorderBrush}"
+                                    BorderThickness="2"
+                                    CornerRadius="10"
+                                    Padding="10"
+                                    ToolTip="{Binding Details}">
+                                                                <StackPanel>
+                                                                    <TextBlock Text="{Binding DisplayName}"
+                                               FontWeight="Bold"
+                                               TextWrapping="Wrap"
+                                               Foreground="#0F172A" />
+                                                                    <TextBlock Text="{Binding Table}"
+                                               FontSize="11"
+                                               Foreground="#475569"
+                                               TextWrapping="Wrap"
+                                               Margin="0,4,0,0" />
+                                                                    <TextBlock Text="{Binding Alias}"
+                                               FontSize="11"
+                                               Foreground="#7C3AED"
+                                               TextWrapping="Wrap"
+                                               Margin="0,2,0,0" />
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </Canvas>
+                                        </ScrollViewer>
+                                    </Grid>
+                                </TabItem>
                                 <TabItem Header="Groupes / agrégats">
                                     <Grid>
                                         <Grid.RowDefinitions>
@@ -909,14 +1019,14 @@
 
 
                                         <GroupBox Grid.Row="2" Header="Bibliothèque de requêtes sauvegardées" Margin="4">
-                                            <DataGrid ItemsSource="{Binding SavedQueries}" SelectedItem="{Binding SelectedSavedQuery, Mode=TwoWay}">
+                                            <DataGrid ItemsSource="{Binding SavedQueries}" SelectedItem="{Binding SelectedSavedQuery, Mode=TwoWay}" IsReadOnly="True" MouseDoubleClick="SavedQueriesGrid_MouseDoubleClick">
                                                 <DataGrid.Columns>
-                                                    <DataGridTextColumn Header="Type" Binding="{Binding Kind}" Width="110" MinWidth="100" />
-                                                    <DataGridTextColumn Header="Nom" Binding="{Binding Name}" Width="1.4*" MinWidth="180" />
-                                                    <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="2.5*" MinWidth="300" />
-                                                    <DataGridTextColumn Header="Base" Binding="{Binding BaseTableDisplayName}" Width="1*" MinWidth="140" />
-                                                    <DataGridTextColumn Header="Params" Binding="{Binding Parameters}" Width="1.6*" MinWidth="220" />
-                                                    <DataGridTextColumn Header="Nb champs" Binding="{Binding SelectCount}" Width="100" />
+                                                    <DataGridTextColumn Header="Type" Binding="{Binding Kind, Mode=OneWay}" Width="110" MinWidth="100" />
+                                                    <DataGridTextColumn Header="Nom" Binding="{Binding Name, Mode=OneWay}" Width="1.4*" MinWidth="180" />
+                                                    <DataGridTextColumn Header="Description" Binding="{Binding Description, Mode=OneWay}" Width="2.5*" MinWidth="300" />
+                                                    <DataGridTextColumn Header="Base" Binding="{Binding BaseTableDisplayName, Mode=OneWay}" Width="1*" MinWidth="140" />
+                                                    <DataGridTextColumn Header="Params" Binding="{Binding Parameters, Mode=OneWay}" Width="1.6*" MinWidth="220" />
+                                                    <DataGridTextColumn Header="Nb champs" Binding="{Binding SelectCount, Mode=OneWay}" Width="100" />
                                                 </DataGrid.Columns>
                                             </DataGrid>
                                         </GroupBox>

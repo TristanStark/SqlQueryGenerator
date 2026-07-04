@@ -8,6 +8,7 @@ namespace SqlQueryGenerator.Core.Parsing;
 /// </summary>
 public sealed class ReverseSqlImportService
 {
+    private static readonly string[] SetOperationKeywords = ["UNION", "INTERSECT", "EXCEPT", "MINUS"];
     private readonly SqlSelectReverseParser _parser = new();
 
     /// <summary>
@@ -61,7 +62,7 @@ public sealed class ReverseSqlImportService
             warnings.Add("Le SQL contient au moins une sous-requete. Les fragments complexes peuvent etre partiellement preserves seulement.");
         }
 
-        if (Regex.IsMatch(sql, @"(?is)\b(UNION|INTERSECT|MINUS)\b"))
+        if (ContainsSetOperation(sql))
         {
             warnings.Add("Le SQL contient une operation d'ensemble. Elle est signalee mais n'est pas completement modelee.");
         }
@@ -114,7 +115,7 @@ public sealed class ReverseSqlImportService
         AddClauseCoverage(clauses, "ORDER BY", HasClause(sql, "ORDER BY"), query.OrderBy.Count > 0, HasClause(sql, "ORDER BY") && query.OrderBy.Count == 0, false, "Tri reconstruit.");
         AddClauseCoverage(clauses, "CTE", Regex.IsMatch(sql, @"(?is)\bWITH\b"), false, false, Regex.IsMatch(sql, @"(?is)\bWITH\b"), "CTE détecté mais non modélisé dans le constructeur.");
         AddClauseCoverage(clauses, "Subqueries", Regex.IsMatch(sql, @"(?is)\(\s*SELECT\b"), query.Filters.Any(f => f.ValueKind == FilterValueKind.Subquery), Regex.IsMatch(sql, @"(?is)\(\s*SELECT\b"), false, "Sous-requêtes détectées et partiellement préservées.");
-        AddClauseCoverage(clauses, "Set operations", Regex.IsMatch(sql, @"(?is)\b(UNION|INTERSECT|MINUS)\b"), false, false, Regex.IsMatch(sql, @"(?is)\b(UNION|INTERSECT|MINUS)\b"), "Opérations d'ensemble détectées mais non modélisées.");
+        AddClauseCoverage(clauses, "Set operations", ContainsSetOperation(sql), false, false, ContainsSetOperation(sql), "Opérations d'ensemble détectées mais non modélisées.");
         AddClauseCoverage(clauses, "Vendor-specific", Regex.IsMatch(sql, @"(?is)\b(CONNECT\s+BY|MODEL|DECODE|NVL|TOP\s+\d+|ILIKE)\b"), false, true, false, "Syntaxe spécifique moteur détectée.");
 
         double[] scored = clauses
@@ -167,6 +168,11 @@ public sealed class ReverseSqlImportService
     private static bool HasClause(string sql, string clause) => Regex.IsMatch(sql, $@"(?is)\b{Regex.Escape(clause)}\b");
 
     private static bool ContainsAny(string sql, params string[] patterns) => patterns.Any(pattern => Regex.IsMatch(sql, pattern, RegexOptions.IgnoreCase | RegexOptions.Singleline));
+
+    private static bool ContainsSetOperation(string sql)
+    {
+        return SetOperationKeywords.Any(keyword => FindTopLevelKeyword(sql, keyword, 0) >= 0);
+    }
 
     private static bool HasLikelyPartialFromJoin(string fromJoinFragment, QueryDefinition query)
     {
@@ -317,8 +323,8 @@ public sealed class ReverseSqlImportService
         out ReverseSqlImportResult result)
     {
         result = null!;
-        if (exception is not InvalidOperationException invalidOperation
-            || !invalidOperation.Message.Contains("UNION, INTERSECT et EXCEPT", StringComparison.OrdinalIgnoreCase)
+        if (exception is not InvalidOperationException
+            || !ContainsSetOperation(normalizedSql)
             || !TryExtractFirstSupportedSelect(normalizedSql, out string supportedSql))
         {
             return false;
@@ -369,10 +375,8 @@ public sealed class ReverseSqlImportService
 
     private static int FindFirstTopLevelSetOperationIndex(string sql)
     {
-        int unionIndex = FindTopLevelKeyword(sql, "UNION", 0);
-        int intersectIndex = FindTopLevelKeyword(sql, "INTERSECT", 0);
-        int exceptIndex = FindTopLevelKeyword(sql, "EXCEPT", 0);
-        return new[] { unionIndex, intersectIndex, exceptIndex }
+        return SetOperationKeywords
+            .Select(keyword => FindTopLevelKeyword(sql, keyword, 0))
             .Where(index => index >= 0)
             .DefaultIfEmpty(-1)
             .Min();

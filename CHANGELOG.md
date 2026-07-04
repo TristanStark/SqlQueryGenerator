@@ -21,10 +21,11 @@ All release notes are centralized here.
 - Added documentation for builder undo/redo history.
 - Strengthened undo/redo regression coverage for bounded history depth and full snapshot restoration.
 - Added app-level workflow regression coverage for join editing and undo after reverse/saved-query loads.
+- Harmonized reverse SQL set-operation handling across `UNION`, `INTERSECT`, `EXCEPT`, and Oracle `MINUS`, including partial-import diagnostics and regression fixtures.
+- Added extra regression coverage for severity-grouped performance hints and probable-join action labels.
 - Added documentation for auxiliary-table filtering after DDL import.
 - Added documentation for the layout/ergonomics pass.
 - Added rich schema tooltips for tables and columns, showing comments/documentation plus technical metadata such as type, nullability, PK/FK and index information.
-- 
 ## v31.0.0
 
 - Added a conservative SQL rewrite flow for imported `SELECT` statements, including implicit join modernization, duplicate clause cleanup, alias preservation, and warnings for advanced constructs.
