@@ -1019,14 +1019,14 @@
 
 
                                         <GroupBox Grid.Row="2" Header="Bibliothèque de requêtes sauvegardées" Margin="4">
-                                            <DataGrid ItemsSource="{Binding SavedQueries}" SelectedItem="{Binding SelectedSavedQuery, Mode=TwoWay}">
+                                            <DataGrid ItemsSource="{Binding SavedQueries}" SelectedItem="{Binding SelectedSavedQuery, Mode=TwoWay}" IsReadOnly="True" MouseDoubleClick="SavedQueriesGrid_MouseDoubleClick">
                                                 <DataGrid.Columns>
-                                                    <DataGridTextColumn Header="Type" Binding="{Binding Kind}" Width="110" MinWidth="100" />
-                                                    <DataGridTextColumn Header="Nom" Binding="{Binding Name}" Width="1.4*" MinWidth="180" />
-                                                    <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="2.5*" MinWidth="300" />
-                                                    <DataGridTextColumn Header="Base" Binding="{Binding BaseTableDisplayName}" Width="1*" MinWidth="140" />
-                                                    <DataGridTextColumn Header="Params" Binding="{Binding Parameters}" Width="1.6*" MinWidth="220" />
-                                                    <DataGridTextColumn Header="Nb champs" Binding="{Binding SelectCount}" Width="100" />
+                                                    <DataGridTextColumn Header="Type" Binding="{Binding Kind, Mode=OneWay}" Width="110" MinWidth="100" />
+                                                    <DataGridTextColumn Header="Nom" Binding="{Binding Name, Mode=OneWay}" Width="1.4*" MinWidth="180" />
+                                                    <DataGridTextColumn Header="Description" Binding="{Binding Description, Mode=OneWay}" Width="2.5*" MinWidth="300" />
+                                                    <DataGridTextColumn Header="Base" Binding="{Binding BaseTableDisplayName, Mode=OneWay}" Width="1*" MinWidth="140" />
+                                                    <DataGridTextColumn Header="Params" Binding="{Binding Parameters, Mode=OneWay}" Width="1.6*" MinWidth="220" />
+                                                    <DataGridTextColumn Header="Nb champs" Binding="{Binding SelectCount, Mode=OneWay}" Width="100" />
                                                 </DataGrid.Columns>
                                             </DataGrid>
                                         </GroupBox>

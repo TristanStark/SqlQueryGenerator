@@ -490,6 +490,26 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Loads the selected saved query when the user double-clicks a row in the library grid.
+    /// </summary>
+    /// <param name="sender">Saved-query grid.</param>
+    /// <param name="e">Mouse event arguments.</param>
+    private void SavedQueriesGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left
+            || sender is not DataGrid
+            || e.OriginalSource is not DependencyObject source
+            || FindAncestor<DataGridRow>(source) is null
+            || !ViewModel.LoadSelectedQueryCommand.CanExecute(null))
+        {
+            return;
+        }
+
+        ViewModel.LoadSelectedQueryCommand.Execute(null);
+        e.Handled = true;
+    }
+
+    /// <summary>
     /// Exécute le traitement ColumnsTree PreviewMouseMove.
     /// </summary>
     /// <param name="sender">Paramètre sender.</param>
@@ -713,6 +733,21 @@ public partial class MainWindow : Window
         while (element is not null)
         {
             if (element is FrameworkElement frameworkElement && frameworkElement.DataContext is T typed)
+            {
+                return typed;
+            }
+
+            element = VisualTreeHelper.GetParent(element);
+        }
+
+        return null;
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? element) where T : DependencyObject
+    {
+        while (element is not null)
+        {
+            if (element is T typed)
             {
                 return typed;
             }

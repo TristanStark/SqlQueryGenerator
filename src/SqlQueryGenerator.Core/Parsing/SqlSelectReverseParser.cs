@@ -1165,9 +1165,10 @@ public sealed class SqlSelectReverseParser
     {
         if (FindTopLevelKeyword(sql, "UNION", 0) >= 0
             || FindTopLevelKeyword(sql, "INTERSECT", 0) >= 0
-            || FindTopLevelKeyword(sql, "EXCEPT", 0) >= 0)
+            || FindTopLevelKeyword(sql, "EXCEPT", 0) >= 0
+            || FindTopLevelKeyword(sql, "MINUS", 0) >= 0)
         {
-            throw new InvalidOperationException("Reverse SQL impossible: UNION, INTERSECT et EXCEPT ne sont pas pris en charge.");
+            throw new InvalidOperationException("Reverse SQL impossible: UNION, INTERSECT, EXCEPT et MINUS ne sont pas pris en charge.");
         }
 
         if (FindTopLevelKeyword(sql, "CONNECT BY", 0) >= 0

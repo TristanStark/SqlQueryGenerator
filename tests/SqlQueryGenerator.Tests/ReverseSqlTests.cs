@@ -285,6 +285,50 @@ FROM archived_pnj";
     }
 
     /// <summary>
+    /// Ensures EXCEPT queries keep the first branch editable while surfacing set-operation diagnostics.
+    /// </summary>
+    [Fact]
+    public void ReverseImport_ExceptQuery_PartiallyImportsFirstSelectAndFlagsSetOperation()
+    {
+        const string sql = @"
+SELECT CUSTOMER.ID
+FROM CUSTOMER
+EXCEPT
+SELECT ARCHIVED_CUSTOMER.ID
+FROM ARCHIVED_CUSTOMER";
+
+        ReverseSqlImportResult imported = new ReverseSqlImportService().Import(sql, SourceSqlDialect.GenericSql);
+
+        Assert.Equal("CUSTOMER", imported.Query.BaseTable);
+        Assert.Single(imported.Query.SelectedColumns);
+        Assert.Contains(imported.Warnings, warning => warning.Contains("operation d'ensemble", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(imported.Diagnostics, diagnostic => diagnostic.Clause == "Set operations" && diagnostic.Severity == ReverseSqlDiagnosticSeverity.Warning);
+        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "Set operations" && clause.Status == ReverseSqlCoverageStatus.Unsupported);
+    }
+
+    /// <summary>
+    /// Ensures Oracle MINUS queries follow the same partial-import path as other set operations.
+    /// </summary>
+    [Fact]
+    public void ReverseImport_MinusQuery_PartiallyImportsFirstSelectAndFlagsSetOperation()
+    {
+        const string sql = @"
+SELECT pnj.id
+FROM pnj
+MINUS
+SELECT archived_pnj.id
+FROM archived_pnj";
+
+        ReverseSqlImportResult imported = new ReverseSqlImportService().Import(sql, SourceSqlDialect.OracleLegacy);
+
+        Assert.Equal("pnj", imported.Query.BaseTable);
+        Assert.Single(imported.Query.SelectedColumns);
+        Assert.Contains(imported.Warnings, warning => warning.Contains("operation d'ensemble", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(imported.Diagnostics, diagnostic => diagnostic.Clause == "Set operations" && diagnostic.Severity == ReverseSqlDiagnosticSeverity.Warning);
+        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "Set operations" && clause.Status == ReverseSqlCoverageStatus.Unsupported);
+    }
+
+    /// <summary>
     /// Ensures incomplete WHERE clauses produce a structured reverse SQL diagnostic.
     /// </summary>
     [Fact]

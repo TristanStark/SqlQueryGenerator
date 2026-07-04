@@ -47,12 +47,14 @@ public sealed class MainViewModelWorkflowTests
         vm.BaseTable = relationship.FromTable;
 
         Assert.False(relationship.IsUsed);
+        Assert.Equal("Ajouter", relationship.UsageText);
         Assert.True(vm.AddRelationshipAsJoinCommand.CanExecute(relationship));
 
         vm.AddRelationshipAsJoinCommand.Execute(relationship);
 
         JoinRowViewModel join = Assert.Single(vm.Joins);
         Assert.True(relationship.IsUsed);
+        Assert.Equal("Ajoutee", relationship.UsageText);
         Assert.False(vm.AddRelationshipAsJoinCommand.CanExecute(relationship));
         Assert.Contains("INNER JOIN", vm.GeneratedSql);
         Assert.Contains(relationship.ToTable, vm.GeneratedSql, StringComparison.OrdinalIgnoreCase);
@@ -65,6 +67,7 @@ public sealed class MainViewModelWorkflowTests
 
         Assert.Empty(vm.Joins);
         Assert.False(relationship.IsUsed);
+        Assert.Equal("Ajouter", relationship.UsageText);
         Assert.DoesNotContain(" JOIN ", vm.GeneratedSql, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -149,6 +152,35 @@ public sealed class MainViewModelWorkflowTests
         Assert.Equal("CUSTOMER", selectedColumn.Table);
         Assert.Equal("NAME", selectedColumn.Column);
         Assert.Equal(baselineSql, vm.GeneratedSql);
+    }
+
+    [Fact]
+    public void LoadSelectedQueryCommand_LoadsRawSqlPresetIntoEditor()
+    {
+        MainViewModel vm = CreateViewModelWithSchema();
+        SavedQueryDefinition saved = new()
+        {
+            Kind = SavedQueryKind.RawSql,
+            Name = "raw_orders",
+            Description = "Raw preset for reports",
+            RawSql = """
+                SELECT
+                    ORDERS.ORDER_ID
+                FROM ORDERS
+                WHERE ORDERS.STATUS = :status
+                """
+        };
+
+        vm.SelectedSavedQuery = new SavedQueryItemViewModel(saved);
+        Assert.True(vm.LoadSelectedQueryCommand.CanExecute(null));
+
+        vm.LoadSelectedQueryCommand.Execute(null);
+
+        Assert.Equal(saved.Name, vm.QueryName);
+        Assert.Equal(saved.Description, vm.QueryDescription);
+        Assert.Contains("FROM ORDERS", vm.RawSqlText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("FROM ORDERS", vm.GeneratedSql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Preset SQL brut chargé", vm.Warnings, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
