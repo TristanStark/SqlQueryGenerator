@@ -18,6 +18,17 @@ public sealed class SqlSelectReverseParser
     /// <returns>A query definition filled with the clauses that could be recognized safely.</returns>
     public QueryDefinition Parse(string sql, SourceSqlDialect sourceDialect = SourceSqlDialect.GenericSql)
     {
+        return SqlCompoundQueryParser.Parse(sql, sourceDialect, this);
+    }
+
+    /// <summary>
+    /// Parses one SELECT branch after compound set operators have been removed.
+    /// </summary>
+    /// <param name="sql">Single SELECT branch.</param>
+    /// <param name="sourceDialect">Selected source dialect profile.</param>
+    /// <returns>Structured branch query.</returns>
+    internal QueryDefinition ParseSingle(string sql, SourceSqlDialect sourceDialect = SourceSqlDialect.GenericSql)
+    {
         string normalized = SqlSafety.NormalizeRawSelectQueryForReverse(sql);
         Dictionary<string, string> aliases = new(StringComparer.OrdinalIgnoreCase);
         QueryDefinition query = new();

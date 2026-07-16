@@ -22,6 +22,11 @@ public sealed class SqlQueryGeneratorEngine
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(schema);
         options ??= new SqlGeneratorOptions();
+        if (query.SetOperations.Count > 0)
+        {
+            return GenerateCompoundQuery(query, schema, options);
+        }
+
         IReadOnlyDictionary<string, string> tableAliases = BuildTableAliasLookup(query);
 
         List<string> warnings = [];
@@ -125,6 +130,183 @@ public sealed class SqlQueryGeneratorEngine
             Warnings = warnings,
             JoinPlan = CloneJoinPlan(joins)
         };
+    }
+
+
+    /// <summary>
+    /// Generates a compound SELECT query containing UNION, INTERSECT, EXCEPT or MINUS branches.
+    /// </summary>
+    private SqlGenerationResult GenerateCompoundQuery(
+        QueryDefinition query,
+        DatabaseSchema schema,
+        SqlGeneratorOptions options)
+    {
+        List<string> warnings = [];
+        QueryDefinition firstBranch = CloneWithoutCompoundTail(query);
+        string? withClause = firstBranch.WithClauseSql;
+        firstBranch.WithClauseSql = null;
+
+        SqlGenerationResult firstResult = Generate(firstBranch, schema, options);
+        warnings.AddRange(firstResult.Warnings);
+
+        StringBuilder sql = new();
+        if (!string.IsNullOrWhiteSpace(withClause))
+        {
+            sql.AppendLine(withClause.Trim());
+        }
+
+        AppendCompoundBranch(sql, firstResult.Sql, query.FirstBranchParenthesized);
+        int expectedProjectionCount = GetProjectionCount(firstBranch);
+
+        foreach (SetOperationDefinition operation in query.SetOperations)
+        {
+            SqlGenerationResult branchResult = Generate(operation.Query, schema, options);
+            warnings.AddRange(branchResult.Warnings);
+
+            int projectionCount = GetProjectionCount(operation.Query);
+            string operatorSql = SetOperatorSql(operation, options.Dialect, warnings);
+            if (projectionCount != expectedProjectionCount)
+            {
+                warnings.Add(
+                    $"La branche {operatorSql} expose {projectionCount} colonne(s), "
+                    + $"contre {expectedProjectionCount} pour la première branche.");
+            }
+
+            sql.AppendLine();
+            sql.AppendLine(operatorSql);
+            AppendCompoundBranch(sql, branchResult.Sql, operation.ParenthesizeQuery);
+        }
+
+        AppendCompoundOrderBy(sql, query, options, warnings);
+        AppendCompoundLimit(sql, query.CompoundLimitRows, options);
+
+        return new SqlGenerationResult
+        {
+            Sql = sql.ToString().TrimEnd() + Environment.NewLine,
+            Warnings = warnings.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+            JoinPlan = firstResult.JoinPlan
+        };
+    }
+
+    private static QueryDefinition CloneWithoutCompoundTail(QueryDefinition source)
+    {
+        QueryDefinition clone = QueryDefinitionCloner.Clone(source);
+        clone.SetOperations.Clear();
+        clone.CompoundOrderBy.Clear();
+        clone.CompoundLimitRows = null;
+        clone.FirstBranchParenthesized = false;
+        return clone;
+    }
+
+    private static void AppendCompoundBranch(StringBuilder target, string branchSql, bool parenthesized)
+    {
+        string normalized = branchSql.Trim();
+        if (!parenthesized)
+        {
+            target.Append(normalized);
+            return;
+        }
+
+        target.AppendLine("(");
+        foreach (string line in normalized.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+        {
+            target.Append("    ").AppendLine(line);
+        }
+
+        target.Append(')');
+    }
+
+    private static string SetOperatorSql(
+        SetOperationDefinition operation,
+        SqlDialect dialect,
+        ICollection<string> warnings)
+    {
+        string keyword = operation.Operator switch
+        {
+            SetOperationKind.Union => "UNION",
+            SetOperationKind.Intersect => "INTERSECT",
+            SetOperationKind.Except when dialect == SqlDialect.Oracle => "MINUS",
+            SetOperationKind.Except => "EXCEPT",
+            SetOperationKind.Minus when dialect is SqlDialect.SQLite or SqlDialect.CognosAnalytics => "EXCEPT",
+            SetOperationKind.Minus => "MINUS",
+            _ => throw new ArgumentOutOfRangeException(nameof(operation.Operator))
+        };
+
+        if (operation.Operator == SetOperationKind.Except && dialect == SqlDialect.Oracle)
+        {
+            warnings.Add("EXCEPT a été rendu en MINUS pour le dialecte Oracle.");
+        }
+        else if (operation.Operator == SetOperationKind.Minus
+                 && dialect is SqlDialect.SQLite or SqlDialect.CognosAnalytics)
+        {
+            warnings.Add("MINUS a été rendu en EXCEPT pour le dialecte de sortie sélectionné.");
+        }
+
+        return operation.All ? keyword + " ALL" : keyword;
+    }
+
+    private static void AppendCompoundOrderBy(
+        StringBuilder sql,
+        QueryDefinition query,
+        SqlGeneratorOptions options,
+        ICollection<string> warnings)
+    {
+        if (query.CompoundOrderBy.Count == 0)
+        {
+            return;
+        }
+
+        IReadOnlyDictionary<string, string> aliases = BuildTableAliasLookup(query);
+        string[] items = query.CompoundOrderBy
+            .Select(item =>
+            {
+                string expression = item.Column is not null
+                    ? ColumnSql(item.Column, options, includeAlias: false, aliases)
+                    : item.FieldAlias?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(expression))
+                {
+                    warnings.Add("Expression ORDER BY globale vide ignorée.");
+                    return string.Empty;
+                }
+
+                SqlSafety.EnsureSelectExpressionIsSafe(expression);
+                return $"{expression} {(item.Direction == SortDirection.Descending ? "DESC" : "ASC")}";
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .ToArray();
+
+        if (items.Length > 0)
+        {
+            sql.AppendLine();
+            sql.Append("ORDER BY ").Append(string.Join(", ", items));
+        }
+    }
+
+    private static void AppendCompoundLimit(
+        StringBuilder sql,
+        int? limitRows,
+        SqlGeneratorOptions options)
+    {
+        if (limitRows is not > 0)
+        {
+            return;
+        }
+
+        sql.AppendLine();
+        if (options.Dialect == SqlDialect.Oracle)
+        {
+            sql.Append($"FETCH FIRST {limitRows.Value} ROWS ONLY");
+        }
+        else
+        {
+            sql.Append($"LIMIT {limitRows.Value}");
+        }
+    }
+
+    private static int GetProjectionCount(QueryDefinition query)
+    {
+        int count = query.SelectedColumns.Count + query.Aggregates.Count + query.CustomColumns.Count;
+        return count == 0 ? 1 : count;
     }
 
     /// <summary>

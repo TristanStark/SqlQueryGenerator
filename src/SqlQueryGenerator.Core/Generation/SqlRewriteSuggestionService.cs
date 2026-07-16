@@ -32,20 +32,25 @@ public sealed class SqlRewriteSuggestionService
             transformations.Add("LegacyOuterJoinConverted");
         }
 
-        if (LooksLikeImplicitJoinSql(sql) && rewritten.Joins.Count > 0)
+        QueryDefinition[] branches = EnumerateBranches(rewritten).ToArray();
+        if (LooksLikeImplicitJoinSql(sql) && branches.Any(branch => branch.Joins.Count > 0))
         {
             transformations.Add("ImplicitJoinConverted");
         }
 
-        int duplicateFilterCount = RemoveDuplicateFilters(rewritten);
+        int duplicateFilterCount = branches.Sum(RemoveDuplicateFilters);
         if (duplicateFilterCount > 0)
         {
             transformations.Add("DuplicatePredicateRemoved");
         }
 
-        RemoveDuplicateSelectedColumns(rewritten);
-        RemoveDuplicateGroupBy(rewritten);
-        RemoveDuplicateOrderBy(rewritten);
+        foreach (QueryDefinition branch in branches)
+        {
+            RemoveDuplicateSelectedColumns(branch);
+            RemoveDuplicateGroupBy(branch);
+            RemoveDuplicateOrderBy(branch);
+        }
+
         transformations.Add("FormattingImproved");
 
         SqlGenerationResult generated = _generator.Generate(rewritten, new DatabaseSchema(), options);
@@ -59,6 +64,18 @@ public sealed class SqlRewriteSuggestionService
             Comparison = _comparisonService.Compare(sql, generated.Sql)
         };
     }
+    private static IEnumerable<QueryDefinition> EnumerateBranches(QueryDefinition query)
+    {
+        yield return query;
+        foreach (SetOperationDefinition operation in query.SetOperations)
+        {
+            foreach (QueryDefinition branch in EnumerateBranches(operation.Query))
+            {
+                yield return branch;
+            }
+        }
+    }
+
     private static bool LooksLikeImplicitJoinSql(string sql)
     {
         return sql.Contains(',', StringComparison.Ordinal)

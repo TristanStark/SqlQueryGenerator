@@ -38,7 +38,10 @@ Reconnaissance prise en charge :
 - paramètres `?`, `:nom_param`, `@nom_param` ;
 - sous-requête brute dans un filtre `IN (SELECT ...)` ;
 - `GROUP BY` ;
-- `ORDER BY`.
+- `ORDER BY` ;
+- requêtes composées avec `UNION`, `UNION ALL`, `INTERSECT`, `EXCEPT` et `MINUS`, y compris les chaînes de plusieurs branches, les regroupements parenthésés et le tri/limit global.
+
+Lorsqu'une requête composée est chargée dans le constructeur, un sélecteur « Branche SELECT active » permet d'ouvrir et de modifier chaque branche, y compris les branches imbriquées. Toute régénération, sauvegarde, restauration d'historique ou réécriture réémet l'ensemble de l'arbre de requête.
 
 ## Limites assumées
 

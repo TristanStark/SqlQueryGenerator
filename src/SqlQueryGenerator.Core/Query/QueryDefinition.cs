@@ -87,6 +87,70 @@ public sealed class QueryDefinition
     /// </summary>
     /// <value>Valeur de LimitRows.</value>
     public int? LimitRows { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the first branch of a compound query must remain parenthesized.
+    /// </summary>
+    /// <value><c>true</c> when the source SQL wrapped the first SELECT branch.</value>
+    public bool FirstBranchParenthesized { get; set; }
+
+    /// <summary>
+    /// Gets the set operations appended after this query branch.
+    /// </summary>
+    /// <value>Ordered UNION, INTERSECT, EXCEPT or MINUS branches.</value>
+    public Collection<SetOperationDefinition> SetOperations { get; set; } = [];
+
+    /// <summary>
+    /// Gets the ORDER BY items applying to the complete compound query.
+    /// </summary>
+    /// <value>Global sort expressions placed after all set-operation branches.</value>
+    public Collection<OrderByItem> CompoundOrderBy { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets the row limit applying to the complete compound query.
+    /// </summary>
+    /// <value>Global LIMIT/FETCH FIRST value, or <c>null</c>.</value>
+    public int? CompoundLimitRows { get; set; }
+}
+
+/// <summary>
+/// Identifies a SQL set operator joining two SELECT query branches.
+/// </summary>
+public enum SetOperationKind
+{
+    /// <summary>SQL UNION.</summary>
+    Union,
+
+    /// <summary>SQL INTERSECT.</summary>
+    Intersect,
+
+    /// <summary>SQL EXCEPT.</summary>
+    Except,
+
+    /// <summary>Oracle SQL MINUS.</summary>
+    Minus
+}
+
+/// <summary>
+/// Represents one additional SELECT branch in a compound SQL query.
+/// </summary>
+public sealed record SetOperationDefinition
+{
+    /// <summary>Gets the operator placed before this branch.</summary>
+    /// <value>Set operator joining the previous result with this branch.</value>
+    public SetOperationKind Operator { get; init; } = SetOperationKind.Union;
+
+    /// <summary>Gets whether the operator uses the ALL modifier.</summary>
+    /// <value><c>true</c> for UNION ALL, INTERSECT ALL or EXCEPT ALL.</value>
+    public bool All { get; init; }
+
+    /// <summary>Gets whether this branch must be emitted between parentheses.</summary>
+    /// <value><c>true</c> when parentheses preserve grouping or branch-local clauses.</value>
+    public bool ParenthesizeQuery { get; init; }
+
+    /// <summary>Gets the structured SELECT query for this branch.</summary>
+    /// <value>Branch query definition.</value>
+    public required QueryDefinition Query { get; init; }
 }
 
 /// <summary>

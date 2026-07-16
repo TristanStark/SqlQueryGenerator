@@ -260,10 +260,10 @@ WHERE pnj.id IN (
     }
 
     /// <summary>
-    /// Ensures unsupported advanced constructs are surfaced explicitly in the coverage report.
+    /// Ensures CTE preservation and set-operation reconstruction are reported independently.
     /// </summary>
     [Fact]
-    public void ReverseImport_AdvancedSql_ReturnsUnsupportedCoverageEntries()
+    public void ReverseImport_AdvancedSql_ImportsSetOperationsWhileKeepingCteDiagnostic()
     {
         const string sql = @"
 WITH recent_pnj AS (
@@ -279,16 +279,16 @@ FROM archived_pnj";
         ReverseSqlImportResult imported = new ReverseSqlImportService().Import(sql, SourceSqlDialect.GenericSql);
 
         Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "CTE" && clause.Status == ReverseSqlCoverageStatus.Unsupported);
-        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "Set operations" && clause.Status == ReverseSqlCoverageStatus.Unsupported);
+        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "Set operations" && clause.Status == ReverseSqlCoverageStatus.FullyImported);
+        Assert.Single(imported.Query.SetOperations);
         Assert.Contains(imported.Warnings, warning => warning.Contains("CTE", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(imported.Warnings, warning => warning.Contains("operation", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
-    /// Ensures EXCEPT queries keep the first branch editable while surfacing set-operation diagnostics.
+    /// Ensures EXCEPT queries import and regenerate every SELECT branch.
     /// </summary>
     [Fact]
-    public void ReverseImport_ExceptQuery_PartiallyImportsFirstSelectAndFlagsSetOperation()
+    public void ReverseImport_ExceptQuery_ImportsAndRegeneratesEverySelect()
     {
         const string sql = @"
 SELECT CUSTOMER.ID
@@ -298,19 +298,25 @@ SELECT ARCHIVED_CUSTOMER.ID
 FROM ARCHIVED_CUSTOMER";
 
         ReverseSqlImportResult imported = new ReverseSqlImportService().Import(sql, SourceSqlDialect.GenericSql);
+        SqlGenerationResult generated = new SqlQueryGeneratorEngine().Generate(
+            imported.Query,
+            new DatabaseSchema(),
+            new SqlGeneratorOptions { Dialect = SqlDialect.Generic });
 
         Assert.Equal("CUSTOMER", imported.Query.BaseTable);
-        Assert.Single(imported.Query.SelectedColumns);
-        Assert.Contains(imported.Warnings, warning => warning.Contains("operation d'ensemble", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(imported.Diagnostics, diagnostic => diagnostic.Clause == "Set operations" && diagnostic.Severity == ReverseSqlDiagnosticSeverity.Warning);
-        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "Set operations" && clause.Status == ReverseSqlCoverageStatus.Unsupported);
+        SetOperationDefinition operation = Assert.Single(imported.Query.SetOperations);
+        Assert.Equal(SetOperationKind.Except, operation.Operator);
+        Assert.Equal("ARCHIVED_CUSTOMER", operation.Query.BaseTable);
+        Assert.Contains("EXCEPT", generated.Sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("FROM ARCHIVED_CUSTOMER", generated.Sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "Set operations" && clause.Status == ReverseSqlCoverageStatus.FullyImported);
     }
 
     /// <summary>
-    /// Ensures Oracle MINUS queries follow the same partial-import path as other set operations.
+    /// Ensures Oracle MINUS queries import and regenerate every SELECT branch.
     /// </summary>
     [Fact]
-    public void ReverseImport_MinusQuery_PartiallyImportsFirstSelectAndFlagsSetOperation()
+    public void ReverseImport_MinusQuery_ImportsAndRegeneratesEverySelect()
     {
         const string sql = @"
 SELECT pnj.id
@@ -320,12 +326,18 @@ SELECT archived_pnj.id
 FROM archived_pnj";
 
         ReverseSqlImportResult imported = new ReverseSqlImportService().Import(sql, SourceSqlDialect.OracleLegacy);
+        SqlGenerationResult generated = new SqlQueryGeneratorEngine().Generate(
+            imported.Query,
+            new DatabaseSchema(),
+            new SqlGeneratorOptions { Dialect = SqlDialect.Oracle });
 
         Assert.Equal("pnj", imported.Query.BaseTable);
-        Assert.Single(imported.Query.SelectedColumns);
-        Assert.Contains(imported.Warnings, warning => warning.Contains("operation d'ensemble", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(imported.Diagnostics, diagnostic => diagnostic.Clause == "Set operations" && diagnostic.Severity == ReverseSqlDiagnosticSeverity.Warning);
-        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "Set operations" && clause.Status == ReverseSqlCoverageStatus.Unsupported);
+        SetOperationDefinition operation = Assert.Single(imported.Query.SetOperations);
+        Assert.Equal(SetOperationKind.Minus, operation.Operator);
+        Assert.Equal("archived_pnj", operation.Query.BaseTable);
+        Assert.Contains("MINUS", generated.Sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("FROM archived_pnj", generated.Sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(imported.Coverage.Clauses, clause => clause.Clause == "Set operations" && clause.Status == ReverseSqlCoverageStatus.FullyImported);
     }
 
     /// <summary>

@@ -184,6 +184,47 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public void ReverseImport_CompoundQuery_AllowsEditingEverySelectBranch()
+    {
+        MainViewModel vm = CreateViewModelWithSchema();
+        vm.RawSqlText = @"
+            SELECT CUSTOMER.ID
+            FROM CUSTOMER
+            UNION ALL
+            SELECT ORDERS.CUSTOMER_ID
+            FROM ORDERS
+            WHERE ORDERS.STATUS = :status
+            ORDER BY ID
+            ";
+
+        vm.ReverseEngineerRawSqlCommand.Execute(null);
+
+        Assert.True(vm.HasCompoundQueryBranches);
+        Assert.Equal(2, vm.CompoundQueryBranches.Count);
+        Assert.Equal("CUSTOMER", vm.BaseTable);
+        Assert.Contains("UNION ALL", vm.GeneratedSql, StringComparison.OrdinalIgnoreCase);
+
+        vm.SelectedCompoundQueryBranch = vm.CompoundQueryBranches[1];
+
+        Assert.Equal("ORDERS", vm.BaseTable);
+        SelectColumnRowViewModel secondColumn = Assert.Single(vm.SelectedColumns);
+        Assert.Equal("CUSTOMER_ID", secondColumn.Column);
+        Assert.Single(vm.Filters);
+        secondColumn.Alias = "ORDER_CUSTOMER_KEY";
+
+        vm.SelectedCompoundQueryBranch = vm.CompoundQueryBranches[0];
+        SelectColumnRowViewModel firstColumn = Assert.Single(vm.SelectedColumns);
+        firstColumn.Alias = "CUSTOMER_KEY";
+
+        Assert.Contains("CUSTOMER.ID AS CUSTOMER_KEY", vm.GeneratedSql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ORDERS.CUSTOMER_ID AS ORDER_CUSTOMER_KEY", vm.GeneratedSql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("UNION ALL", vm.GeneratedSql, StringComparison.OrdinalIgnoreCase);
+
+        vm.SelectedCompoundQueryBranch = vm.CompoundQueryBranches[1];
+        Assert.Equal("ORDER_CUSTOMER_KEY", Assert.Single(vm.SelectedColumns).Alias);
+    }
+
+    [Fact]
     public void ReverseImportFailure_UpdatesDiagnosticsAndRawSqlSelection()
     {
         MainViewModel vm = CreateViewModelWithSchema();
