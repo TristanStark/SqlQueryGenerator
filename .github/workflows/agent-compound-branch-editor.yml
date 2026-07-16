@@ -1,0 +1,77 @@
+name: Agent compound branch editor
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - tools/apply_compound_branch_editor_patch.py
+      - tools/run_compound_branch_editor_patch.py
+      - .github/workflows/agent-compound-branch-editor.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7
+        with:
+          ref: agent/compound-query-reverse
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Apply branch editor patch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          python tools/run_compound_branch_editor_patch.py 2>&1 | Tee-Object -FilePath tools/compound_branch_patch_failure.log
+          $patchExit = $LASTEXITCODE
+          if ($patchExit -ne 0) {
+            git config user.name "openai-agent"
+            git config user.email "openai-agent@users.noreply.github.com"
+            git add tools/compound_branch_patch_failure.log
+            git commit -m "Record compound branch patch failure" 2>$null
+            if ($LASTEXITCODE -eq 0) {
+              git push origin HEAD:agent/compound-query-reverse
+            }
+            exit 1
+          }
+          Remove-Item tools/compound_branch_patch_failure.log -ErrorAction SilentlyContinue
+
+      - name: Run test suite
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          dotnet test tests/SqlQueryGenerator.Tests/SqlQueryGenerator.Tests.csproj --configuration Release 2>&1 | Tee-Object -FilePath tools/compound_branch_test_failure.log
+          $testExit = $LASTEXITCODE
+          if ($testExit -ne 0) {
+            git config user.name "openai-agent"
+            git config user.email "openai-agent@users.noreply.github.com"
+            git add tools/compound_branch_test_failure.log
+            git commit -m "Record compound branch test failure" 2>$null
+            if ($LASTEXITCODE -eq 0) {
+              git push origin HEAD:agent/compound-query-reverse
+            }
+            exit 1
+          }
+          Remove-Item tools/compound_branch_test_failure.log -ErrorAction SilentlyContinue
+
+      - name: Commit tested implementation
+        shell: pwsh
+        run: |
+          git config user.name "openai-agent"
+          git config user.email "openai-agent@users.noreply.github.com"
+          git add -A
+          if (git diff --cached --quiet) {
+            Write-Host "No generated changes to commit."
+            exit 0
+          }
+          git commit -m "Expose every compound SELECT branch in builder"
+          git push origin HEAD:agent/compound-query-reverse
