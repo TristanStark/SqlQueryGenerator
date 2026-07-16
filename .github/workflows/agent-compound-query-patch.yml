@@ -7,6 +7,7 @@ on:
     paths:
       - tools/apply_compound_core_patch.py
       - tools/apply_compound_app_tests_patch.py
+      - tools/repair_compound_app_patch.py
       - .github/workflows/agent-compound-query-patch.yml
   pull_request:
     branches:
@@ -14,6 +15,7 @@ on:
     paths:
       - tools/apply_compound_core_patch.py
       - tools/apply_compound_app_tests_patch.py
+      - tools/repair_compound_app_patch.py
       - .github/workflows/agent-compound-query-patch.yml
 
 permissions:
@@ -41,12 +43,18 @@ jobs:
           python tools/apply_compound_core_patch.py 2>&1 | Tee-Object -FilePath tools/compound_patch_failure.log
           $coreExit = $LASTEXITCODE
           if ($coreExit -eq 0) {
+            python tools/repair_compound_app_patch.py 2>&1 | Tee-Object -FilePath tools/compound_patch_failure.log -Append
+            $repairExit = $LASTEXITCODE
+          } else {
+            $repairExit = 0
+          }
+          if ($coreExit -eq 0 -and $repairExit -eq 0) {
             python tools/apply_compound_app_tests_patch.py 2>&1 | Tee-Object -FilePath tools/compound_patch_failure.log -Append
             $appExit = $LASTEXITCODE
           } else {
             $appExit = 0
           }
-          if ($coreExit -ne 0 -or $appExit -ne 0) {
+          if ($coreExit -ne 0 -or $repairExit -ne 0 -or $appExit -ne 0) {
             git config user.name "openai-agent"
             git config user.email "openai-agent@users.noreply.github.com"
             git add tools/compound_patch_failure.log
