@@ -37,8 +37,26 @@ jobs:
       - name: Apply compound query patches
         shell: pwsh
         run: |
-          python tools/apply_compound_core_patch.py
-          python tools/apply_compound_app_tests_patch.py
+          $ErrorActionPreference = "Continue"
+          python tools/apply_compound_core_patch.py 2>&1 | Tee-Object -FilePath tools/compound_patch_failure.log
+          $coreExit = $LASTEXITCODE
+          if ($coreExit -eq 0) {
+            python tools/apply_compound_app_tests_patch.py 2>&1 | Tee-Object -FilePath tools/compound_patch_failure.log -Append
+            $appExit = $LASTEXITCODE
+          } else {
+            $appExit = 0
+          }
+          if ($coreExit -ne 0 -or $appExit -ne 0) {
+            git config user.name "openai-agent"
+            git config user.email "openai-agent@users.noreply.github.com"
+            git add tools/compound_patch_failure.log
+            git commit -m "Record compound patch failure" 2>$null
+            if ($LASTEXITCODE -eq 0) {
+              git push origin HEAD:agent/compound-query-reverse
+            }
+            exit 1
+          }
+          Remove-Item tools/compound_patch_failure.log -ErrorAction SilentlyContinue
 
       - name: Run test suite
         shell: pwsh
