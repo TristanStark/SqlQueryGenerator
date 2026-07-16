@@ -316,6 +316,7 @@
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
 
@@ -343,7 +344,40 @@
                                 </WrapPanel>
                             </Border>
 
-                            <TabControl Grid.Row="1" Margin="4">
+                            <Border Grid.Row="1"
+                                    Visibility="{Binding HasCompoundQueryBranches, Converter={StaticResource BoolToVisibility}}"
+                                    BorderBrush="#60A5FA"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Background="#EFF6FF"
+                                    Padding="8"
+                                    Margin="4,0,4,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="380" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="Branche SELECT active"
+                                               VerticalAlignment="Center"
+                                               FontWeight="SemiBold"
+                                               Margin="4" />
+                                    <ComboBox Grid.Column="1"
+                                              ItemsSource="{Binding CompoundQueryBranches}"
+                                              SelectedItem="{Binding SelectedCompoundQueryBranch, Mode=TwoWay}"
+                                              DisplayMemberPath="DisplayName"
+                                              ToolTip="Choisis la branche SELECT à modifier. Les autres branches restent dans la requête composée." />
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding CompoundQueryBranchSummary}"
+                                               VerticalAlignment="Center"
+                                               Foreground="#1E3A8A"
+                                               TextWrapping="Wrap"
+                                               Margin="12,4,4,4" />
+                                </Grid>
+                            </Border>
+
+                            <TabControl Grid.Row="2" Margin="4">
                                 <TabItem Header="Sélection">
                                     <DockPanel AllowDrop="True" Drop="Select_Drop" DragOver="Drop_DragOver" LastChildFill="True">
                                         <TextBlock DockPanel.Dock="Top" Text="Dépose ici les colonnes à afficher. L'alias est le nom lisible qui apparaîtra dans le résultat." Style="{StaticResource SectionHint}" />

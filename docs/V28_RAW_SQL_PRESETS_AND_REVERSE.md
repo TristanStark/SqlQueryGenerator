@@ -41,7 +41,7 @@ Reconnaissance prise en charge :
 - `ORDER BY` ;
 - requêtes composées avec `UNION`, `UNION ALL`, `INTERSECT`, `EXCEPT` et `MINUS`, y compris les chaînes de plusieurs branches, les regroupements parenthésés et le tri/limit global.
 
-Lorsqu'une requête composée est chargée dans le constructeur, la première branche reste affichée dans les contrôles visuels et les branches suivantes sont conservées dans le modèle. Toute régénération, sauvegarde, restauration d'historique ou réécriture réémet l'ensemble des branches.
+Lorsqu'une requête composée est chargée dans le constructeur, un sélecteur « Branche SELECT active » permet d'ouvrir et de modifier chaque branche, y compris les branches imbriquées. Toute régénération, sauvegarde, restauration d'historique ou réécriture réémet l'ensemble de l'arbre de requête.
 
 ## Limites assumées
 

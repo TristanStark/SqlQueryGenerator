@@ -330,6 +330,8 @@ public sealed class MainViewModel : ObservableObject
     private IReadOnlyDictionary<string, IReadOnlyList<string>> _columnNamesByTable = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _tableAliases = new(StringComparer.OrdinalIgnoreCase);
     private QueryDefinition? _compoundQueryTemplate;
+    private CompoundQueryBranchItemViewModel? _selectedCompoundQueryBranch;
+    private bool _isSwitchingCompoundQueryBranch;
     private DdlExportDialect _ddlExportDialect = DdlExportDialect.SQLite;
 
     /// <summary>
@@ -513,6 +515,62 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <value>Valeur de Parameters.</value>
     public ObservableCollection<QueryParameterRowViewModel> Parameters { get; } = [];
+
+    /// <summary>
+    /// Gets every SELECT branch currently available in the compound-query editor.
+    /// </summary>
+    /// <value>Flattened root and nested set-operation branches.</value>
+    public ObservableCollection<CompoundQueryBranchItemViewModel> CompoundQueryBranches { get; } = [];
+
+    /// <summary>
+    /// Gets whether the current builder query contains multiple selectable SELECT branches.
+    /// </summary>
+    /// <value><c>true</c> when a compound query is loaded.</value>
+    public bool HasCompoundQueryBranches => CompoundQueryBranches.Count > 1;
+
+    /// <summary>
+    /// Gets a concise description of the currently selected compound-query branch.
+    /// </summary>
+    /// <value>Branch count and active branch label.</value>
+    public string CompoundQueryBranchSummary => SelectedCompoundQueryBranch is null
+        ? string.Empty
+        : $"{CompoundQueryBranches.Count} branches — édition de {SelectedCompoundQueryBranch.DisplayName}";
+
+    /// <summary>
+    /// Gets or sets the SELECT branch currently edited by the visual builder controls.
+    /// </summary>
+    /// <value>Active branch item.</value>
+    public CompoundQueryBranchItemViewModel? SelectedCompoundQueryBranch
+    {
+        get => _selectedCompoundQueryBranch;
+        set
+        {
+            if (ReferenceEquals(_selectedCompoundQueryBranch, value))
+            {
+                return;
+            }
+
+            CompoundQueryBranchItemViewModel? previous = _selectedCompoundQueryBranch;
+            if (!_isSwitchingCompoundQueryBranch
+                && previous is not null
+                && _compoundQueryTemplate is not null)
+            {
+                CopyEditableBranchState(previous.Query, BuildVisibleBranchDefinition());
+            }
+
+            if (!SetProperty(ref _selectedCompoundQueryBranch, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(CompoundQueryBranchSummary));
+            if (!_isSwitchingCompoundQueryBranch && value is not null)
+            {
+                LoadSelectedCompoundQueryBranch(value);
+            }
+        }
+    }
+
     /// <summary>
     /// Stocke la valeur interne SavedQueries.
     /// </summary>
@@ -2621,6 +2679,25 @@ public sealed class MainViewModel : ObservableObject
     /// <returns>Résultat du traitement.</returns>
     private QueryDefinition BuildQueryDefinition()
     {
+        QueryDefinition visibleBranch = BuildVisibleBranchDefinition();
+        if (_compoundQueryTemplate is null || SelectedCompoundQueryBranch is null)
+        {
+            return visibleBranch;
+        }
+
+        CopyEditableBranchState(SelectedCompoundQueryBranch.Query, visibleBranch);
+        QueryDefinition completeQuery = QueryDefinitionCloner.Clone(_compoundQueryTemplate);
+        completeQuery.Name = visibleBranch.Name;
+        completeQuery.Description = visibleBranch.Description;
+        return completeQuery;
+    }
+
+    /// <summary>
+    /// Builds only the SELECT branch currently displayed by the visual controls.
+    /// </summary>
+    /// <returns>Editable state of the active SELECT branch.</returns>
+    private QueryDefinition BuildVisibleBranchDefinition()
+    {
         QueryDefinition query = new()
         {
             Name = BlankToNull(QueryName),
@@ -2812,45 +2889,86 @@ public sealed class MainViewModel : ObservableObject
             query.DisabledAutoJoinKeys.Add(disabled.ReverseKey);
         }
 
-        ApplyCompoundQueryTemplate(query);
         return query;
     }
 
     /// <summary>
-    /// Restores the non-visible branches and global clauses of the last imported compound query.
+    /// Copies the fields editable in the visual builder into an existing compound-query node while
+    /// preserving its nested set operations and compound-level clauses.
     /// </summary>
-    /// <param name="query">Current first branch rebuilt from the visual controls.</param>
-    private void ApplyCompoundQueryTemplate(QueryDefinition query)
+    private static void CopyEditableBranchState(QueryDefinition target, QueryDefinition source)
     {
-        if (_compoundQueryTemplate is null || _compoundQueryTemplate.SetOperations.Count == 0)
+        QueryDefinition copy = QueryDefinitionCloner.Clone(source);
+        target.BaseTable = copy.BaseTable;
+        target.Distinct = copy.Distinct;
+        target.SelectedColumns = copy.SelectedColumns;
+        target.TableAliases = copy.TableAliases;
+        target.Joins = copy.Joins;
+        target.Filters = copy.Filters;
+        target.GroupBy = copy.GroupBy;
+        target.OrderBy = copy.OrderBy;
+        target.Aggregates = copy.Aggregates;
+        target.CustomColumns = copy.CustomColumns;
+        target.Parameters = copy.Parameters;
+        target.DisabledAutoJoinKeys = copy.DisabledAutoJoinKeys;
+        target.LimitRows = copy.LimitRows;
+    }
+
+    /// <summary>
+    /// Rebuilds the flattened branch selector from the live compound-query tree.
+    /// </summary>
+    private void RebuildCompoundQueryBranches()
+    {
+        CompoundQueryBranches.Clear();
+        if (_compoundQueryTemplate is null)
         {
+            OnPropertyChanged(nameof(HasCompoundQueryBranches));
+            OnPropertyChanged(nameof(CompoundQueryBranchSummary));
             return;
         }
 
-        query.FirstBranchParenthesized = _compoundQueryTemplate.FirstBranchParenthesized;
-        query.CompoundLimitRows = _compoundQueryTemplate.CompoundLimitRows;
+        AddCompoundBranchItem(_compoundQueryTemplate, "1", 0, null);
 
-        foreach (OrderByItem orderBy in _compoundQueryTemplate.CompoundOrderBy)
+        OnPropertyChanged(nameof(HasCompoundQueryBranches));
+        OnPropertyChanged(nameof(CompoundQueryBranchSummary));
+    }
+
+    private void AddCompoundBranchItem(
+        QueryDefinition query,
+        string path,
+        int depth,
+        SetOperationDefinition? incomingOperation)
+    {
+        CompoundQueryBranches.Add(new CompoundQueryBranchItemViewModel
         {
-            query.CompoundOrderBy.Add(new OrderByItem
-            {
-                Column = orderBy.Column,
-                FieldKind = orderBy.FieldKind,
-                FieldAlias = orderBy.FieldAlias,
-                Direction = orderBy.Direction
-            });
+            Path = path,
+            Depth = depth,
+            Operator = incomingOperation?.Operator,
+            All = incomingOperation?.All == true,
+            Query = query
+        });
+
+        for (int index = 0; index < query.SetOperations.Count; index++)
+        {
+            SetOperationDefinition operation = query.SetOperations[index];
+            AddCompoundBranchItem(operation.Query, $"{path}.{index + 1}", depth + 1, operation);
+        }
+    }
+
+    private void LoadSelectedCompoundQueryBranch(CompoundQueryBranchItemViewModel branch)
+    {
+        _suppressAutoGenerate = true;
+        try
+        {
+            LoadQueryBranchControls(branch.Query);
+        }
+        finally
+        {
+            _suppressAutoGenerate = false;
         }
 
-        foreach (SetOperationDefinition operation in _compoundQueryTemplate.SetOperations)
-        {
-            query.SetOperations.Add(new SetOperationDefinition
-            {
-                Operator = operation.Operator,
-                All = operation.All,
-                ParenthesizeQuery = operation.ParenthesizeQuery,
-                Query = QueryDefinitionCloner.Clone(operation.Query)
-            });
-        }
+        GenerateSql();
+        Status = $"Édition de {branch.DisplayName}. Les autres branches restent intégrées à la requête générée.";
     }
 
     /// <summary>
@@ -3289,6 +3407,19 @@ public sealed class MainViewModel : ObservableObject
     private void ClearQuery()
     {
         _compoundQueryTemplate = null;
+        _isSwitchingCompoundQueryBranch = true;
+        try
+        {
+            CompoundQueryBranches.Clear();
+            SetProperty(ref _selectedCompoundQueryBranch, null, nameof(SelectedCompoundQueryBranch));
+            OnPropertyChanged(nameof(HasCompoundQueryBranches));
+            OnPropertyChanged(nameof(CompoundQueryBranchSummary));
+        }
+        finally
+        {
+            _isSwitchingCompoundQueryBranch = false;
+        }
+
         _suppressAutoGenerate = true;
         try
         {
@@ -4014,66 +4145,140 @@ public sealed class MainViewModel : ObservableObject
         _compoundQueryTemplate = query.SetOperations.Count == 0
             ? null
             : QueryDefinitionCloner.Clone(query);
+        QueryDefinition branchToLoad = _compoundQueryTemplate ?? query;
+
         _suppressAutoGenerate = true;
+        _isSwitchingCompoundQueryBranch = true;
         try
         {
             QueryName = name ?? query.Name ?? "requete_chargee";
             QueryDescription = description ?? query.Description ?? string.Empty;
-            BaseTable = query.BaseTable ?? string.Empty;
-            Distinct = query.Distinct;
-            LimitRows = query.LimitRows;
-            SelectedColumns.Clear();
-            Filters.Clear();
-            GroupBy.Clear();
-            OrderBy.Clear();
-            Aggregates.Clear();
-            Joins.Clear();
-            CustomColumns.Clear();
-            Parameters.Clear();
-            _tableAliases.Clear();
+            RebuildCompoundQueryBranches();
+            CompoundQueryBranchItemViewModel? firstBranch = CompoundQueryBranches.FirstOrDefault();
+            SetProperty(ref _selectedCompoundQueryBranch, firstBranch, nameof(SelectedCompoundQueryBranch));
+            LoadQueryBranchControls(firstBranch?.Query ?? branchToLoad);
+            OnPropertyChanged(nameof(CompoundQueryBranchSummary));
+        }
+        finally
+        {
+            _isSwitchingCompoundQueryBranch = false;
+            _suppressAutoGenerate = false;
+        }
 
-            foreach (TableAliasDefinition alias in query.TableAliases)
-            {
-                _tableAliases[alias.Table] = alias.Alias;
-            }
+        GenerateSql();
+    }
 
-            foreach (ColumnReference c in query.SelectedColumns)
-            {
-                SelectedColumns.Add(new SelectColumnRowViewModel
-                {
-                    Table = c.Table,
-                    Column = c.Column,
-                    Alias = c.Alias ?? string.Empty,
-                    NullAllowed = c.NullAllowed,
-                    UseFixedLength = c.UseFixedLength,
-                    FixedLength = c.FixedLength
-                });
-            }
+    /// <summary>
+    /// Loads one SELECT branch into the visual controls without replacing the compound-query tree.
+    /// </summary>
+    private void LoadQueryBranchControls(QueryDefinition query)
+    {
+        BaseTable = query.BaseTable ?? string.Empty;
+        Distinct = query.Distinct;
+        LimitRows = query.LimitRows;
+        SelectedColumns.Clear();
+        Filters.Clear();
+        GroupBy.Clear();
+        OrderBy.Clear();
+        Aggregates.Clear();
+        Joins.Clear();
+        CustomColumns.Clear();
+        Parameters.Clear();
+        _tableAliases.Clear();
 
-            foreach (FilterCondition f in query.Filters)
+        foreach (TableAliasDefinition alias in query.TableAliases)
+        {
+            _tableAliases[alias.Table] = alias.Alias;
+        }
+
+        foreach (ColumnReference c in query.SelectedColumns)
+        {
+            SelectedColumns.Add(new SelectColumnRowViewModel
             {
-                Filters.Add(new FilterRowViewModel
-                {
-                    Table = f.Column?.Table ?? (f.FieldKind == QueryFieldKind.Aggregate ? "Agrégat" : f.FieldKind == QueryFieldKind.CustomColumn ? "Calculé" : string.Empty),
-                    Column = f.Column?.Column ?? f.FieldAlias ?? string.Empty,
-                    FieldKind = f.FieldKind,
-                    FieldAlias = f.FieldAlias ?? string.Empty,
-                    Operator = f.Operator,
-                    Value = f.Value ?? string.Empty,
-                    SecondValue = f.SecondValue ?? string.Empty,
-                    ValueKind = f.ValueKind,
-                    SubqueryName = f.SubqueryName ?? f.Subquery?.Name ?? (string.IsNullOrWhiteSpace(f.RawSubquerySql) ? string.Empty : "sql_brut"),
-                    SavedSubquery = BuildSavedSubqueryForFilter(f),
-                    Connector = f.Connector
-                });
-            }
-            foreach (ColumnReference g in query.GroupBy) GroupBy.Add(new GroupByRowViewModel { Table = g.Table, Column = g.Column });
-            foreach (OrderByItem o in query.OrderBy) OrderBy.Add(new OrderByRowViewModel { Table = o.Column?.Table ?? (o.FieldKind == QueryFieldKind.Aggregate ? "Agrégat" : "Calculé"), Column = o.Column?.Column ?? o.FieldAlias ?? string.Empty, FieldKind = o.FieldKind, FieldAlias = o.FieldAlias ?? string.Empty, Direction = o.Direction });
-            foreach (AggregateSelection a in query.Aggregates) Aggregates.Add(new AggregateRowViewModel { Table = a.Column?.Table ?? string.Empty, Column = a.Column?.Column ?? string.Empty, Function = a.Function, Alias = a.Alias ?? string.Empty, Distinct = a.Distinct, ConditionTable = a.ConditionColumn?.Table ?? string.Empty, ConditionColumn = a.ConditionColumn?.Column ?? string.Empty, ConditionOperator = a.ConditionOperator ?? "=", ConditionValue = a.ConditionValue ?? string.Empty, ConditionSecondValue = a.ConditionSecondValue ?? string.Empty });
-            foreach (JoinDefinition j in query.Joins)
-                Joins.Add(CreateJoinRowViewModel(j));
-            foreach (CustomColumnSelection c in query.CustomColumns) CustomColumns.Add(new CustomColumnRowViewModel { Alias = c.Alias ?? string.Empty, RawExpression = c.RawExpression ?? string.Empty, CaseTable = c.CaseColumn?.Table ?? string.Empty, CaseColumn = c.CaseColumn?.Column ?? string.Empty, CaseOperator = c.CaseOperator ?? "=", CaseCompareValue = c.CaseCompareValue ?? string.Empty, CaseThenValue = c.CaseThenValue ?? string.Empty, CaseElseValue = c.CaseElseValue ?? string.Empty });
-            foreach (QueryParameterDefinition p in query.Parameters) Parameters.Add(new QueryParameterRowViewModel
+                Table = c.Table,
+                Column = c.Column,
+                Alias = c.Alias ?? string.Empty,
+                NullAllowed = c.NullAllowed,
+                UseFixedLength = c.UseFixedLength,
+                FixedLength = c.FixedLength
+            });
+        }
+
+        foreach (FilterCondition f in query.Filters)
+        {
+            Filters.Add(new FilterRowViewModel
+            {
+                Table = f.Column?.Table ?? (f.FieldKind == QueryFieldKind.Aggregate ? "Agrégat" : f.FieldKind == QueryFieldKind.CustomColumn ? "Calculé" : string.Empty),
+                Column = f.Column?.Column ?? f.FieldAlias ?? string.Empty,
+                FieldKind = f.FieldKind,
+                FieldAlias = f.FieldAlias ?? string.Empty,
+                Operator = f.Operator,
+                Value = f.Value ?? string.Empty,
+                SecondValue = f.SecondValue ?? string.Empty,
+                ValueKind = f.ValueKind,
+                SubqueryName = f.SubqueryName ?? f.Subquery?.Name ?? (string.IsNullOrWhiteSpace(f.RawSubquerySql) ? string.Empty : "sql_brut"),
+                SavedSubquery = BuildSavedSubqueryForFilter(f),
+                Connector = f.Connector
+            });
+        }
+
+        foreach (ColumnReference g in query.GroupBy)
+        {
+            GroupBy.Add(new GroupByRowViewModel { Table = g.Table, Column = g.Column });
+        }
+
+        foreach (OrderByItem o in query.OrderBy)
+        {
+            OrderBy.Add(new OrderByRowViewModel
+            {
+                Table = o.Column?.Table ?? (o.FieldKind == QueryFieldKind.Aggregate ? "Agrégat" : "Calculé"),
+                Column = o.Column?.Column ?? o.FieldAlias ?? string.Empty,
+                FieldKind = o.FieldKind,
+                FieldAlias = o.FieldAlias ?? string.Empty,
+                Direction = o.Direction
+            });
+        }
+
+        foreach (AggregateSelection a in query.Aggregates)
+        {
+            Aggregates.Add(new AggregateRowViewModel
+            {
+                Table = a.Column?.Table ?? string.Empty,
+                Column = a.Column?.Column ?? string.Empty,
+                Function = a.Function,
+                Alias = a.Alias ?? string.Empty,
+                Distinct = a.Distinct,
+                ConditionTable = a.ConditionColumn?.Table ?? string.Empty,
+                ConditionColumn = a.ConditionColumn?.Column ?? string.Empty,
+                ConditionOperator = a.ConditionOperator ?? "=",
+                ConditionValue = a.ConditionValue ?? string.Empty,
+                ConditionSecondValue = a.ConditionSecondValue ?? string.Empty
+            });
+        }
+
+        foreach (JoinDefinition j in query.Joins)
+        {
+            Joins.Add(CreateJoinRowViewModel(j));
+        }
+
+        foreach (CustomColumnSelection c in query.CustomColumns)
+        {
+            CustomColumns.Add(new CustomColumnRowViewModel
+            {
+                Alias = c.Alias ?? string.Empty,
+                RawExpression = c.RawExpression ?? string.Empty,
+                CaseTable = c.CaseColumn?.Table ?? string.Empty,
+                CaseColumn = c.CaseColumn?.Column ?? string.Empty,
+                CaseOperator = c.CaseOperator ?? "=",
+                CaseCompareValue = c.CaseCompareValue ?? string.Empty,
+                CaseThenValue = c.CaseThenValue ?? string.Empty,
+                CaseElseValue = c.CaseElseValue ?? string.Empty
+            });
+        }
+
+        foreach (QueryParameterDefinition p in query.Parameters)
+        {
+            Parameters.Add(new QueryParameterRowViewModel
             {
                 Name = p.Name,
                 Description = p.Description ?? string.Empty,
@@ -4083,12 +4288,6 @@ public sealed class MainViewModel : ObservableObject
                 Required = p.Required
             });
         }
-        finally
-        {
-            _suppressAutoGenerate = false;
-        }
-
-        GenerateSql();
     }
 
     /// <summary>
