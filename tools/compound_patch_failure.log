@@ -1,5 +1,0 @@
-Core compound-query patch applied.
-  File "D:\a\SqlQueryGenerator\SqlQueryGenerator\tools\apply_compound_app_tests_patch.py", line 432
-    """    [Fact]
-    ^^^^^^^^^^^^^
-SyntaxError: invalid syntax. Perhaps you forgot a comma?

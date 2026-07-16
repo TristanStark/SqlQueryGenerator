@@ -433,7 +433,7 @@ replace_once(
     public void ReverseImport_CompoundQuery_RemainsCompleteAfterEditingFirstBranch()
     {
         MainViewModel vm = CreateViewModelWithSchema();
-        vm.RawSqlText = """
+        vm.RawSqlText = @"
             SELECT CUSTOMER.ID
             FROM CUSTOMER
             UNION ALL
@@ -441,7 +441,7 @@ replace_once(
             FROM ORDERS
             WHERE ORDERS.STATUS = :status
             ORDER BY ID
-            """;
+            ";
 
         vm.ReverseEngineerRawSqlCommand.Execute(null);
 

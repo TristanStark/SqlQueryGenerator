@@ -329,6 +329,7 @@ public sealed class MainViewModel : ObservableObject
 
     private IReadOnlyDictionary<string, IReadOnlyList<string>> _columnNamesByTable = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _tableAliases = new(StringComparer.OrdinalIgnoreCase);
+    private QueryDefinition? _compoundQueryTemplate;
     private DdlExportDialect _ddlExportDialect = DdlExportDialect.SQLite;
 
     /// <summary>
@@ -2811,7 +2812,45 @@ public sealed class MainViewModel : ObservableObject
             query.DisabledAutoJoinKeys.Add(disabled.ReverseKey);
         }
 
+        ApplyCompoundQueryTemplate(query);
         return query;
+    }
+
+    /// <summary>
+    /// Restores the non-visible branches and global clauses of the last imported compound query.
+    /// </summary>
+    /// <param name="query">Current first branch rebuilt from the visual controls.</param>
+    private void ApplyCompoundQueryTemplate(QueryDefinition query)
+    {
+        if (_compoundQueryTemplate is null || _compoundQueryTemplate.SetOperations.Count == 0)
+        {
+            return;
+        }
+
+        query.FirstBranchParenthesized = _compoundQueryTemplate.FirstBranchParenthesized;
+        query.CompoundLimitRows = _compoundQueryTemplate.CompoundLimitRows;
+
+        foreach (OrderByItem orderBy in _compoundQueryTemplate.CompoundOrderBy)
+        {
+            query.CompoundOrderBy.Add(new OrderByItem
+            {
+                Column = orderBy.Column,
+                FieldKind = orderBy.FieldKind,
+                FieldAlias = orderBy.FieldAlias,
+                Direction = orderBy.Direction
+            });
+        }
+
+        foreach (SetOperationDefinition operation in _compoundQueryTemplate.SetOperations)
+        {
+            query.SetOperations.Add(new SetOperationDefinition
+            {
+                Operator = operation.Operator,
+                All = operation.All,
+                ParenthesizeQuery = operation.ParenthesizeQuery,
+                Query = QueryDefinitionCloner.Clone(operation.Query)
+            });
+        }
     }
 
     /// <summary>
@@ -3249,6 +3288,7 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     private void ClearQuery()
     {
+        _compoundQueryTemplate = null;
         _suppressAutoGenerate = true;
         try
         {
@@ -3388,7 +3428,9 @@ public sealed class MainViewModel : ObservableObject
             ApplyReverseSqlResult(imported);
             CompareRawVsRewrittenSql();
             StartGeneratedSqlComparison(sourceSql, "SQL brut source", "SQL régénéré depuis le constructeur");
-            Status = "Reverse SQL terminé: les clauses reconnues ont été replacées dans le constructeur visuel.";
+            Status = query.SetOperations.Count == 0
+                ? "Reverse SQL terminé: les clauses reconnues ont été replacées dans le constructeur visuel."
+                : $"Reverse SQL terminé: {CountCompoundBranches(query)} branches SELECT ont été chargées et seront régénérées ensemble.";
             Warnings = BuildReverseSqlFeedbackText(imported, imported.Warnings.Count == 0
                 ? "Reverse SQL termine sans avertissement."
                 : string.Join(Environment.NewLine, imported.Warnings));
@@ -3757,6 +3799,11 @@ public sealed class MainViewModel : ObservableObject
             }));
     }
 
+    private static int CountCompoundBranches(QueryDefinition query)
+    {
+        return 1 + query.SetOperations.Sum(operation => CountCompoundBranches(operation.Query));
+    }
+
     private static string BuildReverseSqlFeedbackText(ReverseSqlImportResult imported, string headline)
     {
         string[] parts =
@@ -3964,6 +4011,9 @@ public sealed class MainViewModel : ObservableObject
     /// <param name="description">Paramètre description.</param>
     private void LoadQueryDefinition(QueryDefinition query, string? name, string? description)
     {
+        _compoundQueryTemplate = query.SetOperations.Count == 0
+            ? null
+            : QueryDefinitionCloner.Clone(query);
         _suppressAutoGenerate = true;
         try
         {

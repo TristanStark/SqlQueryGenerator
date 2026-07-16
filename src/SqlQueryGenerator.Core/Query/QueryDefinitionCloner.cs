@@ -20,7 +20,10 @@ public static class QueryDefinitionCloner
             Description = source.Description,
             BaseTable = source.BaseTable,
             Distinct = source.Distinct,
-            LimitRows = source.LimitRows
+            WithClauseSql = source.WithClauseSql,
+            LimitRows = source.LimitRows,
+            FirstBranchParenthesized = source.FirstBranchParenthesized,
+            CompoundLimitRows = source.CompoundLimitRows
         };
 
         foreach (TableAliasDefinition alias in source.TableAliases)
@@ -143,6 +146,28 @@ public static class QueryDefinitionCloner
         foreach (string key in source.DisabledAutoJoinKeys)
         {
             clone.DisabledAutoJoinKeys.Add(key);
+        }
+
+        foreach (OrderByItem orderBy in source.CompoundOrderBy)
+        {
+            clone.CompoundOrderBy.Add(new OrderByItem
+            {
+                Column = orderBy.Column is null ? null : Clone(orderBy.Column),
+                FieldKind = orderBy.FieldKind,
+                FieldAlias = orderBy.FieldAlias,
+                Direction = orderBy.Direction
+            });
+        }
+
+        foreach (SetOperationDefinition operation in source.SetOperations)
+        {
+            clone.SetOperations.Add(new SetOperationDefinition
+            {
+                Operator = operation.Operator,
+                All = operation.All,
+                ParenthesizeQuery = operation.ParenthesizeQuery,
+                Query = Clone(operation.Query)
+            });
         }
 
         return clone;

@@ -184,6 +184,34 @@ public sealed class MainViewModelWorkflowTests
     }
 
     [Fact]
+    public void ReverseImport_CompoundQuery_RemainsCompleteAfterEditingFirstBranch()
+    {
+        MainViewModel vm = CreateViewModelWithSchema();
+        vm.RawSqlText = @"
+            SELECT CUSTOMER.ID
+            FROM CUSTOMER
+            UNION ALL
+            SELECT ORDERS.CUSTOMER_ID
+            FROM ORDERS
+            WHERE ORDERS.STATUS = :status
+            ORDER BY ID
+            ";
+
+        vm.ReverseEngineerRawSqlCommand.Execute(null);
+
+        Assert.Contains("UNION ALL", vm.GeneratedSql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("FROM ORDERS", vm.GeneratedSql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("2 branches SELECT", vm.Status, StringComparison.OrdinalIgnoreCase);
+
+        SelectColumnRowViewModel firstColumn = Assert.Single(vm.SelectedColumns);
+        firstColumn.Alias = "CUSTOMER_KEY";
+
+        Assert.Contains("CUSTOMER.ID AS CUSTOMER_KEY", vm.GeneratedSql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("UNION ALL", vm.GeneratedSql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("FROM ORDERS", vm.GeneratedSql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ReverseImportFailure_UpdatesDiagnosticsAndRawSqlSelection()
     {
         MainViewModel vm = CreateViewModelWithSchema();

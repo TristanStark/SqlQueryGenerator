@@ -82,6 +82,26 @@ public sealed class QueryValidator
             }
         }
 
+        int expectedProjectionCount = GetProjectionCount(query);
+        int branchIndex = 2;
+        foreach (SetOperationDefinition operation in query.SetOperations)
+        {
+            int branchProjectionCount = GetProjectionCount(operation.Query);
+            if (branchProjectionCount != expectedProjectionCount)
+            {
+                errors.Add(
+                    $"La branche SELECT {branchIndex} ({operation.Operator}) doit exposer {expectedProjectionCount} colonne(s), "
+                    + $"mais elle en expose {branchProjectionCount}.");
+            }
+
+            foreach (string branchError in Validate(operation.Query, schema))
+            {
+                errors.Add($"Branche SELECT {branchIndex} ({operation.Operator}): {branchError}");
+            }
+
+            branchIndex++;
+        }
+
         foreach (FilterCondition? subqueryFilter in query.Filters.Where(f => f.ValueKind == FilterValueKind.Subquery))
         {
             if (!string.IsNullOrWhiteSpace(subqueryFilter.RawSubquerySql))
@@ -118,6 +138,12 @@ public sealed class QueryValidator
     /// </summary>
     /// <param name="query">Paramètre query.</param>
     /// <returns>Résultat du traitement.</returns>
+    private static int GetProjectionCount(QueryDefinition query)
+    {
+        int count = query.SelectedColumns.Count + query.Aggregates.Count + query.CustomColumns.Count;
+        return count == 0 ? 1 : count;
+    }
+
     private static IEnumerable<ColumnReference> EnumerateColumns(QueryDefinition query)
     {
         foreach (ColumnReference item in query.SelectedColumns) yield return item;

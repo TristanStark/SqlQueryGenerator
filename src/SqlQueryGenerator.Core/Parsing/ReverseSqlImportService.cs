@@ -39,11 +39,6 @@ public sealed class ReverseSqlImportService
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
-            if (TryBuildPartialUnsupportedImportResult(preprocessed.NormalizedSql, sourceDialect, warnings, diagnostics, ex, out ReverseSqlImportResult partialResult))
-            {
-                return partialResult;
-            }
-
             ReverseSqlDiagnostic diagnostic = BuildFailureDiagnostic(sql, preprocessed.NormalizedSql, ex);
             throw new ReverseSqlImportException(diagnostic.Message, diagnostic, ex);
         }
@@ -60,11 +55,6 @@ public sealed class ReverseSqlImportService
         if (Regex.IsMatch(sql, @"(?is)\(\s*SELECT\b"))
         {
             warnings.Add("Le SQL contient au moins une sous-requete. Les fragments complexes peuvent etre partiellement preserves seulement.");
-        }
-
-        if (ContainsSetOperation(sql))
-        {
-            warnings.Add("Le SQL contient une operation d'ensemble. Elle est signalee mais n'est pas completement modelee.");
         }
 
         if (Regex.IsMatch(sql, @"(?is)\b(CONNECT\s+BY|START\s+WITH|MODEL)\b"))
@@ -115,7 +105,14 @@ public sealed class ReverseSqlImportService
         AddClauseCoverage(clauses, "ORDER BY", HasClause(sql, "ORDER BY"), query.OrderBy.Count > 0, HasClause(sql, "ORDER BY") && query.OrderBy.Count == 0, false, "Tri reconstruit.");
         AddClauseCoverage(clauses, "CTE", Regex.IsMatch(sql, @"(?is)\bWITH\b"), false, false, Regex.IsMatch(sql, @"(?is)\bWITH\b"), "CTE détecté mais non modélisé dans le constructeur.");
         AddClauseCoverage(clauses, "Subqueries", Regex.IsMatch(sql, @"(?is)\(\s*SELECT\b"), query.Filters.Any(f => f.ValueKind == FilterValueKind.Subquery), Regex.IsMatch(sql, @"(?is)\(\s*SELECT\b"), false, "Sous-requêtes détectées et partiellement préservées.");
-        AddClauseCoverage(clauses, "Set operations", ContainsSetOperation(sql), false, false, ContainsSetOperation(sql), "Opérations d'ensemble détectées mais non modélisées.");
+        AddClauseCoverage(
+            clauses,
+            "Set operations",
+            ContainsSetOperation(sql),
+            query.SetOperations.Count > 0,
+            false,
+            false,
+            "Toutes les branches SELECT et leurs opérateurs d'ensemble ont été reconstruits.");
         AddClauseCoverage(clauses, "Vendor-specific", Regex.IsMatch(sql, @"(?is)\b(CONNECT\s+BY|MODEL|DECODE|NVL|TOP\s+\d+|ILIKE)\b"), false, true, false, "Syntaxe spécifique moteur détectée.");
 
         double[] scored = clauses

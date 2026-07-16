@@ -4,6 +4,8 @@ All release notes are centralized here.
 
 ## Unreleased
 
+- Added full reverse-engineering and regeneration support for compound SELECT queries using `UNION`, `UNION ALL`, `INTERSECT`, `EXCEPT`, and Oracle `MINUS`, including nested parenthesized branches and global `ORDER BY`/row limits.
+
 - Added reverse SQL source dialect profiles for import/rewrite workflows.
 - Added clause-level reverse SQL coverage with a confidence score and structured diagnostics.
 - Reverse SQL now ignores SQL comments before parsing and preserves Cognos `#prompt(...)#` parameters.
