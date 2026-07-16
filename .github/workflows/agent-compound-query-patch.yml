@@ -1,0 +1,51 @@
+name: Agent compound query patch
+
+on:
+  push:
+    branches:
+      - agent/compound-query-reverse
+    paths:
+      - tools/apply_compound_core_patch.py
+      - tools/apply_compound_app_tests_patch.py
+      - .github/workflows/agent-compound-query-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7
+        with:
+          ref: agent/compound-query-reverse
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Apply compound query patches
+        shell: pwsh
+        run: |
+          python tools/apply_compound_core_patch.py
+          python tools/apply_compound_app_tests_patch.py
+
+      - name: Run test suite
+        shell: pwsh
+        run: dotnet test tests/SqlQueryGenerator.Tests/SqlQueryGenerator.Tests.csproj --configuration Release
+
+      - name: Commit tested implementation
+        shell: pwsh
+        run: |
+          git config user.name "openai-agent"
+          git config user.email "openai-agent@users.noreply.github.com"
+          git add -A
+          if (git diff --cached --quiet) {
+            Write-Host "No generated changes to commit."
+            exit 0
+          }
+          git commit -m "Support compound SELECT reverse engineering"
+          git push origin HEAD:agent/compound-query-reverse
