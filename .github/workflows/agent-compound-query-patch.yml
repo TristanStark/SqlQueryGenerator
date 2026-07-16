@@ -8,6 +8,13 @@ on:
       - tools/apply_compound_core_patch.py
       - tools/apply_compound_app_tests_patch.py
       - .github/workflows/agent-compound-query-patch.yml
+  pull_request:
+    branches:
+      - master
+    paths:
+      - tools/apply_compound_core_patch.py
+      - tools/apply_compound_app_tests_patch.py
+      - .github/workflows/agent-compound-query-patch.yml
 
 permissions:
   contents: write
