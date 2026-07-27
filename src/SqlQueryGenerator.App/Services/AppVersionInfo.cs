@@ -52,20 +52,22 @@ public static class AppVersionInfo
         ArgumentNullException.ThrowIfNull(candidates);
         ArgumentNullException.ThrowIfNull(fallbackVersion);
 
-        Version best = NormalizeVersion(fallbackVersion);
+        Version? best = null;
         foreach (string? candidate in candidates)
         {
-            if (GitHubLatestReleaseChecker.TryParseSemanticVersion(candidate, out Version parsed))
+            if (!GitHubLatestReleaseChecker.TryParseSemanticVersion(candidate, out Version parsed))
             {
-                Version normalized = NormalizeVersion(parsed);
-                if (normalized.CompareTo(best) > 0)
-                {
-                    best = normalized;
-                }
+                continue;
+            }
+
+            Version normalized = NormalizeVersion(parsed);
+            if (best is null || normalized.CompareTo(best) > 0)
+            {
+                best = normalized;
             }
         }
 
-        return best;
+        return best ?? NormalizeVersion(fallbackVersion);
     }
 
     /// <summary>
