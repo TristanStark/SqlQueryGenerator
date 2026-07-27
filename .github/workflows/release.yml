@@ -2,8 +2,12 @@ name: Release
 
 on:
   push:
+    branches: [ "master" ]
     tags:
       - "v*.*.*"
+    paths:
+      - "src/SqlQueryGenerator.App/SqlQueryGenerator.App.csproj"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -16,6 +20,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $tag = "${{ github.ref_name }}"
+          }
+          else {
+            [xml]$project = Get-Content ".\src\SqlQueryGenerator.App\SqlQueryGenerator.App.csproj"
+            $version = @($project.Project.PropertyGroup.Version)[0]
+            if ([string]::IsNullOrWhiteSpace($version)) {
+              throw "Unable to resolve the application Version from the project file."
+            }
+            $tag = "v$version"
+          }
+
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          Write-Host "Release tag: $tag"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -32,10 +57,23 @@ jobs:
         shell: pwsh
         run: .\package-portable-win-x64.ps1
 
+      - name: Create tag when releasing from master
+        if: github.ref_type != 'tag'
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          git fetch --tags --force
+          if (-not (git tag --list $tag)) {
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a $tag -m "SqlQueryGenerator $tag"
+            git push origin $tag
+          }
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: SqlQueryGenerator-${{ github.ref_name }}-win-x64
+          name: SqlQueryGenerator-${{ steps.version.outputs.tag }}-win-x64
           path: artifacts/**/*.zip
 
       - name: Create GitHub Release
@@ -43,6 +81,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" artifacts/**/*.zip `
-            --title "SqlQueryGenerator ${{ github.ref_name }}" `
+          $tag = "${{ steps.version.outputs.tag }}"
+          if (gh release view $tag 2>$null) {
+            Write-Host "Release $tag already exists; leaving it unchanged."
+            exit 0
+          }
+
+          gh release create $tag artifacts/**/*.zip `
+            --verify-tag `
+            --title "SqlQueryGenerator $tag" `
             --generate-notes
