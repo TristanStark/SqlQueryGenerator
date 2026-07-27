@@ -441,14 +441,12 @@ public sealed class MainViewModel : ObservableObject
         ReloadSavedQueries();
         ReloadOutputProfiles();
 
-        Joins.CollectionChanged += Joins_CollectionChanged;
-
         WireAutoGenerate(SelectedColumns);
         WireAutoGenerate(Filters);
         WireAutoGenerate(GroupBy);
         WireAutoGenerate(OrderBy);
         WireAutoGenerate(Aggregates);
-        WireAutoGenerate(Joins);
+        WireAutoGenerate(Joins, Joins_CollectionChanged);
         WireAutoGenerate(CustomColumns);
         WireAutoGenerate(Parameters);
         ResetHistoryToCurrentState();
@@ -1385,6 +1383,60 @@ public sealed class MainViewModel : ObservableObject
         Status = $"SQL brut chargé: {filePath}";
     }
 
+
+    /// <summary>
+    /// Loads a saved SqlQueryGenerator file from any location.
+    /// </summary>
+    /// <param name="filePath">Path to a <c>.sqlqg.json</c> saved query.</param>
+    public void LoadSavedQueryFromFile(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            Status = "Fichier de sauvegarde introuvable.";
+            return;
+        }
+
+        FileInfo info = new(filePath);
+        if (info.Length > 10_000_000)
+        {
+            MessageBox.Show("Le fichier de sauvegarde dépasse 10 Mo et ne peut pas être ouvert.", "Fichier trop volumineux", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            SavedQueryDefinition saved = _savedQueryStore.Load(filePath);
+            if (saved.Kind == SavedQueryKind.RawSql)
+            {
+                RawSqlText = saved.RawSql ?? saved.LastGeneratedSql ?? string.Empty;
+                QueryName = saved.Name;
+                QueryDescription = saved.Description ?? string.Empty;
+                ClearStoredRewrittenSql();
+                ClearSqlComparison("Sauvegarde SQL brut chargée. Réécris-la ou charge-la dans le constructeur pour comparer les versions.");
+                GeneratedSql = string.IsNullOrWhiteSpace(RawSqlText)
+                    ? "-- La sauvegarde SQL brut ne contient aucune requête."
+                    : RawSqlText.TrimEnd() + Environment.NewLine;
+                QueryPurpose = "Sauvegarde SQL brut chargée. Utilise Reverse SQL pour la transformer en constructeur visuel.";
+                PerformanceReport = "Analyse performance limitée tant que la requête n'est pas convertie en modèle visuel.";
+                Warnings = "Sauvegarde SQL brut chargée depuis un fichier externe.";
+            }
+            else
+            {
+                LoadQueryDefinition(saved.Query, saved.Name, saved.Description);
+            }
+
+            Status = $"Sauvegarde chargée: {filePath}";
+        }
+        catch (Exception ex) when (ex is IOException
+                                   or UnauthorizedAccessException
+                                   or InvalidOperationException
+                                   or System.Text.Json.JsonException)
+        {
+            Status = "Impossible de charger la sauvegarde.";
+            Warnings = ex.Message;
+        }
+    }
+
     /// <summary>
     /// Exécute le traitement LoadSchemaFromFile.
     /// </summary>
@@ -1845,7 +1897,7 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     /// <param name="sender">Paramètre sender.</param>
     /// <param name="e">Paramètre e.</param>
-    private void Joins_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    private void Joins_CollectionChanged(NotifyCollectionChangedEventArgs e)
     {
         if (e.NewItems is null)
         {
@@ -4294,7 +4346,10 @@ public sealed class MainViewModel : ObservableObject
     /// Exécute le traitement WireAutoGenerate.
     /// </summary>
     /// <param name="collection">Paramètre collection.</param>
-    private void WireAutoGenerate<T>(ObservableCollection<T> collection) where T : INotifyPropertyChanged
+    private void WireAutoGenerate<T>(
+        ObservableCollection<T> collection,
+        Action<NotifyCollectionChangedEventArgs>? collectionChanged = null)
+        where T : INotifyPropertyChanged
     {
         collection.CollectionChanged += (_, e) =>
         {
@@ -4314,6 +4369,7 @@ public sealed class MainViewModel : ObservableObject
                 }
             }
 
+            collectionChanged?.Invoke(e);
             AutoGenerateSql();
         };
     }

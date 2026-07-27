@@ -10,7 +10,10 @@
         Width="1920"
         MinHeight="740"
         MinWidth="1240"
-        WindowState="Maximized">
+        WindowState="Maximized"
+        AllowDrop="True"
+        DragOver="Window_DragOver"
+        Drop="Window_Drop">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         <vm:TableNameDisplayConverter x:Key="TableNameDisplayConverter" />
@@ -54,6 +57,16 @@
             <Setter Property="Margin" Value="6" />
             <Setter Property="Padding" Value="8" />
             <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style x:Key="ToolbarButton" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="#334155" />
+            <Setter Property="Foreground" Value="#F8FAFC" />
+            <Setter Property="BorderBrush" Value="#475569" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style x:Key="PrimaryToolbarButton" TargetType="{x:Type Button}" BasedOn="{StaticResource ToolbarButton}">
+            <Setter Property="Background" Value="#2563EB" />
+            <Setter Property="BorderBrush" Value="#3B82F6" />
         </Style>
         <Style x:Key="PanelTitle" TargetType="{x:Type TextBlock}">
             <Setter Property="FontSize" Value="19" />
@@ -101,6 +114,9 @@
                 </Grid.ColumnDefinitions>
 
                 <WrapPanel Grid.Row="0" Grid.Column="0" VerticalAlignment="Center">
+                    <Button Content="Ouvrir SQL" Click="OpenRawSql_Click" Style="{StaticResource PrimaryToolbarButton}" ToolTip="Ouvre une requête .sql dans l'éditeur SQL brut. Vous pouvez aussi déposer le fichier dans la fenêtre." />
+                    <Button Content="Charger sauvegarde" Click="OpenSavedQuery_Click" Style="{StaticResource ToolbarButton}" ToolTip="Ouvre un fichier de sauvegarde .sqlqg.json depuis n'importe quel dossier." />
+                    <Button Content="Bibliothèque" Click="OpenSavedQueries_Click" Style="{StaticResource ToolbarButton}" ToolTip="Affiche directement les presets et requêtes sauvegardées." />
                     <Button Content="Charger schéma" Click="OpenSchema_Click" ToolTip="Charge un fichier .sql ou .txt contenant des CREATE TABLE et/ou COMMENT ON COLUMN." />
                     <Button Content="Importer doc" Click="OpenDocumentation_Click" ToolTip="Importe une documentation table/colonne depuis un fichier CSV, TSV ou TXT exporté d'un tableau." />
                     <Button Content="Coller schéma" Click="PasteSchema_Click" ToolTip="Colle un schéma depuis le presse-papier." />
@@ -121,7 +137,8 @@
                             <TextBlock Text="{Binding ApplicationVersion}"
                        Foreground="#E5E7EB"
                        FontWeight="SemiBold"
-                       VerticalAlignment="Center" />
+                       VerticalAlignment="Center"
+                       ToolTip="Version détectée depuis les métadonnées du binaire installé." />
 
                             <Button Content="↻"
                     Command="{Binding CheckLatestReleaseCommand}"
@@ -377,7 +394,7 @@
                                 </Grid>
                             </Border>
 
-                            <TabControl Grid.Row="2" Margin="4">
+                            <TabControl x:Name="QueryBuilderTabs" Grid.Row="2" Margin="4">
                                 <TabItem Header="Sélection">
                                     <DockPanel AllowDrop="True" Drop="Select_Drop" DragOver="Drop_DragOver" LastChildFill="True">
                                         <TextBlock DockPanel.Dock="Top" Text="Dépose ici les colonnes à afficher. L'alias est le nom lisible qui apparaîtra dans le résultat." Style="{StaticResource SectionHint}" />
@@ -1005,7 +1022,7 @@
                                     </DockPanel>
                                 </TabItem>
 
-                                <TabItem Header="Sous-requêtes / sauvegarde">
+                                <TabItem x:Name="SavedQueriesTab" Header="Bibliothèque / sous-requêtes">
                                     <Grid Margin="4">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
@@ -1013,19 +1030,20 @@
                                             <RowDefinition Height="*" />
                                         </Grid.RowDefinitions>
 
-                                        <Border Grid.Row="0" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="8" Background="#FFFFFF" Padding="8" Margin="4">
+                                        <Border Grid.Row="0" BorderBrush="#93C5FD" BorderThickness="1" CornerRadius="8" Background="#EFF6FF" Padding="10" Margin="4">
                                             <DockPanel LastChildFill="True">
                                                 <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
                                                     <TextBlock Text="Nom" FontWeight="SemiBold" VerticalAlignment="Center" Margin="4" />
                                                     <TextBox Width="230" Text="{Binding QueryName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                                     <TextBlock Text="Description" FontWeight="SemiBold" VerticalAlignment="Center" Margin="14,4,4,4" />
                                                     <TextBox Width="520" MinHeight="60" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Text="{Binding QueryDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=250}" ToolTip="Description métier sauvegardée avec la requête JSON." />
+                                                    <Button Content="Charger un fichier" Click="OpenSavedQuery_Click" Style="{StaticResource PrimaryToolbarButton}" ToolTip="Ouvre un fichier .sqlqg.json externe." />
                                                     <Button Content="Sauvegarder requête" Command="{Binding SaveCurrentQueryCommand}" />
-                                                    <Button Content="Recharger bibliothèque" Command="{Binding ReloadSavedQueriesCommand}" />
-                                                    <Button Content="Charger sélection" Command="{Binding LoadSelectedQueryCommand}" />
+                                                    <Button Content="Actualiser" Command="{Binding ReloadSavedQueriesCommand}" />
+                                                    <Button Content="Ouvrir la sélection" Command="{Binding LoadSelectedQueryCommand}" />
                                                     <Button Content="Utiliser comme sous-requête filtrante" Command="{Binding AddSelectedSavedQueryAsSubqueryFilterCommand}" ToolTip="Ajoute la requête sauvegardée sélectionnée comme filtre IN/=/EXISTS. Si une colonne est sélectionnée dans l'arbre de gauche, elle devient la colonne filtrée." />
                                                 </WrapPanel>
-                                                <TextBlock Text="Sauvegarde locale JSON dans le dossier saved_queries. Les presets peuvent être construits avec l'UI ou être du SQL brut SELECT. Les deux types peuvent être utilisés comme sous-requêtes filtrantes." TextWrapping="Wrap" Foreground="#475569" />
+                                                <TextBlock Text="Bibliothèque locale du dossier saved_queries. Double-clique une ligne pour l'ouvrir, utilise le bouton ci-dessus pour charger une sauvegarde externe, ou dépose directement un fichier .sqlqg.json dans la fenêtre. Les presets visuels et SQL brut peuvent aussi servir de sous-requêtes filtrantes." TextWrapping="Wrap" Foreground="#1E3A8A" FontWeight="SemiBold" />
                                             </DockPanel>
                                         </Border>
 
