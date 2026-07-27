@@ -1,5 +1,6 @@
 using Microsoft.Win32;
 using SqlQueryGenerator.App.Export;
+using SqlQueryGenerator.App.Services;
 using SqlQueryGenerator.App.ViewModels;
 using SqlQueryGenerator.Core.Export;
 using System.ComponentModel;
@@ -142,6 +143,99 @@ public partial class MainWindow : Window
         {
             ViewModel.LoadRawSqlFromFile(dialog.FileName);
         }
+    }
+
+
+    /// <summary>
+    /// Opens a saved query file from any location.
+    /// </summary>
+    private void OpenSavedQuery_Click(object sender, RoutedEventArgs e)
+    {
+        OpenFileDialog dialog = new()
+        {
+            Title = "Ouvrir une sauvegarde SQL Query Generator",
+            Filter = "Sauvegardes SQL Query Generator (*.sqlqg.json)|*.sqlqg.json|Tous les fichiers JSON (*.json)|*.json",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) == true)
+        {
+            ViewModel.LoadSavedQueryFromFile(dialog.FileName);
+            ShowSavedQueriesLibrary();
+        }
+    }
+
+    /// <summary>
+    /// Navigates directly to the saved query library.
+    /// </summary>
+    private void OpenSavedQueries_Click(object sender, RoutedEventArgs e) => ShowSavedQueriesLibrary();
+
+    /// <summary>
+    /// Shows a copy cursor only for one supported dropped file.
+    /// </summary>
+    private void Window_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = TryGetSingleDroppedFile(e.Data, out string filePath)
+                    && DroppedFileClassifier.IsSupportedPath(filePath)
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Opens a dropped SQL query, schema, or SqlQueryGenerator backup.
+    /// </summary>
+    private void Window_Drop(object sender, DragEventArgs e)
+    {
+        if (!TryGetSingleDroppedFile(e.Data, out string filePath))
+        {
+            ViewModel.Status = "Dépose un seul fichier .sql ou .sqlqg.json à la fois.";
+            e.Handled = true;
+            return;
+        }
+
+        switch (DroppedFileClassifier.Classify(filePath))
+        {
+            case DroppedFileKind.SavedQuery:
+                ViewModel.LoadSavedQueryFromFile(filePath);
+                ShowSavedQueriesLibrary();
+                break;
+            case DroppedFileKind.SqlSchema:
+                if (TryReadSchemaFile(filePath, out string schemaText))
+                {
+                    ImportSchemaTextWithReview(schemaText, filePath);
+                }
+                break;
+            case DroppedFileKind.RawSql:
+                ViewModel.LoadRawSqlFromFile(filePath);
+                break;
+            default:
+                ViewModel.Status = "Format non pris en charge. Utilise un fichier .sql ou .sqlqg.json.";
+                break;
+        }
+
+        e.Handled = true;
+    }
+
+    private static bool TryGetSingleDroppedFile(IDataObject data, out string filePath)
+    {
+        filePath = string.Empty;
+        if (!data.GetDataPresent(DataFormats.FileDrop)
+            || data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files)
+        {
+            return false;
+        }
+
+        filePath = files[0];
+        return File.Exists(filePath);
+    }
+
+    private void ShowSavedQueriesLibrary()
+    {
+        QueryBuilderTabs.SelectedItem = SavedQueriesTab;
+        SavedQueriesTab.BringIntoView();
+        SavedQueriesTab.Focus();
     }
 
     /// <summary>
